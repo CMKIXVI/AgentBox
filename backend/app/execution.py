@@ -195,7 +195,7 @@ class ExecutionService:
         }
         request_hash = hashlib.sha256(canonical_json(request_payload).encode()).hexdigest()
         tenant_idempotency_key = hashlib.sha256(
-            f"{tenant_id}:{idempotency_key}".encode()
+            canonical_json({"tenant_id": tenant_id, "idempotency_key": idempotency_key}).encode()
         ).hexdigest()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
