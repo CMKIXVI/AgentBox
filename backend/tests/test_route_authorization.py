@@ -71,7 +71,7 @@ def test_policy_file_must_be_an_array(tmp_path, monkeypatch):
     path = tmp_path / "policies.json"
     path.write_text(json.dumps({"policy_id": "not-an-array"}), encoding="utf-8")
     monkeypatch.setenv("AGENTBOX_AUTHORIZATION_POLICIES_PATH", str(path))
-    with pytest.raises(RuntimeError, match="must be a JSON array"):
+    with pytest.raises(TypeError, match="must be a JSON array"):
         create_app(str(tmp_path / "invalid-shape.sqlite3"))
 
 from datetime import UTC, datetime
