@@ -27,6 +27,7 @@ class AgentVersionRecord:
     manifest: dict[str, Any]
     parent_artifact_id: str | None
     created_at: str
+    tenant_id: str
 
 
 def canonical_json(value: dict[str, Any]) -> str:
@@ -35,6 +36,9 @@ def canonical_json(value: dict[str, Any]) -> str:
 
 def content_hash(manifest: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_json(manifest).encode("utf-8")).hexdigest()
+
+
+LEGACY_TENANT_ID = "__legacy_unassigned__"
 
 
 class AgentRegistry:
@@ -86,9 +90,15 @@ class AgentRegistry:
                 )
                 """
             )
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(agent_versions)")}
+            if "tenant_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE agent_versions ADD COLUMN tenant_id TEXT NOT NULL "
+                    "DEFAULT '__legacy_unassigned__'"
+                )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_agent_versions_agent "
-                "ON agent_versions(agent_id, created_at)"
+                "CREATE INDEX IF NOT EXISTS idx_agent_versions_tenant_agent "
+                "ON agent_versions(tenant_id, agent_id, created_at)"
             )
 
     @staticmethod
@@ -100,10 +110,12 @@ class AgentRegistry:
             manifest=json.loads(row["manifest_json"]),
             parent_artifact_id=row["parent_artifact_id"],
             created_at=row["created_at"],
+            tenant_id=row["tenant_id"],
         )
 
     def create(
-        self, manifest: dict[str, Any], parent_artifact_id: str | None = None
+        self, manifest: dict[str, Any], parent_artifact_id: str | None = None,
+        tenant_id: str = LEGACY_TENANT_ID,
     ) -> tuple[AgentVersionRecord, bool]:
         agent_id = manifest["agent_id"]
         version = manifest["version"]
@@ -114,8 +126,8 @@ class AgentRegistry:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
-                (agent_id, version),
+                "SELECT * FROM agent_versions WHERE tenant_id = ? AND agent_id = ? AND version = ?",
+                (tenant_id, agent_id, version),
             ).fetchone()
             if existing:
                 record = self._to_record(existing)
@@ -126,10 +138,10 @@ class AgentRegistry:
             connection.execute(
                 """
                 INSERT INTO agent_versions
-                    (agent_id, version, content_hash, manifest_json, parent_artifact_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (agent_id, version, content_hash, manifest_json, parent_artifact_id, created_at, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (agent_id, version, digest, serialized, parent_artifact_id, created_at),
+                (agent_id, version, digest, serialized, parent_artifact_id, created_at, tenant_id),
             )
             row = connection.execute(
                 "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
@@ -137,7 +149,9 @@ class AgentRegistry:
             ).fetchone()
         return self._to_record(row), True
 
-    def get(self, agent_id: str, version: str) -> AgentVersionRecord:
+    def get(
+        self, agent_id: str, version: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> AgentVersionRecord:
         with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
@@ -147,13 +161,16 @@ class AgentRegistry:
             raise AgentNotFoundError(f"{agent_id}@{version} was not found")
         return self._to_record(row)
 
-    def list(self, agent_id: str, limit: int = 50, offset: int = 0) -> list[AgentVersionRecord]:
+    def list(
+        self, agent_id: str, limit: int = 50, offset: int = 0,
+        tenant_id: str = LEGACY_TENANT_ID,
+    ) -> list[AgentVersionRecord]:
         with self._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT * FROM agent_versions WHERE agent_id = ?
+                SELECT * FROM agent_versions WHERE tenant_id = ? AND agent_id = ?
                 ORDER BY created_at DESC, version DESC LIMIT ? OFFSET ?
                 """,
-                (agent_id, limit, offset),
+                (tenant_id, agent_id, limit, offset),
             ).fetchall()
         return [self._to_record(row) for row in rows]
