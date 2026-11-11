@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0.0",
+  "agent_id": "research.summarizer",
+  "version": "1.0.0",
+  "name": "Research Summarizer",
+  "description": "Summarizes supplied research material with source traceability.",
+  "purpose": "Produce concise, source-grounded summaries without inventing unsupported claims.",
+  "behavior": {
+    "objective": "Read permitted source documents, extract relevant evidence and produce a structured summary.",
+    "instructions_ref": "prompt://research-summarizer/v1",
+    "input_schema_ref": "schema://document-summary-input/v1",
+    "output_schema_ref": "schema://document-summary-output/v1",
+    "max_steps": 8,
+    "timeout_seconds": 120,
+    "retry_policy": {
+      "max_attempts": 2,
+      "retry_on": ["rate_limit", "provider_unavailable", "transient_network"]
+    }
+  },
+  "model_binding": {
+    "provider_id": "provider.openai-compatible",
+    "model_id": "model.example",
+    "credential_ref": "vault://agentbox/providers/default",
+    "parameters": {"temperature": 0.2},
+    "fallback_model_refs": []
+  },
+  "tools": [
+    {
+      "tool_id": "tool.document.read",
+      "version_range": "^1.0.0",
+      "permission_profile": "read-only",
+      "input_schema_ref": "schema://document-read-input/v1",
+      "output_schema_ref": "schema://document-read-output/v1",
+      "required": true
+    }
+  ],
+  "memory": {
+    "enabled": false,
+    "read_scopes": [],
+    "write_scopes": []
+  },
+  "knowledge_sources": [
+    {
+      "source_ref": "knowledge://workspace/research",
+      "access_scope": "workspace.current.read"
+    }
+  ],
+  "permissions": {
+    "tool_scopes": ["document.read"],
+    "data_scopes": ["workspace.current.read"],
+    "network_profiles": [],
+    "human_approval_actions": []
+  },
+  "policy_refs": ["policy://default-agent-policy/v1"],
+  "dependencies": [],
+  "runtime_targets": ["server", "local"],
+  "evaluation_profile_refs": ["evaluation://source-grounding/v1"],
+  "provenance": {
+    "origin": "authored",
+    "source_refs": ["project://agentbox/requirements"],
+    "created_by": "workspace.owner",
+    "created_at": "2026-11-11T09:00:00Z"
+  },
+  "tags": ["research", "summarization"]
+}
