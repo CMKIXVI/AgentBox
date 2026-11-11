@@ -39,6 +39,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 - [Batch 007 review](research/batch-reviews/batch-007-review.md) — digital action agents, offline/local runtime, cryptographic agility, model ensembles, financial automation and developer agents.
 - [Batch 008 review](research/batch-reviews/batch-008-review.md) — digital actions, offline app hosting, model ensembles, SaaS control plane, entitlements, solver jobs and package completeness.
 - [Batch 009 review](research/batch-reviews/batch-009-review.md) — AgentBox as an agent factory, typed capability graph, intent compiler, autonomous coding, multi-provider gateway, privacy, workflows and marketplace.
+- [Batch 010 review](research/batch-reviews/batch-010-review.md) — enterprise skill/MCP integration, versioned workflows and AWML research, privacy gateway, local RAG, semantic knowledge, UI packages and production evidence.
 
 
 - [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
