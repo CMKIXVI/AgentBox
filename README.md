@@ -28,6 +28,13 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 
 
 ## ZIP research corpus
+
+- [Full archive concept discovery — pass 01](research/full-archive-concept-discovery-pass-01.md) — full-corpus structural discovery and candidate concept families.
+- [Batch 001 review](research/batch-reviews/batch-001-review.md) — business-process generation, interoperability, edge/distributed computing, voice/multilingual interaction and authoring.
+- [Batch 002 review](research/batch-reviews/batch-002-review.md) — skills, BPMN/rules, RAG, code/app builder, artifact export and enterprise data transformation.
+- [Batch 003 review](research/batch-reviews/batch-003-review.md) — multi-agent orchestration, code intelligence, multi-cloud, edge workers and packaged vertical applications.
+
+
 - [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
 - [85-source semantic extraction dossier](research/85-source-semantic-extraction-dossier.md) — complete source register, duplicate groups, source clusters, high-value observations, normalized requirements and review boundaries.
 - [85-file knowledge reconstruction](research/agentbox-85-file-knowledge-reconstruction.md) — complete user-supplied agent-related Markdown source register, research clusters, capability map, safeguards and implementation sequence.
