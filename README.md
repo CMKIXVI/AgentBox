@@ -28,6 +28,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 
 
 ## ZIP research corpus
+- [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
 - [85-source semantic extraction dossier](research/85-source-semantic-extraction-dossier.md) — complete source register, duplicate groups, source clusters, high-value observations, normalized requirements and review boundaries.
 - [85-file knowledge reconstruction](research/agentbox-85-file-knowledge-reconstruction.md) — complete user-supplied agent-related Markdown source register, research clusters, capability map, safeguards and implementation sequence.
 - [85-source code asset and safety triage](research/85-source-code-asset-triage.md) — measured code-block inventory, exact duplicate groups, execution-risk flags and reuse disposition.
