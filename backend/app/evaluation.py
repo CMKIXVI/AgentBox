@@ -79,6 +79,7 @@ class EvaluationService:
 
     def _initialize(self) -> None:
         with self._connection() as connection:
+            connection.execute("PRAGMA foreign_keys = OFF")
             if not self._use_uri:
                 connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
@@ -118,6 +119,67 @@ class EvaluationService:
                         f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL "
                         "DEFAULT '__legacy_unassigned__'"
                     )
+            profile_pk = [
+                row["name"] for row in sorted(
+                    (item for item in connection.execute("PRAGMA table_info(evaluation_profiles)") if item["pk"]),
+                    key=lambda item: item["pk"],
+                )
+            ]
+            if profile_pk != ["tenant_id", "profile_id", "version"]:
+                connection.execute(
+                    """
+                    CREATE TABLE evaluation_profiles_tenant_new (
+                        tenant_id TEXT NOT NULL,
+                        profile_id TEXT NOT NULL,
+                        version TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        profile_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY (tenant_id, profile_id, version)
+                    )
+                    """
+                )
+                connection.execute(
+                    """INSERT INTO evaluation_profiles_tenant_new
+                    (tenant_id, profile_id, version, content_hash, profile_json, created_at)
+                    SELECT tenant_id, profile_id, version, content_hash, profile_json, created_at
+                    FROM evaluation_profiles"""
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE evaluation_runs_tenant_new (
+                        run_id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        agent_version TEXT NOT NULL,
+                        profile_id TEXT NOT NULL,
+                        profile_version TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        score REAL NOT NULL,
+                        passed INTEGER NOT NULL,
+                        result_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (tenant_id, profile_id, profile_version)
+                            REFERENCES evaluation_profiles_tenant_new(tenant_id, profile_id, version)
+                    )
+                    """
+                )
+                connection.execute(
+                    """INSERT INTO evaluation_runs_tenant_new
+                    (run_id, tenant_id, agent_id, agent_version, profile_id, profile_version,
+                     status, score, passed, result_json, created_at)
+                    SELECT run_id, tenant_id, agent_id, agent_version, profile_id, profile_version,
+                           status, score, passed, result_json, created_at FROM evaluation_runs"""
+                )
+                connection.execute("DROP TABLE evaluation_runs")
+                connection.execute("DROP TABLE evaluation_profiles")
+                connection.execute(
+                    "ALTER TABLE evaluation_profiles_tenant_new RENAME TO evaluation_profiles"
+                )
+                connection.execute(
+                    "ALTER TABLE evaluation_runs_tenant_new RENAME TO evaluation_runs"
+                )
+            connection.execute("PRAGMA foreign_keys = ON")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_eval_profiles_tenant "
                 "ON evaluation_profiles(tenant_id, profile_id, created_at)"
