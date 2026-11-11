@@ -75,7 +75,7 @@ def build(archive_path, output_dir, limit=None):
                 lineage=lineage_for(searchable)
                 if score<3 and lineage=="unclassified": continue
                 score += 2 if lineage!="unclassified" else 0
-                excerpt=re.sub(r"\\s+"," ",content).strip()[:220]
+                excerpt=re.sub(r"\s+"," ",content).strip()[:220]
                 records.append({
                     "recovery_id":"ABR-"+digest[:12],
                     "original_filename":Path(row.get("archive_path","")).name,
