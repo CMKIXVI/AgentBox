@@ -49,6 +49,12 @@ The extracted research is attributed to ZIP paths. It is not a production implem
 ## Current engineering assessment
 - [Repository gap analysis — 2026-11-11](docs/repository-gap-analysis-2026-11-11.md) — verified repository inventory, legacy-code risks, implementation gaps, phase gates and readiness statement.
 
+
+## Agent manifest v1
+- [Agent manifest schema](schemas/agent-manifest-v1.schema.json) — initial declarative agent definition contract.
+- [Valid example manifest](examples/agent-manifest-v1.json) — reference instance.
+- [Manifest v1 specification](docs/agent-manifest-v1.md) — field semantics, validation rules and security boundaries.
+
 ## Evolution architecture
 
 - [Evolution engines overview](docs/engines/README.md)
