@@ -47,6 +47,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 - [Batch 010 review](research/batch-reviews/batch-010-review.md) — enterprise skill/MCP integration, versioned workflows and AWML research, privacy gateway, local RAG, semantic knowledge, UI packages and production evidence.
 - [Batch 011 review](research/batch-reviews/batch-011-review.md) — final archive batch: visual app builder, conversational business operations, reusable UI, voice billing, distributed/edge and device concepts; archive-level synthesis.
 - [Consolidated source requirements v1](requirements/consolidated-source-requirements-v1.md) — 50 stable requirements across package lifecycle, execution, workflows, model/knowledge, governance, developer quality, integrations and deployment; includes priority, traceability, source tensions and implementation gaps.
+- [Current implementation audit — 2026-11-11](research/current-implementation-audit-2026-11-11.md) — verified backend surface, subsystem gaps, previous lint failure and green CI evidence (32 tests).
 
 
 - [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
