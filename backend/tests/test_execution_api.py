@@ -5,7 +5,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.execution import DeterministicFakeProvider, ExecutionService
+from app.execution import DeterministicFakeProvider
 from app.main import create_app
 
 
