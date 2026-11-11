@@ -46,6 +46,9 @@ A deeper scan of the uploaded ZIP has been committed:
 
 The extracted research is attributed to ZIP paths. It is not a production implementation, and adjacent Aetheron/AEON research remains separate.
 
+## Current engineering assessment
+- [Repository gap analysis — 2026-11-11](docs/repository-gap-analysis-2026-11-11.md) — verified repository inventory, legacy-code risks, implementation gaps, phase gates and readiness statement.
+
 ## Evolution architecture
 
 - [Evolution engines overview](docs/engines/README.md)
