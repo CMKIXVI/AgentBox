@@ -38,12 +38,21 @@ def content_hash(manifest: dict[str, Any]) -> str:
 class AgentRegistry:
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
-        if self.database_path != ":memory:":
+        self._use_uri = self.database_path == ":memory:"
+        self._dsn = (
+            f"file:agentbox-{id(self)}?mode=memory&cache=shared"
+            if self._use_uri else self.database_path
+        )
+        self._keeper = (
+            sqlite3.connect(self._dsn, uri=True, timeout=10)
+            if self._use_uri else None
+        )
+        if not self._use_uri:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=10)
+        connection = sqlite3.connect(self._dsn, uri=self._use_uri, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 10000")
