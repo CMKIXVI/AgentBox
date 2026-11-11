@@ -38,6 +38,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 - [Batch 006 review](research/batch-reviews/batch-006-review.md) — shared capability fabric, chat-native apps, local inference/data, AI accountability and enterprise governance.
 - [Batch 007 review](research/batch-reviews/batch-007-review.md) — digital action agents, offline/local runtime, cryptographic agility, model ensembles, financial automation and developer agents.
 - [Batch 008 review](research/batch-reviews/batch-008-review.md) — digital actions, offline app hosting, model ensembles, SaaS control plane, entitlements, solver jobs and package completeness.
+- [Batch 009 review](research/batch-reviews/batch-009-review.md) — AgentBox as an agent factory, typed capability graph, intent compiler, autonomous coding, multi-provider gateway, privacy, workflows and marketplace.
 
 
 - [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
