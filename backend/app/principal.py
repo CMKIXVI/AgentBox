@@ -24,4 +24,4 @@ class Principal:
         if self.principal_type == "tenant" and self.tenant_id != self.subject_id:
             raise ValueError("A tenant principal must use its tenant ID as both subject_id and tenant_id")
         if not isinstance(self.active, bool):
-            raise ValueError("active must be a boolean")
+            raise TypeError("active must be a boolean")
