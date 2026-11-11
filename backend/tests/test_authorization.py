@@ -31,7 +31,8 @@ def test_explicit_matching_allow():
 
 
 def test_missing_principal_denied():
-    assert request(principal=None, policies=[policy()])["reason"] == "missing_principal"
+    result = authorize_capability(None, "crm.contact.read", "crm.contact.read", "contact-1", [policy()])
+    assert result["reason"] == "missing_principal"
 
 
 def test_inactive_principal_denied():
