@@ -34,7 +34,7 @@ jobs:
       - name: Temporary lint-fix diagnostic
         run: |
           ruff check --fix app tests || true
-          git diff -- backend/app backend/tests
+          git diff -- app tests
       - name: Lint
         run: ruff check app tests
       - name: Test
