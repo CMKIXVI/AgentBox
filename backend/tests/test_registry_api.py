@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from auth_helpers import configure_test_access
 from app.registry import AgentRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -15,7 +16,7 @@ EXAMPLE = json.loads((ROOT / "examples" / "agent-manifest-v1.json").read_text(en
 
 
 def client_for(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(str(tmp_path / "test.sqlite3")))
+    return TestClient(configure_test_access(create_app(str(tmp_path / "test.sqlite3"))))
 
 
 def test_health_and_openapi(tmp_path: Path) -> None:
