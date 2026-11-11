@@ -39,3 +39,12 @@ A deeper scan of the uploaded ZIP has been committed:
 - [Consolidated architecture map](docs/agent-evolution/zip-derived-architecture-map.md) — how the source ideas map into a staged AgentBox design.
 
 The extracted research is attributed to ZIP paths. It is not a production implementation, and adjacent Aetheron/AEON research remains separate.
+
+## Evolution architecture
+
+- [Evolution engines overview](docs/engines/README.md)
+- [Agent Evolution Engine](docs/engines/agent-evolution-engine.md)
+- [Retrieval Evolution Engine](docs/engines/retrieval-evolution-engine.md)
+- [Model Genetics Engine](docs/engines/model-genetics-engine.md)
+- [Shared evolution platform contracts](docs/evolution-platform-contracts.md)
+- [ZIP-derived architecture map](docs/agent-evolution/zip-derived-architecture-map.md)
