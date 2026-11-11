@@ -86,4 +86,16 @@ def validate_evaluation_profile(profile: dict[str, Any]) -> list[dict[str, str]]
                 "path": "/cases",
                 "message": "case_id values must be unique within an evaluation profile.",
             })
+        for case_index, case in enumerate(profile["cases"]):
+            for assertion_index, assertion in enumerate(case["assertions"]):
+                if assertion["type"] == "json_schema_valid":
+                    try:
+                        Draft202012Validator.check_schema(assertion["schema"])
+                    except SchemaError as exc:
+                        result.append({
+                            "path": (
+                                f"/cases/{case_index}/assertions/{assertion_index}/schema"
+                            ),
+                            "message": f"Invalid embedded JSON Schema: {exc.message}",
+                        })
     return result
