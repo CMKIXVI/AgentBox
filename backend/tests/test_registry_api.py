@@ -157,3 +157,14 @@ def test_clone_cannot_override_identity_or_version_metadata(tmp_path: Path) -> N
         json={"new_version": "1.2.1", "overrides": {"agent_id": "other.agent"}},
     )
     assert response.status_code == 422
+
+
+def test_clone_rejects_schema_invalid_mutation(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    assert client.post("/v1/agents", json={"manifest": EXAMPLE}).status_code == 201
+    response = client.post(
+        "/v1/agents/research.summarizer/versions/1.0.0/clone",
+        json={"new_version": "1.2.2", "overrides": {"behavior": {"max_steps": 1000}}},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["message"] == "Cloned manifest is invalid"
