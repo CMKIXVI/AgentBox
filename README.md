@@ -54,7 +54,14 @@ The extracted research is attributed to ZIP paths. It is not a production implem
 
 - [Backend setup and API](backend/README.md) — Python 3.11+, FastAPI, SQLite registry and endpoint reference.
 - Backend code and tests live in `backend/`; GitHub Actions runs Ruff and pytest on backend/schema changes.
-- Current implementation supports schema validation, immutable version creation, retrieval, listing and derived cloning. It does not execute agents or resolve providers/tools.
+- Agent registry supports schema validation, immutable versions, retrieval, listing and derived cloning.
+- Evaluation v1 supports immutable evaluation profiles, deterministic assertions, weighted correctness/latency/cost scoring, pass/fail gates and persisted evaluation records.
+- Evaluation currently scores outputs and measurements submitted by a caller; it does not execute agents or call models. Passing an evaluation does not yet publish or deploy an agent.
+
+## Evaluation profile v1
+- [Evaluation profile schema](schemas/evaluation-profile-v1.schema.json) — versioned cases, assertion types, score weights and promotion gates.
+- [Valid evaluation profile](examples/evaluation-profile-v1.json) — reference profile.
+- [Evaluation API and execution boundary](backend/README.md#evaluation-api) — endpoints, supported assertions and what is not yet executed.
 
 ## Agent manifest v1
 - [Agent manifest schema](schemas/agent-manifest-v1.schema.json) — initial declarative agent definition contract.
