@@ -33,6 +33,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 - [Batch 001 review](research/batch-reviews/batch-001-review.md) — business-process generation, interoperability, edge/distributed computing, voice/multilingual interaction and authoring.
 - [Batch 002 review](research/batch-reviews/batch-002-review.md) — skills, BPMN/rules, RAG, code/app builder, artifact export and enterprise data transformation.
 - [Batch 003 review](research/batch-reviews/batch-003-review.md) — multi-agent orchestration, code intelligence, multi-cloud, edge workers and packaged vertical applications.
+- [Batch 004 review](research/batch-reviews/batch-004-review.md) — cloud-as-code, hybrid local/server execution, community knowledge, semantic perception, accessibility and collaboration.
 
 
 - [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
