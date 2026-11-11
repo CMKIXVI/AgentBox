@@ -123,3 +123,37 @@ def test_concurrent_duplicate_creates_preserve_one_immutable_version(tmp_path: P
     assert sum(1 for _, created in results if created) == 1
     assert len({record.content_hash for record, _ in results}) == 1
     assert len(registry.list("research.summarizer")) == 1
+
+
+def test_clone_applies_validated_overrides_without_mutating_parent(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    assert client.post("/v1/agents", json={"manifest": EXAMPLE}).status_code == 201
+    response = client.post(
+        "/v1/agents/research.summarizer/versions/1.0.0/clone",
+        json={
+            "new_version": "1.2.0",
+            "overrides": {
+                "purpose": "Summarize technical research with explicit evidence links.",
+                "behavior": {"objective": "Produce a source-grounded research digest."},
+            },
+        },
+    )
+    assert response.status_code == 201
+    derived = response.json()["manifest"]
+    assert derived["purpose"].startswith("Summarize technical research")
+    assert derived["behavior"]["objective"].startswith("Produce a source-grounded")
+    assert derived["behavior"]["max_steps"] == EXAMPLE["behavior"]["max_steps"]
+    assert derived["provenance"]["origin"] == "derived"
+    assert "research.summarizer@1.0.0" in derived["provenance"]["source_refs"]
+    parent = client.get("/v1/agents/research.summarizer/versions/1.0.0").json()
+    assert parent["manifest"]["purpose"] == EXAMPLE["purpose"]
+
+
+def test_clone_cannot_override_identity_or_version_metadata(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    assert client.post("/v1/agents", json={"manifest": EXAMPLE}).status_code == 201
+    response = client.post(
+        "/v1/agents/research.summarizer/versions/1.0.0/clone",
+        json={"new_version": "1.2.1", "overrides": {"agent_id": "other.agent"}},
+    )
+    assert response.status_code == 422
