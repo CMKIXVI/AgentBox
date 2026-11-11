@@ -4,10 +4,10 @@ import copy
 import json
 from pathlib import Path
 
+from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from auth_helpers import configure_test_access
 
 ROOT = Path(__file__).resolve().parents[2]
 AGENT = json.loads((ROOT / "examples" / "agent-manifest-v1.json").read_text(encoding="utf-8"))
