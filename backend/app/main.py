@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from .evaluation import (
+from .execution import (\n    DeterministicFakeProvider,\n    ExecutionConflictError,\n    ExecutionNotFoundError,\n    ExecutionPolicyError,\n    ExecutionService,\n)\nfrom .evaluation import (
     EvaluationProfileConflictError,
     EvaluationProfileNotFoundError,
     EvaluationRunNotFoundError,
@@ -37,7 +37,7 @@ class CloneRequest(BaseModel):
     overrides: dict[str, Any] = Field(default_factory=dict)
 
 
-class EvaluationCaseSubmission(BaseModel):
+class ExecutionRequest(BaseModel):\n    model_config = ConfigDict(extra="forbid")\n    input: Any\n    max_output_tokens: int = Field(default=1024, ge=1, le=8192)\n\n\nclass EvaluationCaseSubmission(BaseModel):
     model_config = ConfigDict(extra="forbid")
     case_id: str = Field(min_length=1, max_length=128)
     output: Any
@@ -94,7 +94,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         str(Path(__file__).resolve().parents[1] / "data" / "agentbox.sqlite3"),
     )
     app.state.registry = AgentRegistry(db_path)
-    app.state.evaluations = EvaluationService(db_path)
+    app.state.evaluations = EvaluationService(db_path)\n    app.state.executions = ExecutionService(\n        db_path, app.state.registry, providers=[DeterministicFakeProvider()]\n    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -186,7 +186,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         response["created"] = created
         return response
 
-    @app.post("/v1/evaluation-profiles/validate")
+    @app.post(\n        "/v1/agents/{agent_id}/versions/{version}/executions",\n        status_code=status.HTTP_201_CREATED,\n    )\n    def execute_agent(\n        agent_id: str, version: str, request: ExecutionRequest,\n        idempotency_key: str = Header(alias="Idempotency-Key"),\n    ) -> dict[str, Any]:\n        try:\n            return app.state.executions.execute(\n                agent_id, version, request.input, idempotency_key, request.max_output_tokens\n            )\n        except AgentNotFoundError as exc:\n            raise HTTPException(status_code=404, detail=str(exc)) from exc\n        except ExecutionPolicyError as exc:\n            code = 503 if "Provider is not configured" in str(exc) else 403\n            raise HTTPException(status_code=code, detail=str(exc)) from exc\n        except ExecutionConflictError as exc:\n            raise HTTPException(status_code=409, detail=str(exc)) from exc\n        except ValueError as exc:\n            raise HTTPException(status_code=422, detail=str(exc)) from exc\n\n    @app.get("/v1/executions/{execution_id}")\n    def get_execution(execution_id: str) -> dict[str, Any]:\n        try:\n            return app.state.executions.get(execution_id)\n        except ExecutionNotFoundError as exc:\n            raise HTTPException(status_code=404, detail=str(exc)) from exc\n\n    @app.post("/v1/evaluation-profiles/validate")
     def validate_profile(request: EvaluationProfileRequest) -> dict[str, Any]:
         errors = validate_evaluation_profile(request.profile)
         return {"valid": not errors, "errors": errors}
