@@ -184,3 +184,51 @@ These tracks need separate technical feasibility reviews, benchmarks and safety 
 - Never promote a candidate solely because its composite fitness increased.
 - Never let an agent silently modify its live production version.
 - Never claim weight-level model reproduction without a compatible algorithm, reproducible experiment and independent validation.
+
+
+## 13. Additional source-derived platform layers
+
+The expanded scan found further reusable platform architecture in Cognitive Enterprise Design:
+
+- Agent Registry
+- Agent Runtime
+- Agent Orchestrator
+- Agent Communication
+- Agent Memory
+- Agent Governance
+- Capability Graph
+- Cognitive Services
+- Connector/Plugin Fabric
+- Event Bus and Observability
+
+These should become shared runtime services around the three evolution engines, not duplicated inside each engine.
+
+## 14. Cognitive runtime capabilities
+
+AEON/Aetheron source inventories add optional capabilities:
+- Goal management and task state.
+- Perception and context assembly.
+- Reasoning, planning and intention.
+- Tool registry and dispatcher.
+- Working, episodic, semantic, procedural and reflective memory.
+- Retrieval, knowledge graph and ontology.
+- Event store, replay, checkpoint and recovery.
+- Health, diagnostics, security, quarantine and credential services.
+
+Keep these as modular runtime adapters. The first AgentBox release should not recreate the entire cognitive OS.
+
+## 15. Expanded evolutionary algorithms
+
+The AEON-RAG source adds population, species, mutation, crossover, selection, elitism, diversity management, fitness, hall of fame and optimizer components to retrieval evolution.
+
+The SNN research adds a distinct neural evolution family: genome, mutation, crossover, selection, speciation, growth, pruning, reproduction, STDP, reward learning, eligibility traces, homeostasis and structural plasticity. These belong to experimental model/neural evolution, not the first agent-level MVP.
+
+## 16. Runtime governance and hybrid reasoning
+
+The AI-native OS Language source suggests capability declarations, resource budgets, runtime mutation guards, journaling, replay and recovery supervision. Its local-file sandbox example is not secure isolation.
+
+The Expert Systems vs RAG source supports a hybrid capability architecture: deterministic rules, retrieval, LLM reasoning, specialist agents and synthesis. AgentBox should select among typed capabilities rather than force every task through an LLM.
+
+## 17. Optional embodied/world-model track
+
+Autonomous OS Architecture and AGI Project Consolidation describe persistent world models, simulation, dynamic replanning, embodied memory, VLA and physical execution. Keep this as a future track with its own simulator, safety envelope and hardware-in-the-loop validation.
