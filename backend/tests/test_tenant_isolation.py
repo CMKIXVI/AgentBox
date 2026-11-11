@@ -161,3 +161,38 @@ def test_evaluation_migration_quarantines_pre_tenant_rows(tmp_path: Path) -> Non
     assert service.get_run("legacy-evaluation")["run_id"] == "legacy-evaluation"
     with pytest.raises(EvaluationRunNotFoundError):
         service.get_run("legacy-evaluation", "tenant-alpha")
+
+
+
+def test_same_agent_identity_can_exist_in_multiple_tenants(tmp_path: Path) -> None:
+    registry = AgentRegistry(tmp_path / "shared-agent.sqlite3")
+    manifest = tenant_agent("agent.same-id")
+    first, created_first = registry.create(manifest, tenant_id="tenant-alpha")
+    second, created_second = registry.create(manifest, tenant_id="tenant-beta")
+    assert created_first is True
+    assert created_second is True
+    assert first.agent_id == second.agent_id
+    assert first.tenant_id == "tenant-alpha"
+    assert second.tenant_id == "tenant-beta"
+    assert registry.get("agent.same-id", "1.0.0", "tenant-alpha").tenant_id == "tenant-alpha"
+    assert registry.get("agent.same-id", "1.0.0", "tenant-beta").tenant_id == "tenant-beta"
+
+
+def test_same_evaluation_profile_identity_can_exist_in_multiple_tenants(tmp_path: Path) -> None:
+    service = EvaluationService(tmp_path / "shared-evaluation.sqlite3")
+    first, created_first = service.create_profile(PROFILE, tenant_id="tenant-alpha")
+    second, created_second = service.create_profile(PROFILE, tenant_id="tenant-beta")
+    assert created_first is True
+    assert created_second is True
+    assert first["profile_id"] == second["profile_id"]
+    assert service.get_profile(PROFILE["profile_id"], PROFILE["version"], "tenant-alpha")
+    assert service.get_profile(PROFILE["profile_id"], PROFILE["version"], "tenant-beta")
+
+
+def test_evaluation_run_cannot_reference_another_tenants_profile(tmp_path: Path) -> None:
+    service = EvaluationService(tmp_path / "evaluation-fk.sqlite3")
+    service.create_profile(PROFILE, tenant_id="tenant-alpha")
+    with pytest.raises(sqlite3.IntegrityError):
+        service.create_run(
+            "agent.beta", "1.0.0", PROFILE["profile_id"], PROFILE["version"], [], "tenant-beta"
+        )
