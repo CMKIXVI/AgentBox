@@ -50,6 +50,12 @@ The extracted research is attributed to ZIP paths. It is not a production implem
 - [Repository gap analysis — 2026-11-11](docs/repository-gap-analysis-2026-11-11.md) — verified repository inventory, legacy-code risks, implementation gaps, phase gates and readiness statement.
 
 
+## Backend implementation
+
+- [Backend setup and API](backend/README.md) — Python 3.11+, FastAPI, SQLite registry and endpoint reference.
+- Backend code and tests live in `backend/`; GitHub Actions runs Ruff and pytest on backend/schema changes.
+- Current implementation supports schema validation, immutable version creation, retrieval, listing and derived cloning. It does not execute agents or resolve providers/tools.
+
 ## Agent manifest v1
 - [Agent manifest schema](schemas/agent-manifest-v1.schema.json) — initial declarative agent definition contract.
 - [Valid example manifest](examples/agent-manifest-v1.json) — reference instance.
