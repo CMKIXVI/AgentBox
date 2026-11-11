@@ -87,10 +87,21 @@ def test_clone_creates_derived_version_with_parent_lineage(tmp_path: Path) -> No
     assert payload["manifest"]["provenance"]["origin"] == "derived"
 
 
-def test_clone_rejects_existing_version_with_different_parent(tmp_path: Path) -> None:
+def test_clone_is_idempotent_and_preserves_immutable_parent_lineage(tmp_path: Path) -> None:
     client = client_for(tmp_path)
     assert client.post("/v1/agents", json={"manifest": EXAMPLE}).status_code == 201
-    assert client.post(
-        "/v1/agents/research.summarizer/versions/1.1.0/clone",
-        json={"new_version": "1.2.0"},
-    ).status_code == 404
+    endpoint = "/v1/agents/research.summarizer/versions/1.0.0/clone"
+    first = client.post(endpoint, json={"new_version": "1.1.0"})
+    second = client.post(endpoint, json={"new_version": "1.1.0"})
+    assert first.status_code == second.status_code == 201
+    assert first.json()["created"] is True
+    assert second.json()["created"] is False
+    assert first.json()["content_hash"] == second.json()["content_hash"]
+    assert first.json()["parent_artifact_id"] == "research.summarizer@1.0.0"
+
+
+def test_create_rejects_invalid_manifest_with_422(tmp_path: Path) -> None:
+    invalid = copy.deepcopy(EXAMPLE)
+    invalid["behavior"]["timeout_seconds"] = 99999
+    response = client_for(tmp_path).post("/v1/agents", json={"manifest": invalid})
+    assert response.status_code == 422
