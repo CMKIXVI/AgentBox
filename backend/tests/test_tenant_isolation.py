@@ -192,7 +192,7 @@ def test_same_evaluation_profile_identity_can_exist_in_multiple_tenants(tmp_path
 def test_evaluation_run_cannot_reference_another_tenants_profile(tmp_path: Path) -> None:
     service = EvaluationService(tmp_path / "evaluation-fk.sqlite3")
     service.create_profile(PROFILE, tenant_id="tenant-alpha")
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(EvaluationProfileNotFoundError):
         service.create_run(
             "agent.beta", "1.0.0", PROFILE["profile_id"], PROFILE["version"], [], "tenant-beta"
         )
