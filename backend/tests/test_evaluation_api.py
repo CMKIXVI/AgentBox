@@ -218,3 +218,18 @@ def test_evaluation_requires_existing_agent_and_profile(tmp_path: Path) -> None:
 def test_unknown_evaluation_run_returns_404(tmp_path: Path) -> None:
     response = client_for(tmp_path).get("/v1/evaluations/not-a-run")
     assert response.status_code == 404
+
+
+def test_evaluation_profile_rejects_invalid_embedded_assertion_schema(
+    tmp_path: Path,
+) -> None:
+    invalid = copy.deepcopy(PROFILE)
+    invalid["cases"][1]["assertions"][0]["schema"] = {"type": "not-a-json-schema-type"}
+    response = client_for(tmp_path).post(
+        "/v1/evaluation-profiles/validate", json={"profile": invalid}
+    )
+    assert response.json()["valid"] is False
+    assert any(
+        "Invalid embedded JSON Schema" in error["message"]
+        for error in response.json()["errors"]
+    )
