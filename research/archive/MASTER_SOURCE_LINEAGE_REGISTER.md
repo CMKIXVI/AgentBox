@@ -69,7 +69,7 @@ Before a candidate is marked Reviewed or Accepted:
 1. Recover the complete block and its surrounding source context where available.
 2. Verify source path, block number, archive member and SHA-256 against the index.
 3. Identify duplicate groups and version ancestry; do not discard variants based on matching names.
-4. Record original filename/symbol/module and proposed normalized mapping separately.
+4. Record original filename/symbol/module and proposed AgentBox mapping separately. In accepted code, expose only AgentBox-normalized names; retain legacy identifiers solely in provenance/migration metadata or legally required notices.
 5. Inspect imports, dependency versions, build system, licence, provenance and security risks.
 6. Compare behaviour and contracts with the current AgentBox implementation.
 7. Add unit, integration, compatibility and negative/security tests as appropriate.
@@ -86,4 +86,4 @@ Before a candidate is marked Reviewed or Accepted:
 5. Trace prior-work catalogues and the named AMGE components to source evidence.
 6. Only then select small, testable integration candidates.
 
-**Current recovery status:** catalogue discovery exists; this register is a source map. No recovered lineage is represented as production-integrated by this document.
+**Current recovery status:** catalogue discovery exists; this register is a source map. No recovered lineage is represented as production-integrated by this document. Naming policy for future imports: AgentBox is the sole product/code namespace; legacy source identities are provenance, not shipped code identities.
