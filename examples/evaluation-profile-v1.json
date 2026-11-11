@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "quality.research-summary",
+  "version": "1.0.0",
+  "name": "Research Summary Quality",
+  "description": "Checks source-grounded summary structure and required evidence fields.",
+  "scoring": {
+    "correctness_weight": 0.8,
+    "latency_weight": 0.1,
+    "cost_weight": 0.1
+  },
+  "gates": {
+    "min_case_pass_rate": 0.8,
+    "max_avg_latency_ms": 5000,
+    "max_total_cost_usd": 0.05
+  },
+  "cases": [
+    {
+      "case_id": "summary.has-conclusion",
+      "description": "A summary must contain a conclusion.",
+      "input": {"document": "A sample technical report."},
+      "assertions": [
+        {"type": "required_fields", "fields": ["summary", "conclusion", "sources"]},
+        {"type": "contains", "expected_value": "conclusion"}
+      ]
+    },
+    {
+      "case_id": "summary.output-contract",
+      "description": "The output must match the agreed summary structure.",
+      "input": {"document": "A second sample technical report."},
+      "assertions": [
+        {
+          "type": "json_schema_valid",
+          "schema": {
+            "type": "object",
+            "required": ["summary", "conclusion", "sources"],
+            "properties": {
+              "summary": {"type": "string"},
+              "conclusion": {"type": "string"},
+              "sources": {"type": "array", "items": {"type": "string"}}
+            },
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  ]
+}
