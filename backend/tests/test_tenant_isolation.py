@@ -96,3 +96,68 @@ def test_evaluation_profiles_and_runs_are_tenant_scoped(tmp_path: Path) -> None:
     with pytest.raises(EvaluationRunNotFoundError):
         service.get_run(run["run_id"], "tenant-beta")
     assert service.list_agent_runs("agent.alpha", "1.0.0", "tenant-beta") == []
+
+
+
+def test_execution_migration_quarantines_pre_tenant_rows(tmp_path: Path) -> None:
+    path = tmp_path / "legacy-execution.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """CREATE TABLE executions (
+                execution_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
+                agent_version TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+                request_hash TEXT NOT NULL, status TEXT NOT NULL, result_json TEXT,
+                error_code TEXT, created_at TEXT NOT NULL, completed_at TEXT)"""
+        )
+        connection.execute(
+            """INSERT INTO executions VALUES (
+                'legacy-run', 'legacy.agent', '1.0.0', 'legacy-key', 'hash',
+                'completed', '{}', NULL, '2026-01-01T00:00:00+00:00',
+                '2026-01-01T00:00:01+00:00')"""
+        )
+    registry = AgentRegistry(path)
+    service = ExecutionService(path, registry, [DeterministicFakeProvider()])
+    assert service.get("legacy-run")["execution_id"] == "legacy-run"
+    with pytest.raises(ExecutionNotFoundError):
+        service.get("legacy-run", "tenant-alpha")
+
+
+def test_evaluation_migration_quarantines_pre_tenant_rows(tmp_path: Path) -> None:
+    path = tmp_path / "legacy-evaluation.sqlite3"
+    profile_payload = json.dumps(PROFILE, separators=(",", ":"))
+    run_payload = json.dumps({"run_id": "legacy-evaluation", "agent_id": "legacy.agent"})
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """CREATE TABLE evaluation_profiles (
+                profile_id TEXT NOT NULL, version TEXT NOT NULL,
+                content_hash TEXT NOT NULL, profile_json TEXT NOT NULL,
+                created_at TEXT NOT NULL, PRIMARY KEY (profile_id, version))"""
+        )
+        connection.execute(
+            """CREATE TABLE evaluation_runs (
+                run_id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
+                agent_version TEXT NOT NULL, profile_id TEXT NOT NULL,
+                profile_version TEXT NOT NULL, status TEXT NOT NULL,
+                score REAL NOT NULL, passed INTEGER NOT NULL,
+                result_json TEXT NOT NULL, created_at TEXT NOT NULL,
+                FOREIGN KEY (profile_id, profile_version)
+                REFERENCES evaluation_profiles(profile_id, version))"""
+        )
+        connection.execute(
+            "INSERT INTO evaluation_profiles VALUES (?, ?, ?, ?, ?)",
+            (PROFILE["profile_id"], PROFILE["version"], "legacy-hash", profile_payload, "2026-01-01"),
+        )
+        connection.execute(
+            "INSERT INTO evaluation_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "legacy-evaluation", "legacy.agent", "1.0.0", PROFILE["profile_id"],
+                PROFILE["version"], "completed", 0.0, 0, run_payload, "2026-01-01",
+            ),
+        )
+    service = EvaluationService(path)
+    assert service.get_profile(PROFILE["profile_id"], PROFILE["version"])["profile"] == PROFILE
+    with pytest.raises(EvaluationProfileNotFoundError):
+        service.get_profile(PROFILE["profile_id"], PROFILE["version"], "tenant-alpha")
+    assert service.get_run("legacy-evaluation")["run_id"] == "legacy-evaluation"
+    with pytest.raises(EvaluationRunNotFoundError):
+        service.get_run("legacy-evaluation", "tenant-alpha")
