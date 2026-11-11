@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.registry import AgentRegistry
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -104,3 +105,11 @@ def test_create_rejects_invalid_manifest_with_422(tmp_path: Path) -> None:
     invalid["behavior"]["timeout_seconds"] = 99999
     response = client_for(tmp_path).post("/v1/agents", json={"manifest": invalid})
     assert response.status_code == 422
+
+
+def test_in_memory_registry_survives_per_operation_connections() -> None:
+    registry = AgentRegistry(":memory:")
+    created, was_created = registry.create(EXAMPLE)
+    fetched = registry.get("research.summarizer", "1.0.0")
+    assert was_created is True
+    assert fetched.content_hash == created.content_hash
