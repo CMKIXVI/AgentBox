@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from build_recovery_catalogue import build  # noqa: E402
+from build_recovery_catalogue import build
 
 
 def make_archive(path: Path, valid_hash: bool = True) -> None:
@@ -48,7 +48,8 @@ def test_catalogue_preserves_provenance_and_candidate_status(tmp_path: Path) -> 
         b"def clone_agent(parent):\n    return parent.copy()\n"
     ).hexdigest()
     assert rows[0]["agentbox_subsystem"] == "agent-definition-registry-lineage"
-    assert json.loads((output / "agentbox-recovery-candidates.json").read_text())[0]["recovery_id"] == rows[0]["recovery_id"]
+    persisted = json.loads((output / "agentbox-recovery-candidates.json").read_text())
+    assert persisted[0]["recovery_id"] == rows[0]["recovery_id"]
 
 
 def test_catalogue_rejects_index_hash_mismatch(tmp_path: Path) -> None:
