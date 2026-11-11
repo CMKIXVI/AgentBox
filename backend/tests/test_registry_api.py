@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -113,3 +114,12 @@ def test_in_memory_registry_survives_per_operation_connections() -> None:
     fetched = registry.get("research.summarizer", "1.0.0")
     assert was_created is True
     assert fetched.content_hash == created.content_hash
+
+
+def test_concurrent_duplicate_creates_preserve_one_immutable_version(tmp_path: Path) -> None:
+    registry = AgentRegistry(tmp_path / "concurrent.sqlite3")
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        results = list(executor.map(lambda _: registry.create(EXAMPLE), range(8)))
+    assert sum(1 for _, created in results if created) == 1
+    assert len({record.content_hash for record, _ in results}) == 1
+    assert len(registry.list("research.summarizer")) == 1
