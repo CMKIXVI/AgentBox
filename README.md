@@ -4,11 +4,16 @@ A standalone environment for creating, cloning, testing, evaluating, versioning 
 
 ## Current repository status
 
-The initial content is a **research extraction** from the user's uploaded `chatgpt_22-26.zip`. It is not yet a working agent runtime.
+AgentBox now has an initial, bounded backend implementation—not merely a research extraction:
 
-- `research/legacy-extracts/` contains selected historical code examples.
-- `research/README.md` describes the extraction and known limitations.
-- `research/source-map.md` maps repository files and candidate concepts to their ZIP source documents.
+- Immutable SQLite agent manifest registry with schema validation, versioning, cloning, content hashes, idempotency and lineage.
+- Versioned evaluation profiles/runs with deterministic scoring of submitted outputs. The evaluator does **not** execute agents.
+- A bounded execution API with provider adapter contracts, persisted execution records, idempotency and output-token limits.
+- The API currently registers only a deterministic fake provider. Manifests declaring tools are deliberately rejected because principal-aware tool authorization is not implemented.
+- The current runtime is not yet a production multi-tenant, multi-agent or tool-execution platform. Real provider integration, secret resolution, authorization/tenant isolation, durable queues/cancellation and production persistence remain gaps.
+- Source-derived archive reviews and the consolidated requirements catalogue are under `research/` and `requirements/`.
+
+Do not infer production readiness from the existence of these APIs. Validate the current code and CI evidence before making readiness claims.
 
 ## Working principles
 
