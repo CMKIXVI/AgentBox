@@ -9,10 +9,9 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_policy import validate_authorization_policy
-from .authentication import require_authenticated_principal
-from .principal import Principal
 from .evaluation import (
     EvaluationProfileConflictError,
     EvaluationProfileNotFoundError,
@@ -26,8 +25,11 @@ from .execution import (
     ExecutionPolicyError,
     ExecutionService,
 )
+from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .validation import validate_evaluation_profile, validate_manifest
+
+AUTHENTICATED_PRINCIPAL = Depends(require_authenticated_principal)
 
 
 class ManifestRequest(BaseModel):
@@ -110,10 +112,10 @@ def load_authorization_policies() -> list[dict[str, Any]]:
     except (OSError, ValueError) as exc:
         raise RuntimeError("Unable to load AgentBox authorization policies") from exc
     if not isinstance(policies, list):
-        raise RuntimeError("AgentBox authorization policy document must be a JSON array")
+        raise TypeError("AgentBox authorization policy document must be a JSON array")
     for index, policy in enumerate(policies):
         if not isinstance(policy, dict):
-            raise RuntimeError(f"AgentBox authorization policy at index {index} is not an object")
+            raise TypeError(f"AgentBox authorization policy at index {index} is not an object")
         errors = validate_authorization_policy(policy)
         if errors:
             raise RuntimeError(
@@ -175,7 +177,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.post("/v1/agents", status_code=status.HTTP_201_CREATED)
     def create_agent(
         request: ManifestRequest,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.create", request.manifest.get("agent_id", ""))
         errors = validate_manifest(request.manifest)
