@@ -11,15 +11,15 @@ import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from .registry import AgentNotFoundError, AgentRegistry, canonical_json
+from .registry import AgentRegistry, canonical_json
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class ExecutionError(Exception):
