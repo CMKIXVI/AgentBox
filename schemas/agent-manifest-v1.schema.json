@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentbox.example/schemas/agent-manifest-v1.schema.json",
+  "title": "AgentBox Agent Manifest v1",
+  "description": "Declarative, portable agent definition. Secrets and executable code are referenced, never embedded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "agent_id", "version", "name", "description", "purpose", "behavior", "model_binding", "tools", "permissions", "provenance"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "agent_id": {"type": "string", "minLength": 3, "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+    "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 120},
+    "description": {"type": "string", "maxLength": 2000},
+    "purpose": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "behavior": {
+      "type": "object", "additionalProperties": false,
+      "required": ["objective", "instructions_ref", "max_steps", "timeout_seconds"],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "instructions_ref": {"$ref": "#/$defs/artifactRef"},
+        "input_schema_ref": {"$ref": "#/$defs/artifactRef"},
+        "output_schema_ref": {"$ref": "#/$defs/artifactRef"},
+        "max_steps": {"type": "integer", "minimum": 1, "maximum": 100},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "retry_policy": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "max_attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+            "retry_on": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["rate_limit", "provider_unavailable", "transient_network", "tool_timeout"]}}
+          }
+        }
+      }
+    },
+    "model_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider_id", "model_id"],
+      "properties": {
+        "provider_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "model_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "credential_ref": {"type": "string", "pattern": "^(secret|vault|keychain)://[^\\s]+$"},
+        "parameters": {"type": "object", "additionalProperties": {"type": ["string", "number", "integer", "boolean", "null"]}},
+        "routing_policy_ref": {"$ref": "#/$defs/artifactRef"},
+        "fallback_model_refs": {"type": "array", "items": {"$ref": "#/$defs/modelRef"}, "maxItems": 5}
+      }
+    },
+    "tools": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/toolRef"}},
+    "workflow_ref": {"$ref": "#/$defs/artifactRef"},
+    "memory": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "store_ref": {"$ref": "#/$defs/artifactRef"},
+        "retention_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+        "read_scopes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "write_scopes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "knowledge_sources": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["source_ref"],
+        "properties": {
+          "source_ref": {"$ref": "#/$defs/artifactRef"},
+          "snapshot_ref": {"$ref": "#/$defs/artifactRef"},
+          "retrieval_profile_ref": {"$ref": "#/$defs/artifactRef"},
+          "access_scope": {"type": "string", "maxLength": 256}
+        }
+      }
+    },
+    "permissions": {
+      "type": "object", "additionalProperties": false, "required": ["tool_scopes", "data_scopes"],
+      "properties": {
+        "tool_scopes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "data_scopes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "network_profiles": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "human_approval_actions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}}
+      }
+    },
+    "policy_refs": {"type": "array", "items": {"$ref": "#/$defs/artifactRef"}, "maxItems": 100},
+    "dependencies": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["artifact_ref", "version_range"],
+        "properties": {
+          "artifact_ref": {"$ref": "#/$defs/artifactRef"},
+          "version_range": {"type": "string", "minLength": 1, "maxLength": 128},
+          "optional": {"type": "boolean"}
+        }
+      }
+    },
+    "runtime_targets": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["server", "web", "desktop", "mobile", "local", "remote", "edge", "container"]}},
+    "evaluation_profile_refs": {"type": "array", "items": {"$ref": "#/$defs/artifactRef"}, "maxItems": 100},
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["origin", "created_at"],
+      "properties": {
+        "origin": {"type": "string", "enum": ["authored", "imported", "derived", "generated"]},
+        "source_refs": {"type": "array", "items": {"type": "string", "minLength": 1}, "maxItems": 100},
+        "created_by": {"type": "string", "maxLength": 256},
+        "created_at": {"type": "string", "format": "date-time"},
+        "license_ref": {"$ref": "#/$defs/artifactRef"}
+      }
+    },
+    "tags": {"type": "array", "uniqueItems": true, "maxItems": 50, "items": {"type": "string", "minLength": 1, "maxLength": 64}}
+  },
+  "$defs": {
+    "artifactRef": {"type": "string", "minLength": 3, "maxLength": 512, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:/@+-]*$"},
+    "modelRef": {
+      "type": "object", "additionalProperties": false, "required": ["provider_id", "model_id"],
+      "properties": {
+        "provider_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "model_id": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "toolRef": {
+      "type": "object", "additionalProperties": false, "required": ["tool_id", "version_range", "permission_profile"],
+      "properties": {
+        "tool_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "version_range": {"type": "string", "minLength": 1, "maxLength": 128},
+        "permission_profile": {"type": "string", "minLength": 1, "maxLength": 128},
+        "input_schema_ref": {"$ref": "#/$defs/artifactRef"},
+        "output_schema_ref": {"$ref": "#/$defs/artifactRef"},
+        "required": {"type": "boolean"}
+      }
+    }
+  }
+}
