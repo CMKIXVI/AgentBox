@@ -144,8 +144,8 @@ class AgentRegistry:
                 (agent_id, version, digest, serialized, parent_artifact_id, created_at, tenant_id),
             )
             row = connection.execute(
-                "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
-                (agent_id, version),
+                "SELECT * FROM agent_versions WHERE tenant_id = ? AND agent_id = ? AND version = ?",
+                (tenant_id, agent_id, version),
             ).fetchone()
         return self._to_record(row), True
 
