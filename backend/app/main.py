@@ -6,9 +6,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from .authorization import authorize_capability
+from .authorization_policy import validate_authorization_policy
+from .authentication import require_authenticated_principal
+from .principal import Principal
 from .evaluation import (
     EvaluationProfileConflictError,
     EvaluationProfileNotFoundError,
@@ -93,6 +97,52 @@ def record_response(record: Any) -> dict[str, Any]:
     }
 
 
+
+def load_authorization_policies() -> list[dict[str, Any]]:
+    """Load validated explicit policies; an absent file means deny all."""
+    configured = os.getenv("AGENTBOX_AUTHORIZATION_POLICIES_PATH")
+    if not configured:
+        return []
+    try:
+        import json
+
+        policies = json.loads(Path(configured).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Unable to load AgentBox authorization policies") from exc
+    if not isinstance(policies, list):
+        raise RuntimeError("AgentBox authorization policy document must be a JSON array")
+    for index, policy in enumerate(policies):
+        if not isinstance(policy, dict):
+            raise RuntimeError(f"AgentBox authorization policy at index {index} is not an object")
+        errors = validate_authorization_policy(policy)
+        if errors:
+            raise RuntimeError(
+                f"Invalid AgentBox authorization policy at index {index}: {errors}"
+            )
+    return policies
+
+
+def enforce_authorization(
+    app: FastAPI,
+    principal: Principal,
+    capability_id: str,
+    action: str,
+    resource_id: str,
+) -> None:
+    decision = authorize_capability(
+        principal,
+        capability_id,
+        action,
+        resource_id,
+        app.state.authorization_policies,
+    )
+    if not decision["allowed"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Access denied", "reason": decision["reason"]},
+        )
+
+
 def create_app(database_path: str | None = None) -> FastAPI:
     app = FastAPI(
         title="AgentBox API",
@@ -106,6 +156,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         "AGENTBOX_DATABASE_PATH",
         str(Path(__file__).resolve().parents[1] / "data" / "agentbox.sqlite3"),
     )
+    app.state.authorization_policies = load_authorization_policies()
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
     app.state.executions = ExecutionService(
@@ -122,7 +173,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         return {"valid": not errors, "errors": errors}
 
     @app.post("/v1/agents", status_code=status.HTTP_201_CREATED)
-    def create_agent(request: ManifestRequest) -> dict[str, Any]:
+    def create_agent(
+        request: ManifestRequest,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.registry", "agent.create", request.manifest.get("agent_id", ""))
         errors = validate_manifest(request.manifest)
         if errors:
             raise HTTPException(
@@ -142,7 +197,9 @@ def create_app(database_path: str | None = None) -> FastAPI:
         agent_id: str,
         limit: int = Query(default=50, ge=1, le=100),
         offset: int = Query(default=0, ge=0),
+        principal: Principal = Depends(require_authenticated_principal),
     ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.registry", "agent.read", agent_id)
         records = app.state.registry.list(agent_id, limit=limit, offset=offset)
         return {
             "agent_id": agent_id,
@@ -152,7 +209,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         }
 
     @app.get("/v1/agents/{agent_id}/versions/{version}")
-    def get_version(agent_id: str, version: str) -> dict[str, Any]:
+    def get_version(
+        agent_id: str, version: str,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.registry", "agent.read", agent_id)
         try:
             return record_response(app.state.registry.get(agent_id, version))
         except AgentNotFoundError as exc:
@@ -162,7 +223,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         "/v1/agents/{agent_id}/versions/{version}/clone",
         status_code=status.HTTP_201_CREATED,
     )
-    def clone_version(agent_id: str, version: str, request: CloneRequest) -> dict[str, Any]:
+    def clone_version(
+        agent_id: str, version: str, request: CloneRequest,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.registry", "agent.clone", agent_id)
         try:
             source = app.state.registry.get(agent_id, version)
         except AgentNotFoundError as exc:
@@ -209,7 +274,9 @@ def create_app(database_path: str | None = None) -> FastAPI:
     def execute_agent(
         agent_id: str, version: str, request: ExecutionRequest,
         idempotency_key: str = Header(alias="Idempotency-Key"),
+        principal: Principal = Depends(require_authenticated_principal),
     ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
         try:
             return app.state.executions.execute(
                 agent_id, version, request.input, idempotency_key, request.max_output_tokens
@@ -225,9 +292,14 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/v1/executions/{execution_id}")
-    def get_execution(execution_id: str) -> dict[str, Any]:
+    def get_execution(
+        execution_id: str,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
         try:
-            return app.state.executions.get(execution_id)
+            record = app.state.executions.get(execution_id)
+            enforce_authorization(app, principal, "agent.execution", "execution.read", record["agent_id"])
+            return record
         except ExecutionNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -237,7 +309,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         return {"valid": not errors, "errors": errors}
 
     @app.post("/v1/evaluation-profiles", status_code=status.HTTP_201_CREATED)
-    def create_profile(request: EvaluationProfileRequest) -> dict[str, Any]:
+    def create_profile(
+        request: EvaluationProfileRequest,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "evaluation.profile", "profile.create", request.profile.get("profile_id", ""))
         errors = validate_evaluation_profile(request.profile)
         if errors:
             raise HTTPException(
@@ -252,12 +328,20 @@ def create_app(database_path: str | None = None) -> FastAPI:
         return record
 
     @app.get("/v1/evaluation-profiles/{profile_id}/versions")
-    def list_profile_versions(profile_id: str) -> dict[str, Any]:
+    def list_profile_versions(
+        profile_id: str,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "evaluation.profile", "profile.read", profile_id)
         records = app.state.evaluations.list_profile_versions(profile_id)
         return {"profile_id": profile_id, "items": records}
 
     @app.get("/v1/evaluation-profiles/{profile_id}/versions/{profile_version}")
-    def get_profile(profile_id: str, profile_version: str) -> dict[str, Any]:
+    def get_profile(
+        profile_id: str, profile_version: str,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "evaluation.profile", "profile.read", profile_id)
         try:
             return app.state.evaluations.get_profile(profile_id, profile_version)
         except EvaluationProfileNotFoundError as exc:
@@ -268,8 +352,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         status_code=status.HTTP_201_CREATED,
     )
     def evaluate_agent_version(
-        agent_id: str, version: str, request: EvaluationRunRequest
+        agent_id: str, version: str, request: EvaluationRunRequest,
+        principal: Principal = Depends(require_authenticated_principal),
     ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
+        enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
         try:
             app.state.registry.get(agent_id, version)
         except AgentNotFoundError as exc:
@@ -288,14 +375,23 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/v1/evaluations/{run_id}")
-    def get_evaluation_run(run_id: str) -> dict[str, Any]:
+    def get_evaluation_run(
+        run_id: str,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
         try:
-            return app.state.evaluations.get_run(run_id)
+            record = app.state.evaluations.get_run(run_id)
+            enforce_authorization(app, principal, "agent.evaluation", "evaluation.read", record["agent_id"])
+            return record
         except EvaluationRunNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/v1/agents/{agent_id}/versions/{version}/evaluations")
-    def list_evaluations(agent_id: str, version: str) -> dict[str, Any]:
+    def list_evaluations(
+        agent_id: str, version: str,
+        principal: Principal = Depends(require_authenticated_principal),
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.evaluation", "evaluation.read", agent_id)
         try:
             app.state.registry.get(agent_id, version)
         except AgentNotFoundError as exc:
