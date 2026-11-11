@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
