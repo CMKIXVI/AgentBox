@@ -31,7 +31,8 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 
 A deeper scan of the uploaded ZIP has been committed:
 
-- [Deep scan inventory](research/zip-deep-scan.md) — 2,570-file scan, 356 candidate hits, prioritized source catalog and duplicate handling.
+- [Deep scan inventory v1](research/zip-deep-scan.md) — initial focused scan.
+- [Deep scan inventory v2](research/zip-deep-scan-v2.md) — expanded literal-keyword scan across 2,570 files; 717 broad candidate entries, manually classified source families.
 - [Agent Factory OS extraction](research/extracted/agent-factory-os.md) — AgentBox resource model, agent DNA, lifecycle/versioning, governance and deployment concepts.
 - [Artificial Model Genetics Engine extraction](research/extracted/artificial-model-genetics-engine.md) — twosome/threesome/multi-parent reproduction, genomes, mutation, selection, fitness, species and lineage.
 - [Evolutionary knowledge extraction](research/extracted/evolutionary-knowledge.md) — evolutionary retrieval, retrieval genomes, mutation/crossover and memory fitness.
@@ -48,3 +49,13 @@ The extracted research is attributed to ZIP paths. It is not a production implem
 - [Model Genetics Engine](docs/engines/model-genetics-engine.md)
 - [Shared evolution platform contracts](docs/evolution-platform-contracts.md)
 - [ZIP-derived architecture map](docs/agent-evolution/zip-derived-architecture-map.md)
+
+### Additional ZIP-derived research
+
+- [Cognitive enterprise agent runtime](research/extracted/cognitive-enterprise-agent-runtime.md)
+- [Cognitive runtime and kernel reference](research/extracted/cognitive-runtime-kernel-reference.md)
+- [Expanded genetic retrieval architecture](research/extracted/genetic-retrieval-platform-expanded.md)
+- [Neuroevolution and SNN research](research/extracted/neuroevolution-and-snn-research.md)
+- [Agent runtime language and governance](research/extracted/agent-runtime-language-and-governance.md)
+- [Hybrid symbolic agent reasoning](research/extracted/hybrid-symbolic-agent-reasoning.md)
+- [Autonomous world models and embodied agents](research/extracted/autonomous-world-model-and-embodied-agents.md)
