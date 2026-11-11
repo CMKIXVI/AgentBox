@@ -4,9 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 class VersionConflictError(Exception):
@@ -58,8 +59,17 @@ class AgentRegistry:
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             if self.database_path != ":memory:":
                 connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
@@ -100,7 +110,7 @@ class AgentRegistry:
         digest = content_hash(manifest)
         created_at = manifest["provenance"]["created_at"]
 
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
@@ -127,7 +137,7 @@ class AgentRegistry:
         return self._to_record(row), True
 
     def get(self, agent_id: str, version: str) -> AgentVersionRecord:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
                 (agent_id, version),
@@ -137,7 +147,7 @@ class AgentRegistry:
         return self._to_record(row)
 
     def list(self, agent_id: str, limit: int = 50, offset: int = 0) -> list[AgentVersionRecord]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT * FROM agent_versions WHERE agent_id = ?
