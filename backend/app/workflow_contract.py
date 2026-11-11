@@ -84,6 +84,9 @@ def validate_workflow(workflow: dict[str, Any]) -> list[dict[str, str]]:
         else:
             adjacency[source].append(target)
 
+    if result:
+        return sorted(result, key=lambda item: (item["path"], item["message"]))
+
     for index, node in enumerate(nodes):
         node_type = node["type"]
         if node_type == "agent" and "agent_ref" not in node:
