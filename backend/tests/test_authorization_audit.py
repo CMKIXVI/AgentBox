@@ -20,9 +20,7 @@ def test_decisions_are_recorded_and_readable(tmp_path):
 def test_audit_records_cannot_be_updated_or_deleted(tmp_path):
     store = AuthorizationAuditStore(tmp_path / "audit.sqlite")
     store.append(None, "capability.read", "read", "resource-1", {"allowed": False})
-    with pytest.raises(sqlite3.IntegrityError):
-        with store._connect() as connection:
-            connection.execute("UPDATE authorization_decisions SET reason='changed'")
-    with pytest.raises(sqlite3.IntegrityError):
-        with store._connect() as connection:
-            connection.execute("DELETE FROM authorization_decisions")
+    with pytest.raises(sqlite3.IntegrityError), store._connect() as connection:
+        connection.execute("UPDATE authorization_decisions SET reason='changed'")
+    with pytest.raises(sqlite3.IntegrityError), store._connect() as connection:
+        connection.execute("DELETE FROM authorization_decisions")
