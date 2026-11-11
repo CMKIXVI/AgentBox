@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from .registry import AgentRegistry, LEGACY_TENANT_ID, canonical_json
+from .registry import LEGACY_TENANT_ID, AgentRegistry, canonical_json
 
 
 def utc_now() -> str:
@@ -195,7 +195,7 @@ class ExecutionService:
         }
         request_hash = hashlib.sha256(canonical_json(request_payload).encode()).hexdigest()
         tenant_idempotency_key = hashlib.sha256(
-            f"{tenant_id}:{idempotency_key}".encode("utf-8")
+            f"{tenant_id}:{idempotency_key}".encode()
         ).hexdigest()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
