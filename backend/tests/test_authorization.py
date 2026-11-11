@@ -19,7 +19,7 @@ def request(principal=None, policies=None, **overrides):
     args = {
         "principal": principal or Principal("user-1", "user", "tenant-1"),
         "capability_id": "crm.contact.read", "action": "crm.contact.read",
-        "resource_id": "contact-1", "policies": policies or [policy()],
+        "resource_id": "contact-1", "policies": policies if policies is not None else [policy()],
         "evaluated_at": datetime(2026, 11, 12, tzinfo=UTC),
     }
     args.update(overrides)
