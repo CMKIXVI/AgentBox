@@ -176,8 +176,8 @@ class EvaluationService:
     ) -> dict[str, Any]:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
         if row is None:
             raise EvaluationProfileNotFoundError(f"{profile_id}@{version} was not found")
