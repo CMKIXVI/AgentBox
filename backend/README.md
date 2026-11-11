@@ -22,7 +22,7 @@ The default SQLite database is stored at `backend/data/agentbox.sqlite3`. Overri
 - `POST /v1/agents` — validate and create an immutable agent version.
 - `GET /v1/agents/{agent_id}/versions` — list versions.
 - `GET /v1/agents/{agent_id}/versions/{version}` — retrieve a version.
-- `POST /v1/agents/{agent_id}/versions/{version}/clone` — create a derived version with parent lineage.
+- `POST /v1/agents/{agent_id}/versions/{version}/clone` — create a derived version with parent lineage. Optional `overrides` apply a validated deep merge to mutable manifest sections; identity, schema version, version and provenance cannot be overridden.
 
 Interactive API documentation is available at `/docs`; the OpenAPI document is at `/openapi.json`.
 
