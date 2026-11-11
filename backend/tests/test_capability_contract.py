@@ -66,7 +66,7 @@ def test_input_recording_requires_redaction_profile():
 
 def test_invalid_embedded_schema_is_rejected():
     capability = valid_capability()
-    capability["input_schema"] = {"type": "not-a-json-schema-type"}
+    capability["input_schema"] = {"type": "object", "properties": {"field": {"type": "not-a-json-schema-type"}}}
     assert any("Embedded JSON Schema is invalid" in error["message"] for error in validate_capability(capability))
 
 
