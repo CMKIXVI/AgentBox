@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from app.evaluation import EvaluationProfileNotFoundError, EvaluationService
+from app.evaluation import (
+    EvaluationProfileNotFoundError,
+    EvaluationRunNotFoundError,
+    EvaluationService,
+)
 from app.execution import (
     DeterministicFakeProvider,
     ExecutionNotFoundError,
@@ -89,6 +93,6 @@ def test_evaluation_profiles_and_runs_are_tenant_scoped(tmp_path: Path) -> None:
         "agent.alpha", "1.0.0", PROFILE["profile_id"], PROFILE["version"], [], "tenant-alpha"
     )
     assert service.get_run(run["run_id"], "tenant-alpha") == run
-    with pytest.raises(Exception):
+    with pytest.raises(EvaluationRunNotFoundError):
         service.get_run(run["run_id"], "tenant-beta")
     assert service.list_agent_runs("agent.alpha", "1.0.0", "tenant-beta") == []
