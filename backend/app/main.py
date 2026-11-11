@@ -21,6 +21,23 @@ class ManifestRequest(BaseModel):
 class CloneRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     new_version: str = Field(pattern=r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+    overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+MUTABLE_MANIFEST_FIELDS = {
+    "name", "description", "purpose", "behavior", "model_binding", "tools",
+    "workflow_ref", "memory", "knowledge_sources", "permissions", "policy_refs",
+    "dependencies", "runtime_targets", "evaluation_profile_refs", "tags",
+}
+
+
+def merge_overrides(target: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    for key, value in overrides.items():
+        if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+            target[key] = merge_overrides(copy.deepcopy(target[key]), value)
+        else:
+            target[key] = copy.deepcopy(value)
+    return target
 
 
 def record_response(record: Any) -> dict[str, Any]:
@@ -94,9 +111,21 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         candidate = copy.deepcopy(source.manifest)
+        forbidden = sorted(set(request.overrides) - MUTABLE_MANIFEST_FIELDS)
+        if forbidden:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "Clone overrides contain immutable or unknown fields",
+                        "fields": forbidden},
+            )
         candidate["version"] = request.new_version
+        candidate = merge_overrides(candidate, request.overrides)
         candidate["provenance"] = copy.deepcopy(candidate["provenance"])
         candidate["provenance"]["origin"] = "derived"
+        parent_ref = f"{agent_id}@{version}"
+        source_refs = candidate["provenance"].setdefault("source_refs", [])
+        if parent_ref not in source_refs:
+            source_refs.append(parent_ref)
         errors = validate_manifest(candidate)
         if errors:
             raise HTTPException(status_code=422, detail={"message": "Cloned manifest is invalid", "errors": errors})
