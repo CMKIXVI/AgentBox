@@ -96,6 +96,36 @@ class AgentRegistry:
                     "ALTER TABLE agent_versions ADD COLUMN tenant_id TEXT NOT NULL "
                     "DEFAULT '__legacy_unassigned__'"
                 )
+            primary_key = [
+                row["name"] for row in sorted(
+                    (item for item in connection.execute("PRAGMA table_info(agent_versions)") if item["pk"]),
+                    key=lambda item: item["pk"],
+                )
+            ]
+            if primary_key != ["tenant_id", "agent_id", "version"]:
+                connection.execute(
+                    """
+                    CREATE TABLE agent_versions_tenant_new (
+                        tenant_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        version TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        manifest_json TEXT NOT NULL,
+                        parent_artifact_id TEXT,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY (tenant_id, agent_id, version)
+                    )
+                    """
+                )
+                connection.execute(
+                    """INSERT INTO agent_versions_tenant_new
+                    (tenant_id, agent_id, version, content_hash, manifest_json,
+                     parent_artifact_id, created_at)
+                    SELECT tenant_id, agent_id, version, content_hash, manifest_json,
+                           parent_artifact_id, created_at FROM agent_versions"""
+                )
+                connection.execute("DROP TABLE agent_versions")
+                connection.execute("ALTER TABLE agent_versions_tenant_new RENAME TO agent_versions")
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_agent_versions_tenant_agent "
                 "ON agent_versions(tenant_id, agent_id, created_at)"
