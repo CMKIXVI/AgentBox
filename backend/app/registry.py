@@ -92,6 +92,7 @@ class AgentRegistry:
         created_at = manifest["provenance"]["created_at"]
 
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
                 (agent_id, version),
