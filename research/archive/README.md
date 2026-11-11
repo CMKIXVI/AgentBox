@@ -12,7 +12,7 @@ This directory documents the provenance-preserving candidate catalogue generated
 - Unique code-like fenced blocks: 30,862.
 - Other fenced blocks preserved as unclassified: 28,947.
 - Exact duplicate-content groups: 10,263.
-- Discovery pass candidate rows: 4,464 (1,217 classified code blocks; 3,247 unclassified blocks).
+- Discovery pass candidate rows: 4,269 (1,157 classified code blocks; 3,112 unclassified blocks).
 - SHA-256 mismatches encountered: 0.
 - Every discovery row remains `Candidate` / `Not started`.
 
@@ -56,5 +56,5 @@ Do not run recovered agent-generated code on the host. Tool execution remains de
 principal-aware authorization and isolation are implemented.
 
 The first batch adds a repeatable discovery utility and tests for provenance retention and
-hash-mismatch rejection. It does not claim that the 4,464 candidates have been semantically
+hash-mismatch rejection. It does not claim that the 4,269 candidates have been semantically
 reviewed or integrated into the runtime.
