@@ -231,7 +231,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.clone", agent_id)
         try:
-            source = app.state.registry.get(agent_id, version)
+            source = app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -360,7 +360,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
         try:
-            app.state.registry.get(agent_id, version)
+            app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         try:
@@ -396,7 +396,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.read", agent_id)
         try:
-            app.state.registry.get(agent_id, version)
+            app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         runs = app.state.evaluations.list_agent_runs(agent_id, version, principal.tenant_id)
