@@ -36,6 +36,8 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 
 A deeper scan of the uploaded ZIP has been committed:
 
+- [Full archive concept discovery — pass 01](research/full-archive-concept-discovery-pass-01.md) — expanded source coverage to all 2,570 Markdown files, broad concept families, initial architecture implications and explicit limits of this first discovery pass.
+
 - [Deep scan inventory v1](research/zip-deep-scan.md) — initial focused scan.
 - [Deep scan inventory v2](research/zip-deep-scan-v2.md) — expanded literal-keyword scan across 2,570 files; 717 broad candidate entries, manually classified source families.
 - [Agent Factory OS extraction](research/extracted/agent-factory-os.md) — AgentBox resource model, agent DNA, lifecycle/versioning, governance and deployment concepts.
