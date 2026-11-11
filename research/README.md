@@ -38,3 +38,18 @@ The broader scan is documented in `zip-deep-scan.md`. Curated source-derived ext
 The consolidated interpretation is in `../docs/agent-evolution/zip-derived-architecture-map.md`.
 
 These files preserve the relevant source ideas and provenance. They do not reproduce every complete exported conversation file; duplicate and unrelated conversation material was intentionally not bulk-imported.
+
+## Expanded deep scan
+
+See `zip-deep-scan-v2.md` for the broader 717-entry candidate scan and manually classified source families.
+
+Additional curated extracts:
+- `extracted/cognitive-enterprise-agent-runtime.md`
+- `extracted/cognitive-runtime-kernel-reference.md`
+- `extracted/genetic-retrieval-platform-expanded.md`
+- `extracted/neuroevolution-and-snn-research.md`
+- `extracted/agent-runtime-language-and-governance.md`
+- `extracted/hybrid-symbolic-agent-reasoning.md`
+- `extracted/autonomous-world-model-and-embodied-agents.md`
+
+These adjacent AEON/Aetheron sources remain reference material. They are not silently made dependencies of AgentBox.
