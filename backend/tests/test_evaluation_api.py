@@ -110,7 +110,7 @@ def test_evaluation_run_scores_gates_and_persists_results(tmp_path: Path) -> Non
     assert response.status_code == 201
     result = response.json()
     assert result["status"] == "completed"
-    assert result["passed"] is True
+    assert result["passed"] is True, result
     assert result["score"] == 0.93
     assert result["case_pass_rate"] == 1.0
     assert result["avg_latency_ms"] == 1500
