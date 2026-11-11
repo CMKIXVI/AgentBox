@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.execution import DeterministicFakeProvider
 from app.main import create_app
+from auth_helpers import configure_test_access
 
 
 def manifest():
@@ -20,7 +21,7 @@ def manifest():
 
 @pytest.fixture
 def client(tmp_path):
-    app = create_app(str(tmp_path / "runtime.sqlite3"))
+    app = configure_test_access(create_app(str(tmp_path / "runtime.sqlite3")))
     app.state.executions.providers["provider.fake"] = DeterministicFakeProvider()
     return TestClient(app)
 
