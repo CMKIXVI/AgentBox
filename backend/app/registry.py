@@ -154,8 +154,8 @@ class AgentRegistry:
     ) -> AgentVersionRecord:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT * FROM agent_versions WHERE agent_id = ? AND version = ?",
-                (agent_id, version),
+                "SELECT * FROM agent_versions WHERE tenant_id = ? AND agent_id = ? AND version = ?",
+                (tenant_id, agent_id, version),
             ).fetchone()
         if row is None:
             raise AgentNotFoundError(f"{agent_id}@{version} was not found")
