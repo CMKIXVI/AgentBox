@@ -21,7 +21,8 @@ from .execution import (
     ExecutionNotFoundError,
     ExecutionPolicyError,
     ExecutionService,
-)from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
+)
+from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .validation import validate_evaluation_profile, validate_manifest
 
 
