@@ -160,3 +160,35 @@ def test_authentication_config_schema_rejects_symmetric_algorithm():
         "tenant_claim": "tenant_id",
     }
     assert validate_authentication_config(value)
+from fastapi import HTTPException
+
+from app.authentication import (
+    AuthenticationConfigurationError,
+    authenticator_from_environment,
+    require_authenticated_principal,
+)
+
+
+def test_authentication_configuration_fails_closed_when_missing(monkeypatch):
+    for name in (
+        "AGENTBOX_OIDC_ISSUER",
+        "AGENTBOX_OIDC_AUDIENCE",
+        "AGENTBOX_OIDC_JWKS_URI",
+        "AGENTBOX_OIDC_TENANT_CLAIM",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(AuthenticationConfigurationError):
+        authenticator_from_environment()
+
+
+def test_fastapi_dependency_returns_service_unavailable_when_unconfigured(monkeypatch):
+    for name in (
+        "AGENTBOX_OIDC_ISSUER",
+        "AGENTBOX_OIDC_AUDIENCE",
+        "AGENTBOX_OIDC_JWKS_URI",
+        "AGENTBOX_OIDC_TENANT_CLAIM",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(HTTPException) as error:
+        require_authenticated_principal(authorization=None)
+    assert error.value.status_code == 503
