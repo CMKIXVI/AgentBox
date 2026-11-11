@@ -196,3 +196,27 @@ def test_evaluation_run_cannot_reference_another_tenants_profile(tmp_path: Path)
         service.create_run(
             "agent.beta", "1.0.0", PROFILE["profile_id"], PROFILE["version"], [], "tenant-beta"
         )
+
+
+
+def test_tenant_composite_constraints_are_installed(tmp_path: Path) -> None:
+    path = tmp_path / "constraints.sqlite3"
+    AgentRegistry(path)
+    EvaluationService(path)
+    with sqlite3.connect(path) as connection:
+        agent_pk = [
+            row[1] for row in sorted(
+                (row for row in connection.execute("PRAGMA table_info(agent_versions)") if row[5]),
+                key=lambda row: row[5],
+            )
+        ]
+        profile_pk = [
+            row[1] for row in sorted(
+                (row for row in connection.execute("PRAGMA table_info(evaluation_profiles)") if row[5]),
+                key=lambda row: row[5],
+            )
+        ]
+        run_fk = list(connection.execute("PRAGMA foreign_key_list(evaluation_runs)"))
+    assert agent_pk == ["tenant_id", "agent_id", "version"]
+    assert profile_pk == ["tenant_id", "profile_id", "version"]
+    assert {row[3] for row in run_fk} == {"tenant_id", "profile_id", "profile_version"}
