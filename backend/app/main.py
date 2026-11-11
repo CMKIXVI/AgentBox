@@ -199,7 +199,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         agent_id: str,
         limit: int = Query(default=50, ge=1, le=100),
         offset: int = Query(default=0, ge=0),
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.read", agent_id)
         records = app.state.registry.list(agent_id, limit=limit, offset=offset)
@@ -213,7 +213,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/v1/agents/{agent_id}/versions/{version}")
     def get_version(
         agent_id: str, version: str,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.read", agent_id)
         try:
@@ -227,7 +227,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     )
     def clone_version(
         agent_id: str, version: str, request: CloneRequest,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.clone", agent_id)
         try:
@@ -276,7 +276,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     def execute_agent(
         agent_id: str, version: str, request: ExecutionRequest,
         idempotency_key: str = Header(alias="Idempotency-Key"),
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
         try:
@@ -296,7 +296,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/v1/executions/{execution_id}")
     def get_execution(
         execution_id: str,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         try:
             record = app.state.executions.get(execution_id)
@@ -313,7 +313,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.post("/v1/evaluation-profiles", status_code=status.HTTP_201_CREATED)
     def create_profile(
         request: EvaluationProfileRequest,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "evaluation.profile", "profile.create", request.profile.get("profile_id", ""))
         errors = validate_evaluation_profile(request.profile)
@@ -332,7 +332,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/v1/evaluation-profiles/{profile_id}/versions")
     def list_profile_versions(
         profile_id: str,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", profile_id)
         records = app.state.evaluations.list_profile_versions(profile_id)
@@ -341,7 +341,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/v1/evaluation-profiles/{profile_id}/versions/{profile_version}")
     def get_profile(
         profile_id: str, profile_version: str,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", profile_id)
         try:
@@ -355,7 +355,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     )
     def evaluate_agent_version(
         agent_id: str, version: str, request: EvaluationRunRequest,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
@@ -379,7 +379,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/v1/evaluations/{run_id}")
     def get_evaluation_run(
         run_id: str,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         try:
             record = app.state.evaluations.get_run(run_id)
@@ -391,7 +391,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/v1/agents/{agent_id}/versions/{version}/evaluations")
     def list_evaluations(
         agent_id: str, version: str,
-        principal: Principal = Depends(require_authenticated_principal),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.read", agent_id)
         try:
