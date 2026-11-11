@@ -176,13 +176,29 @@ class EvaluationService:
         return [self._profile_record(row) for row in rows]
 
     @staticmethod
+    def _contains_text(value: Any, expected: str) -> bool:
+        if isinstance(value, str):
+            return expected in value
+        if isinstance(value, dict):
+            return any(
+                EvaluationService._contains_text(item, expected)
+                for item in value.values()
+            )
+        if isinstance(value, list):
+            return any(
+                EvaluationService._contains_text(item, expected)
+                for item in value
+            )
+        return False
+
+    @staticmethod
     def _assertion_result(assertion: dict[str, Any], actual: Any) -> dict[str, Any]:
         assertion_type = assertion["type"]
         passed = False
         if assertion_type == "exact_match":
             passed = actual == assertion["expected_value"]
         elif assertion_type == "contains":
-            passed = isinstance(actual, str) and assertion["expected_value"] in actual
+            passed = EvaluationService._contains_text(actual, assertion["expected_value"])
         elif assertion_type == "required_fields":
             passed = isinstance(actual, dict) and all(
                 field in actual for field in assertion["fields"]
