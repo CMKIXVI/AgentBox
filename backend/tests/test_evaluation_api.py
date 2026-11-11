@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from auth_helpers import configure_test_access
 
 ROOT = Path(__file__).resolve().parents[2]
 AGENT = json.loads((ROOT / "examples" / "agent-manifest-v1.json").read_text(encoding="utf-8"))
@@ -16,7 +17,7 @@ PROFILE = json.loads(
 
 
 def client_for(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(str(tmp_path / "evaluation.sqlite3")))
+    return TestClient(configure_test_access(create_app(str(tmp_path / "evaluation.sqlite3"))))
 
 
 def seed_agent_and_profile(client: TestClient) -> None:
