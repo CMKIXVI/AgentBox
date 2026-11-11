@@ -24,3 +24,17 @@ The files under `legacy-extracts/` preserve selected code blocks from the source
 - Some source examples are illustrative snippets rather than a complete, tested application.
 
 Do not import these legacy extracts into production directly. AgentBox implementation should retain their useful concepts while adding validation, explicit tool permissions, deterministic tests and a real execution isolation boundary before supporting untrusted code.
+
+
+## Deep ZIP extraction
+
+The broader scan is documented in `zip-deep-scan.md`. Curated source-derived extracts are under `extracted/`:
+
+- `agent-factory-os.md`
+- `artificial-model-genetics-engine.md`
+- `evolutionary-knowledge.md`
+- `multi-agent-and-cognitive-patterns.md`
+
+The consolidated interpretation is in `../docs/agent-evolution/zip-derived-architecture-map.md`.
+
+These files preserve the relevant source ideas and provenance. They do not reproduce every complete exported conversation file; duplicate and unrelated conversation material was intentionally not bulk-imported.
