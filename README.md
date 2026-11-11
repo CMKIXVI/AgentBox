@@ -36,6 +36,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 - [Batch 004 review](research/batch-reviews/batch-004-review.md) — cloud-as-code, hybrid local/server execution, community knowledge, semantic perception, accessibility and collaboration.
 - [Batch 005 review](research/batch-reviews/batch-005-review.md) — unified AI capability infrastructure, crawling/knowledge ingestion, artifact provenance, constrained-device channels and quality gates.
 - [Batch 006 review](research/batch-reviews/batch-006-review.md) — shared capability fabric, chat-native apps, local inference/data, AI accountability and enterprise governance.
+- [Batch 007 review](research/batch-reviews/batch-007-review.md) — digital action agents, offline/local runtime, cryptographic agility, model ensembles, financial automation and developer agents.
 
 
 - [Source decision review — pass 01](research/source-decision-review-pass-01.md) — user-stated product intent, source line anchors, scope boundaries and initial requirement-to-source traceability.
