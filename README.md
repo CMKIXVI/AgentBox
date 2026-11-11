@@ -29,6 +29,7 @@ No production readiness or end-to-end runtime validation is claimed at this stag
 
 ## ZIP research corpus
 - [85-file knowledge reconstruction](research/agentbox-85-file-knowledge-reconstruction.md) — complete user-supplied agent-related Markdown source register, research clusters, capability map, safeguards and implementation sequence.
+- [85-source code asset and safety triage](research/85-source-code-asset-triage.md) — measured code-block inventory, exact duplicate groups, execution-risk flags and reuse disposition.
 
 A deeper scan of the uploaded ZIP has been committed:
 
