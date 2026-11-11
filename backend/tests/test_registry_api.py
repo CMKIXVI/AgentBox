@@ -5,10 +5,10 @@ import copy
 import json
 from pathlib import Path
 
+from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from auth_helpers import configure_test_access
 from app.registry import AgentRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
