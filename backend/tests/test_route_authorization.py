@@ -73,3 +73,40 @@ def test_policy_file_must_be_an_array(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTBOX_AUTHORIZATION_POLICIES_PATH", str(path))
     with pytest.raises(RuntimeError, match="must be a JSON array"):
         create_app(str(tmp_path / "invalid-shape.sqlite3"))
+
+from datetime import UTC, datetime
+
+from auth_helpers import configure_test_access
+
+
+def test_policy_tenant_mismatch_denies_access(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "tenant.sqlite3")))
+    app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
+        "test-user", "user", "different-tenant"
+    )
+    response = TestClient(app).get("/v1/agents/research.summarizer/versions")
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "no_matching_allow_policy"
+
+
+def test_explicit_deny_policy_blocks_previously_allowed_route(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "deny.sqlite3")))
+    app.state.authorization_policies.append(
+        {
+            "schema_version": "1.0.0",
+            "policy_id": "test.explicit.deny",
+            "version": "1.0.0",
+            "active": True,
+            "effect": "deny",
+            "capability_id": "agent.registry",
+            "principal_scope": "user",
+            "principal_ids": ["test-user"],
+            "tenant_ids": ["test-tenant"],
+            "actions": ["agent.read"],
+            "resource_ids": ["research.summarizer"],
+            "created_at": datetime(2026, 11, 12, tzinfo=UTC).isoformat(),
+        }
+    )
+    response = TestClient(app).get("/v1/agents/research.summarizer/versions")
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "explicit_deny"
