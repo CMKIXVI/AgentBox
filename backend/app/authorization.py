@@ -1,14 +1,15 @@
 """Deny-by-default, deterministic AgentBox capability authorization."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any, Iterable
+from typing import Any
 
 from .principal import Principal
 
 
 def _timestamp(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
         raise ValueError("Policy timestamps must include a timezone")
     return parsed.astimezone(UTC)
