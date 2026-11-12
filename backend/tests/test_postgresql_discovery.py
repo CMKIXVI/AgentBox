@@ -23,15 +23,15 @@ class FakeCursor:
 
     def fetchall(self):
         if "agentbox:schemas" in self.last_query:
-            return [("app",), ("audit",)]
+            return [{"schema_name": "app"}, {"schema_name": "audit"}]
         if "agentbox:relations" in self.last_query:
-            return [("app", "customers", "table", "Customer records")]
+            return [{"schema_name": "app", "relation_name": "customers", "relation_kind": "table", "comment": "Customer records"}]
         if "agentbox:columns" in self.last_query:
-            return [("app", "customers", 1, "id", "bigint", False, None)]
+            return [{"schema_name": "app", "relation_name": "customers", "ordinal_position": 1, "column_name": "id", "data_type": "bigint", "is_nullable": False, "comment": None}]
         if "agentbox:indexes" in self.last_query:
-            return [("app", "customers", "customers_pkey", True, True, "CREATE UNIQUE INDEX")]
+            return [{"schema_name": "app", "relation_name": "customers", "index_name": "customers_pkey", "is_primary": True, "is_unique": True, "definition": "CREATE UNIQUE INDEX"}]
         if "agentbox:constraints" in self.last_query:
-            return [("app", "customers", "customers_pkey", "primary_key", "PRIMARY KEY (id)", None, None)]
+            return [{"schema_name": "app", "relation_name": "customers", "constraint_name": "customers_pkey", "constraint_kind": "primary_key", "definition": "PRIMARY KEY (id)", "referenced_schema": None, "referenced_relation": None}]
         raise AssertionError("Unexpected catalog query")
 
     def close(self):
@@ -99,7 +99,7 @@ def test_statement_timeout_is_bounded():
 class OversizedCursor(FakeCursor):
     def fetchall(self):
         if "agentbox:schemas" in self.last_query:
-            return [(f"schema_{i}",) for i in range(101)]
+            return [{"schema_name": f"schema_{i}"} for i in range(101)]
         return []
 
 
