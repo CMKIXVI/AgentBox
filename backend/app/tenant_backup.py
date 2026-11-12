@@ -114,7 +114,7 @@ class EnvironmentBackupKeyProvider:
     def active_key(self) -> tuple[str, bytes]:
         key_id = self.environ.get("AGENTBOX_BACKUP_KEY_ID", "")
         if not KEY_ID_PATTERN.fullmatch(key_id):
-            raise BackupKeyError("AGENTBOX_BACKUP_KEY_ID is missing or invalid")
+            raise BackupKeyError("AgentBox backup key ID is missing or invalid")
         return key_id, self.key_for(key_id)
 
 
@@ -316,7 +316,7 @@ class TenantBackupService:
                 columns = TABLE_COLUMNS[table]
                 keys = TABLE_KEYS[table]
                 quoted_columns = ", ".join(f'"{column}"' for column in columns)
-                where = " AND ".join(f'"{column}" = ?' for column in keys)
+                where = " AND ".join(f'"{column}" IS ?' for column in keys)
                 for row in payload["tables"][table]:
                     key_values = tuple(row[column] for column in keys)
                     current = connection.execute(
