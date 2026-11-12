@@ -135,13 +135,13 @@ def test_experience_rejects_cross_agent_and_unknown_links(tmp_path: Path) -> Non
     client = client_for(tmp_path)
     agent_id, version = prepare(client)
     experience = make_experience(client, agent_id, version, "source")
-    other = copy.deepcopy(AGENT)
-    other["agent_id"] = "runtime.other"
-    other["model_binding"]["provider_id"] = "provider.fake"
-    other["tools"] = []
-    assert client.post("/v1/agents", json={"manifest": other}).status_code == 201
+    cloned = client.post(
+        f"/v1/agents/{agent_id}/versions/{version}/clone",
+        json={"new_version": "1.0.1", "overrides": {}},
+    )
+    assert cloned.status_code == 201, cloned.text
     evaluation = client.post(
-        f"/v1/agents/{other['agent_id']}/versions/{version}/evaluations",
+        f"/v1/agents/{agent_id}/versions/1.0.1/evaluations",
         json={
             "profile_id": PROFILE["profile_id"],
             "profile_version": PROFILE["version"],
