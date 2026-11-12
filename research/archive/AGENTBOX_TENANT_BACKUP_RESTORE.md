@@ -20,7 +20,7 @@ AgentBox does **not** generate, persist, rotate, escrow, or retrieve encryption 
 - `AGENTBOX_BACKUP_KEY_ID`: active key identifier
 - `AGENTBOX_BACKUP_KEY_<NORMALIZED_KEY_ID>`: standard-base64 encoding of exactly 32 key bytes
 
-For key ID `backup_2026_01`, the key variable is `AGENTBOX_BACKUP_KEY_BACKUP_2026_01`. The key ID is limited to letters, digits, and underscore so environment-variable mapping is unambiguous. Keys are never printed, included in the backup, or written to the database.
+For key ID `BACKUP_2026_01`, the key variable is `AGENTBOX_BACKUP_KEY_BACKUP_2026_01`. The key ID is limited to uppercase letters, digits, and underscore so environment-variable mapping is unambiguous. Keys are never printed, included in the backup, or written to the database.
 
 For rotation, inject both the new active key and all historical decryption keys still needed for retained backups. Change `AGENTBOX_BACKUP_KEY_ID` to the new ID only after the new key is available. Do not remove an old key until the retention period for backups encrypted with it has ended or those backups have been re-encrypted under a new key. Key custody, access approval, revocation, escrow, and recovery remain the responsibility of the external secret-management/KMS system.
 
