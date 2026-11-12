@@ -164,3 +164,22 @@ def test_active_tenant_passes_lifecycle_gate_then_requires_policy(tmp_path):
     response = TestClient(app).get("/v1/agents/research.summarizer/versions")
     assert response.status_code == 403
     assert response.json()["detail"]["reason"] == "no_matching_allow_policy"
+
+
+
+def test_tenant_suspension_takes_effect_on_next_request(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "suspension-live.sqlite3")))
+    client = TestClient(app)
+    first = client.get("/v1/agents/research.summarizer/versions")
+    assert first.status_code == 200
+    app.state.tenants.transition("test-tenant", "suspended", "test-bootstrap")
+    second = client.get("/v1/agents/research.summarizer/versions")
+    assert second.status_code == 403
+    assert second.json()["detail"]["reason"] == "tenant_inactive"
+
+
+def test_public_validation_does_not_require_or_create_tenant(tmp_path):
+    app = create_app(str(tmp_path / "public-validation.sqlite3"))
+    response = TestClient(app).post("/v1/agents/validate", json={"manifest": {}})
+    assert response.status_code == 200
+    assert app.state.tenants.list() == []
