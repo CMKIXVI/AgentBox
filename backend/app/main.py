@@ -32,6 +32,7 @@ from .execution import (
     ExecutionService,
 )
 from .principal import Principal
+from .postgresql_ingestion import PostgreSQLSnapshotIngestion
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .tenant_registry import TenantNotFoundError, TenantRegistry
 from .validation import validate_evaluation_profile, validate_manifest
@@ -102,6 +103,12 @@ class EvaluationRunRequest(BaseModel):
     profile_id: str = Field(min_length=3, max_length=128)
     profile_version: str = Field(min_length=1, max_length=128)
     results: list[EvaluationCaseSubmission] = Field(max_length=500)
+
+
+class PostgreSQLSnapshotIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_ref: str = Field(min_length=1, max_length=1024)
+    snapshot: dict[str, Any]
 
 
 class ContextEntityRequest(BaseModel):
@@ -253,6 +260,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         db_path, app.state.registry, providers=[DeterministicFakeProvider()]
     )
     app.state.enterprise_context = EnterpriseContextService(db_path)
+    app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -491,6 +499,25 @@ def create_app(database_path: str | None = None) -> FastAPI:
         runs = app.state.evaluations.list_agent_runs(agent_id, version, principal.tenant_id)
         return {"agent_id": agent_id, "agent_version": version, "items": runs}
 
+
+    @app.post("/v1/enterprise-discovery/postgresql/snapshots/ingest", status_code=status.HTTP_201_CREATED)
+    def ingest_postgresql_snapshot(
+        request: PostgreSQLSnapshotIngestRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "discovery.snapshot.ingest", "tenant-context"
+        )
+        try:
+            return app.state.postgresql_ingestion.ingest(
+                request.snapshot, principal.tenant_id, principal.subject_id, request.source_ref
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/v1/enterprise-context/entities", status_code=status.HTTP_201_CREATED)
     def create_context_entity(
