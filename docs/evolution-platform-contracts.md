@@ -142,3 +142,18 @@ Events are append-only. Corrections are represented by new events, not silent ed
 - Approval-controlled promotion.
 - Rollback without history rewrite.
 - Audit event stream.
+
+
+## 12. Evidence-driven autonomous improvement
+
+AgentBox adopts the evidence loop from the reviewed autonomous-improvement source as a native extension of the existing evolution contracts. The canonical terminology is **execution experience record**, **experience repository**, **learning service**, **fitness report**, **candidate generation service**, **candidate evaluation and comparison service**, and **autonomous improvement controller**.
+
+The controller operates over existing AgentBox agent identities and immutable manifest versions. It does not create a parallel capability registry or product runtime. The parent remains immutable; candidate versions are materialized independently with explicit lineage. Experience and lessons inform proposals but never directly mutate behavior.
+
+The required cycle is: select an eligible registered agent using retained evaluation evidence; pin a workload and evaluation profile; establish the parent baseline; derive traceable lessons; generate a bounded candidate population through allowlisted operators; evaluate every candidate against the same workload; apply independent schema, security, correctness, regression, cost and approval gates; promote only through the authorized registry lifecycle; retain all records and repeat within bounded controller policy.
+
+A no-improvement result is valid. The controller must not force promotion. Missing capability acquisition remains a separate fallback after eligible existing capabilities have been considered, and must reject identities already present in the tenant registry.
+
+An optional model provider may propose lessons or candidate configuration changes. It is not the fitness authority, policy engine, approval authority, credential broker or promotion authority. Deterministic candidate generation and evaluation must remain available without an LLM.
+
+The controller is disabled by default until durable job state, bounded workloads, cancellation, concurrency controls, tenant suspension handling, audit, backup/restore and promotion authorization are implemented. See [Autonomous Improvement Controller](engines/autonomous-improvement-controller.md) for the source review, naming normalization, architecture mapping, ten-batch implementation plan and readiness criteria.
