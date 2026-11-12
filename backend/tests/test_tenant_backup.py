@@ -9,12 +9,11 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.evaluation import EvaluationService
 from app.execution import DeterministicFakeProvider, ExecutionService
 from app.registry import AgentRegistry
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
 from app.tenant_backup import (
     BackupConflictError,
     BackupError,
