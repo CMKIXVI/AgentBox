@@ -67,7 +67,7 @@ class PostgreSQLCatalogDiscovery:
         statement_timeout_ms: int = 10000,
     ) -> None:
         if not callable(connection_factory):
-            raise ValueError("connection_factory must be callable")
+            raise TypeError("connection_factory must be callable")
         if not 100 <= statement_timeout_ms <= MAX_STATEMENT_TIMEOUT_MS:
             raise ValueError("statement_timeout_ms must be between 100 and 30000")
         self._connection_factory = connection_factory
