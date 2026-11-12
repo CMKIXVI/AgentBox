@@ -33,7 +33,7 @@ from .validation import validate_evaluation_profile, validate_manifest
 
 def require_active_tenant_principal(
     request: Request,
-    principal: Principal = Depends(require_authenticated_principal),
+    principal: Principal = Depends(require_authenticated_principal),  # noqa: B008
 ) -> Principal:
     """Require an OIDC principal whose server-owned tenant is currently active."""
     if principal.tenant_id is None:
