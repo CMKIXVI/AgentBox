@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import copy
+import hashlib
 import json
 import os
 import sqlite3
@@ -12,11 +13,15 @@ import pytest
 from app.evaluation import EvaluationService
 from app.execution import DeterministicFakeProvider, ExecutionService
 from app.registry import AgentRegistry
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 from app.tenant_backup import (
     BackupConflictError,
     BackupError,
     BackupFormatError,
     BackupKeyError,
+    _aad,
+    _canonical,
     EnvironmentBackupKeyProvider,
     TenantBackupService,
 )
@@ -70,7 +75,7 @@ def initialized_database(path: Path, tenant_id: str, *, populate: bool = False):
 def test_encrypted_backup_round_trip_restores_all_tenant_records(tmp_path):
     source = tmp_path / "source.sqlite3"
     target = tmp_path / "target.sqlite3"
-    registry, evaluations, executions, tenants = initialized_database(
+    registry, _evaluations, executions, tenants = initialized_database(
         source, "tenant-alpha", populate=True
     )
     destination = tmp_path / "backups" / "tenant-alpha.agb"
@@ -245,9 +250,6 @@ def test_payload_validation_rejects_cross_tenant_rows(tmp_path):
     TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
     envelope = json.loads(backup.read_text())
     key = StaticKeyProvider().key
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    from app.tenant_backup import _aad, _canonical
-
     payload = json.loads(AESGCM(key).decrypt(
         base64.b64decode(envelope["nonce"]),
         base64.b64decode(envelope["ciphertext"]),
@@ -256,7 +258,6 @@ def test_payload_validation_rejects_cross_tenant_rows(tmp_path):
     payload["tables"]["agent_versions"][0]["tenant_id"] = "tenant-beta"
     unsigned = dict(payload)
     unsigned.pop("sha256")
-    import hashlib
     payload["sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
     nonce = os.urandom(12)
     envelope["nonce"] = base64.b64encode(nonce).decode()
