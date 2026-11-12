@@ -144,9 +144,10 @@ def test_evidence_is_tenant_scoped_and_context_events_are_append_only(tmp_path):
     assert [item["event_type"] for item in events] == [
         "context.entity.created", "context.evidence.recorded"
     ]
-    with sqlite3.connect(path) as connection:
-        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
-            connection.execute(
+    with sqlite3.connect(path) as connection, pytest.raises(
+        sqlite3.IntegrityError, match="append-only"
+    ):
+        connection.execute(
                 "DELETE FROM context_events WHERE tenant_id=? AND event_id=?",
                 ("tenant-alpha", events[0]["event_id"]),
             )
