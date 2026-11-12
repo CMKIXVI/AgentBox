@@ -123,3 +123,56 @@ def test_catalog_snapshot_ingestion_rejects_tampering_and_unsafe_source_refs(tmp
             json={"source_ref": source_ref, "snapshot": catalog_snapshot()},
         )
         assert response.status_code == 422
+
+
+
+def test_changed_catalog_metadata_creates_new_immutable_entity_version(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "discovery-version.sqlite3")))
+    client = TestClient(app)
+    source_ref = "postgresql-catalog://warehouse-prod/snapshot"
+    first = catalog_snapshot()
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": source_ref, "snapshot": first},
+    )
+    assert response.status_code == 201, response.text
+    changed = catalog_snapshot()
+    changed["relations"][0]["comment"] = "Customer master table"
+    unsigned = dict(changed)
+    unsigned.pop("snapshot_hash")
+    changed["snapshot_hash"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": source_ref, "snapshot": changed},
+    )
+    assert response.status_code == 201, response.text
+    relation = next(
+        item for item in client.get(
+            "/v1/enterprise-context/entities?entity_type=database_relation"
+        ).json()["items"] if item["name"] == "customers"
+    )
+    assert relation["version"] == 2
+    assert relation["assertion_class"] == "inferred"
+    evidence = client.get(
+        f"/v1/enterprise-context/entities/{relation['entity_id']}/evidence"
+    ).json()["items"]
+    assert any(item["entity_version"] == 2 for item in evidence)
+
+
+def test_catalog_snapshot_ingestion_rejects_malformed_rows_and_oversized_payload(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "discovery-bounds.sqlite3")))
+    client = TestClient(app)
+    malformed = catalog_snapshot()
+    malformed["relations"] = ["not-an-object"]
+    unsigned = dict(malformed)
+    unsigned.pop("snapshot_hash")
+    malformed["snapshot_hash"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": "postgresql-catalog://warehouse-prod/snapshot", "snapshot": malformed},
+    )
+    assert response.status_code == 422
