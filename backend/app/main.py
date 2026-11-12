@@ -154,7 +154,7 @@ class ContextEvidenceRequest(BaseModel):
     source_hash: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
     observed_at: str
     confidence: float = Field(ge=0, le=1)
-    validation_status: Literal["unverified", "validated", "rejected"] = "unverified"
+    validation_status: Literal["unverified"] = "unverified"
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -500,6 +500,10 @@ def create_app(database_path: str | None = None) -> FastAPI:
         enforce_authorization(
             app, principal, "enterprise.context", "context.entity.create", request.entity_id
         )
+        if request.assertion_class == "human_validated":
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.entity.validate", request.entity_id
+            )
         try:
             return app.state.enterprise_context.create_entity(
                 request.model_dump(exclude_none=True), principal.tenant_id, principal.subject_id
@@ -521,6 +525,10 @@ def create_app(database_path: str | None = None) -> FastAPI:
         enforce_authorization(
             app, principal, "enterprise.context", "context.entity.update", entity_id
         )
+        if request.entity.assertion_class == "human_validated":
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.entity.validate", entity_id
+            )
         if request.entity.entity_id != entity_id:
             raise HTTPException(status_code=422, detail="Path entity_id must match entity payload")
         try:
@@ -582,6 +590,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app, principal, "enterprise.context", "context.relationship.create",
             request.relationship_id,
         )
+        if request.assertion_class == "human_validated":
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.relationship.validate",
+                request.relationship_id,
+            )
         try:
             return app.state.enterprise_context.create_relationship(
                 request.model_dump(exclude_none=True), principal.tenant_id, principal.subject_id
