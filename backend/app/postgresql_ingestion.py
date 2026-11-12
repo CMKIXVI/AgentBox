@@ -71,18 +71,28 @@ class PostgreSQLSnapshotIngestion:
             raise ContextValidationError("source_ref must be a credential-free postgresql-catalog URI without query or fragment")
         return source_ref.rstrip("/")
 
-    def _create_or_reuse_entity(self, payload: dict[str, Any], tenant_id: str, actor_id: str) -> bool:
+    def _create_or_version_entity(self, payload: dict[str, Any], tenant_id: str, actor_id: str) -> tuple[bool, int]:
         try:
             existing = self.context.get_entity(payload["entity_id"], tenant_id)
         except ContextNotFoundError:
             try:
                 self.context.create_entity(payload, tenant_id, actor_id)
-                return True
+                return True, 1
             except ContextConflictError:
                 existing = self.context.get_entity(payload["entity_id"], tenant_id)
-        if existing["content_hash"] != _digest(payload):
-            raise ContextConflictError(f"Discovered entity ID conflicts with existing context: {payload['entity_id']}")
-        return False
+        expected_hash = _digest(payload)
+        if existing["content_hash"] == expected_hash:
+            return False, existing["version"]
+        try:
+            record = self.context.version_entity(
+                payload, tenant_id, actor_id, expected_version=existing["version"]
+            )
+            return True, record["version"]
+        except ContextConflictError:
+            latest = self.context.get_entity(payload["entity_id"], tenant_id)
+            if latest["content_hash"] == expected_hash:
+                return False, latest["version"]
+            raise
 
     def _create_or_reuse_relationship(self, payload: dict[str, Any], tenant_id: str, actor_id: str) -> bool:
         try:
@@ -126,8 +136,8 @@ class PostgreSQLSnapshotIngestion:
                 "name": name,
                 "description": f"Discovered PostgreSQL {kind.replace('_', ' ')} metadata",
                 "attributes": attributes,
-                "assertion_class": "observed_fact",
-                "confidence": 1.0,
+                "assertion_class": "inferred",
+                "confidence": 0.85,
             })
             entity_ids[key] = entity_id
             return entity_id
@@ -185,16 +195,19 @@ class PostgreSQLSnapshotIngestion:
             constraint_ids.append((row, entity_id))
 
         created_entities = reused_entities = created_evidence = reused_evidence = 0
+        entity_versions: dict[str, int] = {}
         for payload in entity_payloads:
-            if self._create_or_reuse_entity(payload, tenant_id, actor_id):
+            created, entity_version = self._create_or_version_entity(payload, tenant_id, actor_id)
+            entity_versions[payload["entity_id"]] = entity_version
+            if created:
                 created_entities += 1
             else:
                 reused_entities += 1
             evidence_payload = {
                 "evidence_id": _identifier("evidence", source_ref, snapshot_hash, payload["entity_id"]),
-                "entity_id": payload["entity_id"], "entity_version": 1,
+                "entity_id": payload["entity_id"], "entity_version": entity_version,
                 "source_kind": "database_metadata", "source_ref": source_ref,
-                "source_hash": snapshot_hash, "observed_at": observed_at, "confidence": 1.0,
+                "source_hash": snapshot_hash, "observed_at": observed_at, "confidence": 0.85,
                 "validation_status": "unverified",
                 "metadata": {"snapshot_hash": snapshot_hash, "entity_type": payload["entity_type"], "entity_attributes_hash": _digest(payload["attributes"])},
             }
@@ -206,11 +219,16 @@ class PostgreSQLSnapshotIngestion:
         relationship_payloads: list[dict[str, Any]] = []
 
         def add_relationship(kind: str, source_id: str, target_id: str, attributes: dict[str, Any]) -> None:
+            source_version = entity_versions[source_id]
+            target_version = entity_versions[target_id]
             relationship_payloads.append({
-                "relationship_id": _identifier("edge", source_ref, kind, source_id, target_id),
-                "relationship_type": kind, "source_entity_id": source_id, "source_version": 1,
-                "target_entity_id": target_id, "target_version": 1, "attributes": attributes,
-                "assertion_class": "observed_fact", "confidence": 1.0,
+                "relationship_id": _identifier(
+                    "edge", source_ref, kind, source_id, str(source_version),
+                    target_id, str(target_version), _digest(attributes)
+                ),
+                "relationship_type": kind, "source_entity_id": source_id, "source_version": source_version,
+                "target_entity_id": target_id, "target_version": target_version, "attributes": attributes,
+                "assertion_class": "inferred", "confidence": 0.8,
             })
 
         for schema_name in data["schemas"]:
