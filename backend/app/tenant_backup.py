@@ -45,6 +45,13 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "tenant_id", "action", "previous_status", "new_status", "actor_id", "occurred_at",
     ),
 }
+TABLE_ORDER: dict[str, str] = {
+    "agent_versions": "agent_id, version",
+    "evaluation_profiles": "profile_id, version",
+    "executions": "created_at, execution_id",
+    "evaluation_runs": "created_at, run_id",
+    "tenant_audit": "occurred_at, actor_id, action",
+}
 TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "agent_versions": ("tenant_id", "agent_id", "version"),
     "evaluation_profiles": ("tenant_id", "profile_id", "version"),
@@ -145,7 +152,8 @@ def _read_tenant_snapshot(database_path: str | Path, tenant_id: str) -> dict[str
         for table, columns in TABLE_COLUMNS.items():
             selected = ", ".join(f'"{column}"' for column in columns)
             rows = connection.execute(
-                f'SELECT {selected} FROM "{table}" WHERE tenant_id = ?',
+                f'SELECT {selected} FROM "{table}" WHERE tenant_id = ? '
+                f'ORDER BY {TABLE_ORDER[table]}',
                 (tenant_id,),
             ).fetchall()
             tables[table] = [dict(row) for row in rows]
