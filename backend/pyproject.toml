@@ -15,7 +15,7 @@ dependencies = [
   "PyJWT[crypto]>=2.10,<3.0",
 ]
 
-[project.optional-dependencies]
+[project.scripts]\nagentbox-tenant = "app.tenant_admin:main"\n\n[project.optional-dependencies]
 dev = [
   "httpx>=0.27,<1.0",
   "pytest>=8.0,<9.0",
