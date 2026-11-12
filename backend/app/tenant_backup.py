@@ -311,7 +311,7 @@ class TenantBackupService:
         if tenant.get("status") not in {"pending", "active", "suspended", "decommissioned"}:
             raise BackupFormatError("Backup tenant lifecycle status is invalid")
         tables = payload.get("tables")
-        if not isinstance(tables, dict) or set(tables) not in {
+        if not isinstance(tables, dict) or frozenset(tables) not in {
             BASE_TABLES, frozenset(TABLE_COLUMNS)
         }:
             raise BackupFormatError("Backup table set is invalid")
