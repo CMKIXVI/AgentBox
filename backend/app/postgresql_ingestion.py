@@ -77,7 +77,10 @@ class PostgreSQLSnapshotIngestion:
     def _validate_source_ref(source_ref: str) -> str:
         if not isinstance(source_ref, str) or not 1 <= len(source_ref) <= 1024:
             raise ContextValidationError("source_ref must contain 1-1024 characters")
-        locator = urlsplit(source_ref)
+        try:
+            locator = urlsplit(source_ref)
+        except ValueError as exc:
+            raise ContextValidationError("source_ref is not a valid URI") from exc
         if locator.scheme != "postgresql-catalog" or not locator.netloc or locator.username or locator.password or locator.query or locator.fragment:
             raise ContextValidationError("source_ref must be a credential-free postgresql-catalog URI without query or fragment")
         return source_ref.rstrip("/")
@@ -261,7 +264,7 @@ class PostgreSQLSnapshotIngestion:
                 add_relationship("has_constraint", relation_id, constraint_id, {})
             if row.get("constraint_kind") == "foreign_key":
                 target_id = relation_ids.get((row.get("referenced_schema"), row.get("referenced_relation")))
-                if relation_id and target_id:
+                if relation_id and target_id and relation_id != target_id:
                     add_relationship("references_relation", relation_id, target_id, {"constraint_name": row["constraint_name"]})
 
         if len(relationship_payloads) > MAX_INGEST_RELATIONSHIPS:
