@@ -57,7 +57,7 @@ def evidence(evidence_id="evidence.alpha"):
         "source_hash": hashlib.sha256(b"catalog snapshot").hexdigest(),
         "observed_at": NOW,
         "confidence": 1.0,
-        "validation_status": "validated",
+        "validation_status": "unverified",
         "metadata": {"connector": "read-only-catalog"},
     }
 
@@ -136,7 +136,7 @@ def test_evidence_is_tenant_scoped_and_context_events_are_append_only(tmp_path):
     service = EnterpriseContextService(path)
     service.create_entity(entity(), "tenant-alpha", "test-user")
     recorded = service.create_evidence(evidence(), "tenant-alpha", "test-user")
-    assert recorded["validation_status"] == "validated"
+    assert recorded["validation_status"] == "unverified"
     assert service.query_evidence("app.alpha", "tenant-alpha")[0]["evidence_id"] == "evidence.alpha"
     assert service.query_evidence("app.alpha", "tenant-beta") == []
     events = service.query_events("tenant-alpha")
@@ -279,3 +279,24 @@ def test_evidence_source_locator_rejects_embedded_credentials_and_query_tokens(t
     invalid["source_ref"] = "https://user:secret@example.test/catalog"
     with pytest.raises(ContextValidationError, match="credentials"):
         service.create_evidence(invalid, "tenant-alpha", "test-user")
+
+
+
+def test_human_validated_assertion_requires_separate_validation_policy(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "human-validation.sqlite3")))
+    payload = entity()
+    payload["assertion_class"] = "human_validated"
+    response = TestClient(app).post("/v1/enterprise-context/entities", json=payload)
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "no_matching_allow_policy"
+
+
+def test_evidence_cannot_self_assert_validated_status(tmp_path):
+    path = tmp_path / "evidence-review.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "test-user")
+    payload = evidence()
+    payload["validation_status"] = "validated"
+    with pytest.raises(ContextValidationError, match="must remain unverified"):
+        service.create_evidence(payload, "tenant-alpha", "test-user")
