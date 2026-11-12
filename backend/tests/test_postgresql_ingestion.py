@@ -176,3 +176,19 @@ def test_catalog_snapshot_ingestion_rejects_malformed_rows_and_oversized_payload
         json={"source_ref": "postgresql-catalog://warehouse-prod/snapshot", "snapshot": malformed},
     )
     assert response.status_code == 422
+
+
+def test_catalog_snapshot_ingestion_enforces_eight_mib_body_limit(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "discovery-size.sqlite3")))
+    snapshot = catalog_snapshot()
+    snapshot["relations"][0]["comment"] = "x" * (8 * 1024 * 1024 + 100)
+    unsigned = dict(snapshot)
+    unsigned.pop("snapshot_hash")
+    snapshot["snapshot_hash"] = hashlib.sha256(
+        json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+    ).hexdigest()
+    response = TestClient(app).post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": "postgresql-catalog://warehouse-prod/snapshot", "snapshot": snapshot},
+    )
+    assert response.status_code == 422
