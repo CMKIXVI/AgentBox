@@ -573,10 +573,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         request: LearningLessonRequest,
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
-        enforce_authorization(
-            app, principal, "agent.experience", "lesson.create", experience_id
-        )
         try:
+            experience = app.state.experiences.get(experience_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.experience", "lesson.create", experience["agent_id"]
+            )
             record, created = app.state.experiences.create_lesson(
                 experience_id, request.lesson_type, request.statement,
                 request.evidence_refs, request.source_kind, request.extractor_version,
@@ -596,11 +597,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         limit: int = Query(default=50, ge=1, le=100),
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
-        enforce_authorization(
-            app, principal, "agent.experience", "lesson.read", experience_id
-        )
         try:
             experience = app.state.experiences.get(experience_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.experience", "lesson.read", experience["agent_id"]
+            )
             enforce_authorization(
                 app, principal, "agent.experience", "experience.read", experience["agent_id"]
             )
