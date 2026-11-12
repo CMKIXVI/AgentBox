@@ -246,7 +246,7 @@ class PostgreSQLSnapshotIngestion:
             })
 
         for schema_name in data["schemas"]:
-            schema_id = entity_ids[("schema", schema_name)]
+            schema_id = entity_ids[(schema_name,)]
             for (candidate_schema, _), relation_id in relation_ids.items():
                 if candidate_schema == schema_name:
                     add_relationship("contains_relation", schema_id, relation_id, {})
