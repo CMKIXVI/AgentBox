@@ -558,6 +558,10 @@ class EnterpriseContextService:
         validate_tenant_id(tenant_id)
         _validate_actor(actor_id)
         item = self._validate(self._evidence_validator, payload, "enterprise context evidence")
+        if item.get("validation_status", "unverified") != "unverified":
+            raise ContextValidationError(
+                "Evidence must remain unverified until a separately authorized review"
+            )
         source_locator = urlsplit(item["source_ref"])
         if source_locator.username or source_locator.password or source_locator.query or source_locator.fragment:
             raise ContextValidationError(
