@@ -19,7 +19,7 @@ def test_operator_cli_backup_and_restore_use_external_key_environment(tmp_path, 
     capsys.readouterr()
     invoke(source, "active", "--tenant-id", "tenant-cli-backup")
     capsys.readouterr()
-    key_id = "operator-test-v1"
+    key_id = "operator_test_v1"
     monkeypatch.setenv("AGENTBOX_BACKUP_KEY_ID", key_id)
     monkeypatch.setenv(
         "AGENTBOX_BACKUP_KEY_OPERATOR_TEST_V1",
