@@ -268,3 +268,30 @@ def test_payload_validation_rejects_cross_tenant_rows(tmp_path):
         TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
             "tenant-alpha", backup
         )
+
+
+
+def test_historical_backup_key_remains_available_during_rotation(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha", populate=True)
+    backup = tmp_path / "old-key.agb"
+    old_key = base64.b64encode(b"O" * 32).decode()
+    new_key = base64.b64encode(b"N" * 32).decode()
+    old_provider = EnvironmentBackupKeyProvider({
+        "AGENTBOX_BACKUP_KEY_ID": "backup_old",
+        "AGENTBOX_BACKUP_KEY_BACKUP_OLD": old_key,
+    })
+    TenantBackupService(source, old_provider).export_encrypted("tenant-alpha", backup)
+
+    rotated_provider = EnvironmentBackupKeyProvider({
+        "AGENTBOX_BACKUP_KEY_ID": "backup_new",
+        "AGENTBOX_BACKUP_KEY_BACKUP_NEW": new_key,
+        "AGENTBOX_BACKUP_KEY_BACKUP_OLD": old_key,
+    })
+    assert rotated_provider.active_key() == ("backup_new", b"N" * 32)
+    target = tmp_path / "target.sqlite3"
+    initialized_database(target, "tenant-alpha")
+    restored = TenantBackupService(target, rotated_provider).restore_encrypted(
+        "tenant-alpha", backup
+    )
+    assert restored["agent_versions"] == 1
