@@ -14,7 +14,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from .tenant_registry import TenantConflictError, TenantNotFoundError, TenantRegistry
+from .tenant_backup import EnvironmentBackupKeyProvider, TenantBackupService\nfrom .tenant_registry import TenantConflictError, TenantNotFoundError, TenantRegistry
 
 VALID_TRANSITIONS = ("active", "suspended", "decommissioned")
 
@@ -60,6 +60,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     audit = commands.add_parser("audit", help="Show append-only audit events for one tenant")
     audit.add_argument("--tenant-id", required=True)
+
+    backup = commands.add_parser("backup", help="Write an authenticated encrypted tenant backup")
+    backup.add_argument("--tenant-id", required=True)
+    backup.add_argument("--output", required=True)
+
+    restore = commands.add_parser("restore", help="Restore tenant data from an encrypted backup")
+    restore.add_argument("--tenant-id", required=True)
+    restore.add_argument("--input", required=True)
     return parser
 
 
@@ -76,7 +84,7 @@ def _require_agentbox_database(database_path: str) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
-    required = {"agent_versions", "evaluation_profiles", "tenants"}
+    required = {"agent_versions", "executions", "evaluation_profiles", "evaluation_runs", "tenants", "tenant_audit"}
     missing = sorted(required - tables)
     if missing:
         raise ValueError(
@@ -111,6 +119,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit(record.__dict__)
         elif args.command == "audit":
             _emit(registry.audit_events(args.tenant_id))
+        elif args.command == "backup":
+            service = TenantBackupService(args.database, EnvironmentBackupKeyProvider())
+            _emit(service.export_encrypted(args.tenant_id, args.output))
+        elif args.command == "restore":
+            service = TenantBackupService(args.database, EnvironmentBackupKeyProvider())
+            _emit(service.restore_encrypted(args.tenant_id, args.input))
         else:
             parser.error("unsupported command")
         return 0
