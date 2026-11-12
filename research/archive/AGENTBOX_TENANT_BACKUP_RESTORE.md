@@ -8,6 +8,7 @@ AgentBox creates tenant-scoped logical backups encrypted with **AES-256-GCM**. T
 - Execution records and results
 - Evaluation profiles and evaluation runs
 - Tenant audit events
+- Enterprise Context Engine entities, relationship versions, evidence references and append-only context events
 
 The envelope exposes the format/version, algorithm, key identifier, and tenant ID. Record contents, metadata, execution results, manifests, and audit actor labels are encrypted. The tenant's lifecycle record is included inside the authenticated payload for provenance, but restore never overwrites the target tenant's lifecycle state, display name, or metadata.
 
