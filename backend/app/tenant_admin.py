@@ -14,7 +14,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from .tenant_backup import EnvironmentBackupKeyProvider, TenantBackupService
+from .tenant_backup import BackupError, EnvironmentBackupKeyProvider, TenantBackupService
 from .tenant_registry import TenantConflictError, TenantNotFoundError, TenantRegistry
 
 VALID_TRANSITIONS = ("active", "suspended", "decommissioned")
@@ -129,7 +129,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             parser.error("unsupported command")
         return 0
-    except (ValueError, TenantConflictError, TenantNotFoundError, sqlite3.Error, OSError) as exc:
+    except (ValueError, BackupError, TenantConflictError, TenantNotFoundError, sqlite3.Error, OSError) as exc:
         print(f"agentbox-tenant: {exc}", file=sys.stderr)
         return 2
 
