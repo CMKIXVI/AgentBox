@@ -65,6 +65,9 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "source_ref", "observed_at", "recorded_at", "recorded_by", "payload_json", "content_hash",
     ),
 }
+BASE_TABLES = frozenset({
+    "agent_versions", "evaluation_profiles", "executions", "evaluation_runs", "tenant_audit",
+})
 TABLE_ORDER: dict[str, str] = {
     "agent_versions": "agent_id, version",
     "evaluation_profiles": "profile_id, version",
@@ -308,8 +311,13 @@ class TenantBackupService:
         if tenant.get("status") not in {"pending", "active", "suspended", "decommissioned"}:
             raise BackupFormatError("Backup tenant lifecycle status is invalid")
         tables = payload.get("tables")
-        if not isinstance(tables, dict) or set(tables) != set(TABLE_COLUMNS):
+        if not isinstance(tables, dict) or set(tables) not in {
+            BASE_TABLES, frozenset(TABLE_COLUMNS)
+        }:
             raise BackupFormatError("Backup table set is invalid")
+        # v1 backups created before ECE existed contain only BASE_TABLES.
+        for table in TABLE_COLUMNS:
+            tables.setdefault(table, [])
         for table, rows in tables.items():
             if not isinstance(rows, list):
                 raise BackupFormatError(f"Backup rows are invalid for {table}")
