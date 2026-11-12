@@ -250,3 +250,32 @@ def test_context_api_rejects_cross_tenant_entity_read(tmp_path):
     )
     response = client.get("/v1/enterprise-context/entities/app.alpha")
     assert response.status_code == 403
+
+
+
+def test_relationship_evidence_requires_an_explicit_relationship_version(tmp_path):
+    path = tmp_path / "relationship-evidence.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "test-user")
+    service.create_entity(
+        entity("db.alpha", "database", "Alpha Database"), "tenant-alpha", "test-user"
+    )
+    service.create_relationship(
+        relationship(), "tenant-alpha", "test-user"
+    )
+    invalid = evidence()
+    invalid["relationship_id"] = "rel.alpha"
+    with pytest.raises(ContextValidationError):
+        service.create_evidence(invalid, "tenant-alpha", "test-user")
+
+
+def test_evidence_source_locator_rejects_embedded_credentials_and_query_tokens(tmp_path):
+    path = tmp_path / "source-locator.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "test-user")
+    invalid = evidence()
+    invalid["source_ref"] = "https://user:secret@example.test/catalog"
+    with pytest.raises(ContextValidationError, match="credentials"):
+        service.create_evidence(invalid, "tenant-alpha", "test-user")
