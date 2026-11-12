@@ -13,7 +13,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.enterprise_context import EnterpriseContextService
 from app.evaluation import EvaluationService
-from app.execution import DeterministicFakeProvider, ExecutionService
+from app.execution import DeterministicFakeProvider
+from app.experience import ExecutionExperienceService, ExecutionService
 from app.registry import AgentRegistry
 from app.tenant_backup import (
     BackupConflictError,
@@ -54,6 +55,7 @@ def initialized_database(path: Path, tenant_id: str, *, populate: bool = False):
     tenants.create(tenant_id, f"Tenant {tenant_id}", "test-operator", {"region": "ap-south"})
     tenants.transition(tenant_id, "active", "test-operator")
     EnterpriseContextService(path)
+    ExecutionExperienceService(path)
     if populate:
         manifest = copy.deepcopy(AGENT)
         manifest["agent_id"] = "backup.agent"
@@ -382,7 +384,8 @@ def test_pre_context_v1_backup_remains_restorable_after_ece_tables_are_added(tmp
         _aad(envelope),
     ))
     for table in (
-        "context_entities", "context_relationships", "context_evidence", "context_events"
+        "context_entities", "context_relationships", "context_evidence", "context_events",
+        "agent_experiences", "learning_lessons"
     ):
         payload["tables"].pop(table)
     unsigned = dict(payload)
