@@ -28,14 +28,9 @@ Do not infer production readiness from code generation or a green unit-test work
 4. Keep the first prototype small and independently testable.
 5. Do not execute untrusted agent-generated code without a genuine isolation boundary.
 
-## Next design target
+## Enterprise Context Engine
 
-Map the source concepts into a minimal AgentBox lifecycle:
-
-`define → version → clone/mutate → test → evaluate → promote or rollback`
-
-No production readiness or end-to-end runtime validation is claimed at this stage.
-
+- [Enterprise Context architecture map](docs/enterprise-context-architecture-map.md) — verified reuse mapping, additive ontology, storage decisions, security boundaries and staged implementation plan.
 
 ## ZIP research corpus
 
