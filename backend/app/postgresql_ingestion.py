@@ -11,6 +11,7 @@ from .enterprise_context import ContextConflictError, ContextNotFoundError, Cont
 
 MAX_INGEST_ENTITIES = 5000
 MAX_INGEST_RELATIONSHIPS = 10000
+MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
 HASH_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 
 
@@ -43,6 +44,12 @@ class PostgreSQLSnapshotIngestion:
             raise ContextValidationError("snapshot source_kind must be postgresql_catalog")
         if snapshot.get("data_rows_read") != 0 or snapshot.get("writes_performed") != 0:
             raise ContextValidationError("Only metadata-only, read-only snapshots can be ingested")
+        try:
+            snapshot_bytes = len(_canonical(snapshot).encode("utf-8"))
+        except (TypeError, ValueError) as exc:
+            raise ContextValidationError("snapshot must contain finite JSON values only") from exc
+        if snapshot_bytes > MAX_SNAPSHOT_BYTES:
+            raise ContextValidationError("snapshot exceeds the 8 MiB ingestion limit")
         supplied_hash = snapshot.get("snapshot_hash")
         if not isinstance(supplied_hash, str) or not HASH_PATTERN.fullmatch(supplied_hash):
             raise ContextValidationError("snapshot_hash must be a lowercase SHA-256 digest")
@@ -56,8 +63,12 @@ class PostgreSQLSnapshotIngestion:
                 raise ContextValidationError(f"snapshot.{key} must be an array")
             if len(snapshot[key]) > limit:
                 raise ContextValidationError(f"snapshot.{key} exceeds {limit} records")
+            if key != "schemas" and any(not isinstance(row, dict) for row in snapshot[key]):
+                raise ContextValidationError(f"snapshot.{key} records must be objects")
         if sum(len(snapshot[key]) for key in limits) > MAX_INGEST_ENTITIES:
             raise ContextValidationError(f"Snapshot exceeds the {MAX_INGEST_ENTITIES} entity ingestion limit")
+        if any(not isinstance(name, str) or not name for name in snapshot["schemas"]):
+            raise ContextValidationError("snapshot.schemas must contain non-empty strings")
         if not isinstance(snapshot.get("discovered_at"), str):
             raise ContextValidationError("snapshot.discovered_at must be a timestamp")
         return snapshot
