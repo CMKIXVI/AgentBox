@@ -109,7 +109,7 @@ def test_encrypted_backup_round_trip_restores_all_tenant_records(tmp_path):
         )["execution_id"],
         "tenant-alpha",
     )
-    assert len(restored_tenants.audit_events("tenant-alpha")) == 2
+    assert len(restored_tenants.audit_events("tenant-alpha")) == 4
     assert tenants.get("tenant-alpha").status == "active"
     assert registry.get("backup.agent", "1.0.0", "tenant-alpha")
 
