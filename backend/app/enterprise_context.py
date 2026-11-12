@@ -10,20 +10,18 @@ import json
 import re
 import sqlite3
 import uuid
-from datetime import datetime
-from urllib.parse import urlsplit
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from jsonschema import Draft202012Validator, FormatChecker
 
 from .tenant import validate_tenant_id
 
 ASSERTION_CLASSES = {"observed_fact", "inferred", "ai_hypothesis", "human_validated"}
-ENTITY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$")
 HASH_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
 MAX_JSON_BYTES = 65536
 
