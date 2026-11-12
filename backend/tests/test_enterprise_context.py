@@ -232,7 +232,7 @@ def test_context_api_create_query_version_relationship_and_evidence(tmp_path):
     assert client.get(
         "/v1/enterprise-context/entities/app.alpha/evidence"
     ).json()["items"][0]["evidence_id"] == "evidence.alpha"
-    assert len(client.get("/v1/enterprise-context/events").json()["items"]) == 4
+    assert len(client.get("/v1/enterprise-context/events").json()["items"]) == 5
 
 
 def test_context_api_rejects_cross_tenant_entity_read(tmp_path):
