@@ -31,8 +31,8 @@ from .execution import (
     ExecutionPolicyError,
     ExecutionService,
 )
-from .principal import Principal
 from .postgresql_ingestion import PostgreSQLSnapshotIngestion
+from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .tenant_registry import TenantNotFoundError, TenantRegistry
 from .validation import validate_evaluation_profile, validate_manifest
