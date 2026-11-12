@@ -94,3 +94,21 @@ The first live demonstration should connect to an explicitly configured read-onl
 Every batch adds unit and integration tests, tenant isolation tests, policy-denial tests, provenance tests and CI verification. A green Ruff/pytest run is not evidence of a live PostgreSQL connector, a running autonomous agent, a secure action sandbox or production deployment.
 
 Readiness must be reported separately as implemented, unit tested, integration tested, end-to-end tested, security validated, production deployed and production observed. No production-ready claim is made by this architecture map.
+
+
+## Autonomous improvement integration
+
+The reviewed self-evolving capability platform is adopted as an **AgentBox Autonomous Improvement Controller**, not as a separate product, service namespace or Go runtime. It extends the Agent Evolution Engine and shared evolution contracts.
+
+- Agent identity, immutable versions and lineage remain owned by the existing AgentBox registry.
+- Execution and evaluation remain owned by the existing AgentBox services. The future improvement service must pin one benchmark and run parent and candidate versions against the same workload.
+- Execution experience and derived lessons are tenant-scoped evidence. Lessons can inform a proposal but cannot directly mutate an agent.
+- Candidate generation is bounded to allowlisted manifest/configuration fields and registered materializers. Parent artifacts remain immutable.
+- Independent hard gates precede promotion. The registry's active-version pointer changes only after authorization and required approval; rollback reactivates a prior immutable version.
+- A cancellable controller selects eligible work from the existing agent portfolio. Missing-capability acquisition is a distinct fallback and must reject duplicate identities.
+- Optional model assistance may propose lessons or configuration changes, but cannot evaluate, approve, grant permissions, access secrets or promote.
+- No new database, broker, graph store, microservice or runtime is introduced by this design.
+
+The current execution API's deterministic fake provider and submitted-output evaluation service do not yet constitute live autonomous improvement. The controller remains a future implementation until durable experience/experiment storage, repeatable parent/candidate execution, bounded mutation, hard gates, approval, rollback, durable scheduling, isolation and end-to-end tests are present.
+
+See [Autonomous Improvement Controller](engines/autonomous-improvement-controller.md) for the source-derived design and ten-batch implementation sequence.
