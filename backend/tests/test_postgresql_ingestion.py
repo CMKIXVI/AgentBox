@@ -64,9 +64,9 @@ def test_catalog_snapshot_ingests_entities_relationships_and_unverified_evidence
     assert {item["relationship_type"] for item in edges} == {
         "contains_relation", "contains_column", "has_index", "has_constraint", "references_relation"
     }
-    evidence = client.get(
-        f"/v1/enterprise-context/entities/{relations[0]['entity_id']}/evidence"
-    ).json()["items"]
+    evidence = app.state.enterprise_context.query_evidence(
+        relations[0]["entity_id"], "test-tenant"
+    )
     assert evidence[0]["validation_status"] == "unverified"
 
 
@@ -155,9 +155,9 @@ def test_changed_catalog_metadata_creates_new_immutable_entity_version(tmp_path)
     )
     assert relation["version"] == 2
     assert relation["assertion_class"] == "inferred"
-    evidence = client.get(
-        f"/v1/enterprise-context/entities/{relation['entity_id']}/evidence"
-    ).json()["items"]
+    evidence = app.state.enterprise_context.query_evidence(
+        relation["entity_id"], "test-tenant"
+    )
     assert any(item["entity_version"] == 2 for item in evidence)
 
 
