@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from app.enterprise_context import EnterpriseContextService\nfrom app.evaluation import EvaluationService
+from app.enterprise_context import EnterpriseContextService
+from app.evaluation import EvaluationService
 from app.execution import DeterministicFakeProvider, ExecutionService
 from app.registry import AgentRegistry
 from app.tenant_backup import (
