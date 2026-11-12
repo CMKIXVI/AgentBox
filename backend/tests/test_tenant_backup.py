@@ -221,21 +221,21 @@ def test_restore_conflict_rolls_back_all_prior_rows(tmp_path):
     TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
 
     target = tmp_path / "target.sqlite3"
-    target_registry, _, _, _ = initialized_database(target, "tenant-alpha")
-    altered = copy.deepcopy(AGENT)
-    altered["agent_id"] = "backup.agent"
-    altered["model_binding"]["provider_id"] = "provider.fake"
-    altered["tools"] = []
-    altered["behavior"]["objective"] = "different content"
-    target_registry.create(altered, tenant_id="tenant-alpha")
+    _, target_evaluations, _, _ = initialized_database(target, "tenant-alpha")
+    altered_profile = copy.deepcopy(PROFILE)
+    altered_profile["description"] = "different profile content"
+    target_evaluations.create_profile(altered_profile, tenant_id="tenant-alpha")
     with pytest.raises(BackupConflictError):
         TenantBackupService(target, StaticKeyProvider()).restore_encrypted(
             "tenant-alpha", backup
         )
     with sqlite3.connect(target) as connection:
         assert connection.execute(
-            "SELECT count(*) FROM evaluation_profiles WHERE tenant_id='tenant-alpha'"
+            "SELECT count(*) FROM agent_versions WHERE tenant_id='tenant-alpha'"
         ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT count(*) FROM evaluation_profiles WHERE tenant_id='tenant-alpha'"
+        ).fetchone()[0] == 1
 
 
 def test_payload_validation_rejects_cross_tenant_rows(tmp_path):
