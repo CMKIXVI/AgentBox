@@ -12,7 +12,7 @@ def configure_test_access(app):
     )
     resources = [
         "research.summarizer", "runtime.test", "quality.research-summary",
-        "tenant-context", "app.alpha", "db.alpha", "rel.alpha",
+        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha",
     ]
     grants = [
         ("agent.registry", "agent.create"),
@@ -33,6 +33,11 @@ def configure_test_access(app):
         ("enterprise.context", "context.evidence.read"),
         ("enterprise.context", "context.event.read"),
         ("enterprise.discovery", "discovery.snapshot.ingest"),
+        ("agent.experience", "experience.create"),
+        ("agent.experience", "experience.read"),
+        ("agent.experience", "lesson.create"),
+        ("agent.experience", "lesson.read"),
+        ("agent.experience", "fitness.select"),
     ]
     created_at = datetime(2026, 11, 12, tzinfo=UTC).isoformat()
     app.state.authorization_policies = [
