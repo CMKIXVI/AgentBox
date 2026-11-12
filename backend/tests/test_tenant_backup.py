@@ -136,11 +136,11 @@ def test_backup_requires_external_32_byte_key_and_key_identifier():
     with pytest.raises(BackupKeyError):
         provider.active_key()
     values = {
-        "AGENTBOX_BACKUP_KEY_ID": "key_2026_01",
+        "AGENTBOX_BACKUP_KEY_ID": "KEY_2026_01",
         "AGENTBOX_BACKUP_KEY_KEY_2026_01": base64.b64encode(b"K" * 32).decode(),
     }
     key_id, key = EnvironmentBackupKeyProvider(values).active_key()
-    assert key_id == "key_2026_01"
+    assert key_id == "KEY_2026_01"
     assert key == b"K" * 32
     values["AGENTBOX_BACKUP_KEY_KEY_2026_01"] = base64.b64encode(b"short").decode()
     with pytest.raises(BackupKeyError):
@@ -278,17 +278,17 @@ def test_historical_backup_key_remains_available_during_rotation(tmp_path):
     old_key = base64.b64encode(b"O" * 32).decode()
     new_key = base64.b64encode(b"N" * 32).decode()
     old_provider = EnvironmentBackupKeyProvider({
-        "AGENTBOX_BACKUP_KEY_ID": "backup_old",
+        "AGENTBOX_BACKUP_KEY_ID": "BACKUP_OLD",
         "AGENTBOX_BACKUP_KEY_BACKUP_OLD": old_key,
     })
     TenantBackupService(source, old_provider).export_encrypted("tenant-alpha", backup)
 
     rotated_provider = EnvironmentBackupKeyProvider({
-        "AGENTBOX_BACKUP_KEY_ID": "backup_new",
+        "AGENTBOX_BACKUP_KEY_ID": "BACKUP_NEW",
         "AGENTBOX_BACKUP_KEY_BACKUP_NEW": new_key,
         "AGENTBOX_BACKUP_KEY_BACKUP_OLD": old_key,
     })
-    assert rotated_provider.active_key() == ("backup_new", b"N" * 32)
+    assert rotated_provider.active_key() == ("BACKUP_NEW", b"N" * 32)
     target = tmp_path / "target.sqlite3"
     initialized_database(target, "tenant-alpha")
     restored = TenantBackupService(target, rotated_provider).restore_encrypted(
