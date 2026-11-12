@@ -35,7 +35,7 @@ The registry is not exposed through public provisioning endpoints. A trusted boo
 
 Tenant administration is available as the offline `agentbox-tenant` command, installed from the backend package. It has no HTTP endpoint and derives its audit actor label from the local operating-system identity; callers cannot supply an arbitrary actor ID.
 
-Run it on the AgentBox host under a trusted operator account that has controlled access to the same SQLite database used by the API. The database can be selected with `--database` or `AGENTBOX_DATABASE_PATH`. Keep the database, its containing directory, and SQLite WAL/SHM files protected by host filesystem permissions. The CLI does not itself authenticate an OS administrator or replace host access controls; anyone who can write the database can administer tenants.
+Run it on the AgentBox host under a trusted operator account that has controlled access to the same SQLite database used by the API. The database can be selected with `--database` or `AGENTBOX_DATABASE_PATH`. The CLI opens the selected database read-only first and refuses to create a missing database or operate on a SQLite file that lacks the expected AgentBox tables. This avoids silently provisioning tenants into a new, unrelated database. Keep the database, its containing directory, and SQLite WAL/SHM files protected by host filesystem permissions. The CLI does not itself authenticate an OS administrator or replace host access controls; anyone who can write the database can administer tenants.
 
 Example:
 
