@@ -302,7 +302,7 @@ def test_historical_backup_key_remains_available_during_rotation(tmp_path):
 def test_encrypted_backup_includes_enterprise_context_entities_relationships_evidence_and_events(tmp_path):
     source = tmp_path / "context-source.sqlite3"
     target = tmp_path / "context-target.sqlite3"
-    source_registry, _, _, _ = initialized_database(source, "tenant-alpha")
+    _source_registry, _, _, _ = initialized_database(source, "tenant-alpha")
     context = EnterpriseContextService(source)
     first = {
         "entity_id": "app.backup",
