@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
 from app.enterprise_context import (
@@ -17,7 +17,6 @@ from app.enterprise_context import (
 )
 from app.main import create_app
 from app.tenant_registry import TenantRegistry
-from auth_helpers import configure_test_access
 
 NOW = datetime.now(UTC).isoformat()
 
