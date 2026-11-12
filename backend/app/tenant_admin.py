@@ -11,8 +11,8 @@ import json
 import os
 import sqlite3
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from .tenant_registry import TenantConflictError, TenantNotFoundError, TenantRegistry
 
