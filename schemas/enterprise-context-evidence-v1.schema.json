@@ -78,5 +78,19 @@
       "type": "object",
       "maxProperties": 32
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "relationship_id"
+        ]
+      },
+      "then": {
+        "required": [
+          "relationship_version"
+        ]
+      }
+    }
+  ]
 }
