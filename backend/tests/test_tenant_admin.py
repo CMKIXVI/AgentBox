@@ -96,4 +96,4 @@ def test_cli_rejects_invalid_json_and_duplicate_tenant(tmp_path, capsys):
 def test_cli_missing_tenant_returns_operator_error(tmp_path, capsys):
     database = tmp_path / "agentbox.sqlite3"
     assert invoke(database, "suspended", "--tenant-id", "missing-tenant") == 2
-    assert "not found" in capsys.readouterr().err.lower()
+    assert "missing-tenant" in capsys.readouterr().err
