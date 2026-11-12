@@ -10,6 +10,8 @@ import json
 import re
 import sqlite3
 import uuid
+from datetime import datetime
+from urllib.parse import urlsplit
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -56,6 +58,21 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
+def _validate_actor(actor_id: str) -> None:
+    if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
+        raise ContextValidationError("actor_id must contain 1 to 256 characters")
+
+
+def _validate_period(payload: dict[str, Any]) -> None:
+    start = payload.get("valid_from")
+    end = payload.get("valid_to")
+    if start and end:
+        start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        end_at = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        if start_at > end_at:
+            raise ContextValidationError("valid_from must not be later than valid_to")
+
+
 def _schema_validator(name: str) -> Draft202012Validator:
     path = Path(__file__).resolve().parents[2] / "schemas" / name
     schema = json.loads(path.read_text(encoding="utf-8"))
@@ -99,7 +116,8 @@ class EnterpriseContextService:
     def _connection(self) -> Iterator[sqlite3.Connection]:
         connection = self._connect()
         try:
-            yield connection
+            with connection:
+                yield connection
         finally:
             connection.close()
 
@@ -308,11 +326,9 @@ class EnterpriseContextService:
         self, payload: dict[str, Any], tenant_id: str, actor_id: str
     ) -> dict[str, Any]:
         validate_tenant_id(tenant_id)
-        if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
-            raise ContextValidationError("actor_id must contain 1 to 256 characters")
+        _validate_actor(actor_id)
         item = self._validate(self._entity_validator, payload, "enterprise context entity")
-        if item.get("valid_from") and item.get("valid_to") and item["valid_from"] > item["valid_to"]:
-            raise ContextValidationError("valid_from must not be later than valid_to")
+        _validate_period(item)
         now = _now()
         digest = _digest(item)
         with self._connection() as connection:
@@ -353,7 +369,9 @@ class EnterpriseContextService:
         expected_version: int,
     ) -> dict[str, Any]:
         validate_tenant_id(tenant_id)
+        _validate_actor(actor_id)
         item = self._validate(self._entity_validator, payload, "enterprise context entity")
+        _validate_period(item)
         if expected_version < 1:
             raise ContextValidationError("expected_version must be at least 1")
         now = _now()
@@ -453,9 +471,11 @@ class EnterpriseContextService:
         self, payload: dict[str, Any], tenant_id: str, actor_id: str
     ) -> dict[str, Any]:
         validate_tenant_id(tenant_id)
+        _validate_actor(actor_id)
         item = self._validate(
             self._relationship_validator, payload, "enterprise context relationship"
         )
+        _validate_period(item)
         if item["source_entity_id"] == item["target_entity_id"] and (
             item["source_version"] == item["target_version"]
         ):
@@ -538,7 +558,13 @@ class EnterpriseContextService:
         self, payload: dict[str, Any], tenant_id: str, actor_id: str
     ) -> dict[str, Any]:
         validate_tenant_id(tenant_id)
+        _validate_actor(actor_id)
         item = self._validate(self._evidence_validator, payload, "enterprise context evidence")
+        source_locator = urlsplit(item["source_ref"])
+        if source_locator.username or source_locator.password or source_locator.query or source_locator.fragment:
+            raise ContextValidationError(
+                "source_ref must not contain credentials, query parameters, or fragments"
+            )
         if item.get("source_hash") and not HASH_PATTERN.fullmatch(item["source_hash"]):
             raise ContextValidationError("source_hash must be a SHA-256 hex digest")
         now = _now()
