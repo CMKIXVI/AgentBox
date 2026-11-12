@@ -118,3 +118,21 @@ def test_cli_refuses_an_unrelated_or_empty_sqlite_database(tmp_path, capsys):
     result = main(["--database", str(database), "list"])
     assert result == 2
     assert "not an initialized AgentBox database" in capsys.readouterr().err
+
+
+
+def test_cli_audit_actor_is_os_identity_and_cannot_be_caller_overridden(tmp_path, capsys):
+    database = tmp_path / "agentbox.sqlite3"
+    assert invoke(
+        database, "create", "--tenant-id", "tenant-actor",
+        "--display-name", "Actor Tenant"
+    ) == 0
+    capsys.readouterr()
+    assert invoke(database, "audit", "--tenant-id", "tenant-actor") == 0
+    event = json.loads(capsys.readouterr().out)[0]
+    assert event["actor_id"] == local_operator_actor_id()
+    assert event["actor_id"].startswith("os-user:")
+    assert main([
+        "--database", str(database), "create", "--tenant-id", "tenant-forged",
+        "--display-name", "Forged Actor", "--actor-id", "administrator"
+    ]) == 2
