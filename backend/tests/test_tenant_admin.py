@@ -2,11 +2,13 @@ import json
 
 import pytest
 
+from app.main import create_app
 from app.tenant_admin import local_operator_actor_id, main
 from app.tenant_registry import TenantRegistry
 
 
 def invoke(database, *arguments):
+    create_app(str(database))
     return main(["--database", str(database), *arguments])
 
 
@@ -97,3 +99,22 @@ def test_cli_missing_tenant_returns_operator_error(tmp_path, capsys):
     database = tmp_path / "agentbox.sqlite3"
     assert invoke(database, "suspended", "--tenant-id", "missing-tenant") == 2
     assert "missing-tenant" in capsys.readouterr().err
+
+
+
+def test_cli_refuses_to_create_or_use_a_missing_database(tmp_path, capsys):
+    database = tmp_path / "missing.sqlite3"
+    result = main(["--database", str(database), "list"])
+    assert result == 2
+    assert not database.exists()
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_cli_refuses_an_unrelated_or_empty_sqlite_database(tmp_path, capsys):
+    import sqlite3
+
+    database = tmp_path / "unrelated.sqlite3"
+    sqlite3.connect(database).close()
+    result = main(["--database", str(database), "list"])
+    assert result == 2
+    assert "not an initialized AgentBox database" in capsys.readouterr().err
