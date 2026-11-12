@@ -24,7 +24,7 @@ from .tenant import validate_tenant_id
 BACKUP_FORMAT = "agentbox-tenant-backup"
 BACKUP_VERSION = 1
 ALGORITHM = "AES-256-GCM"
-KEY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+KEY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_]{0,63}$")
 TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "agent_versions": (
         "tenant_id", "agent_id", "version", "content_hash", "manifest_json",
@@ -97,7 +97,7 @@ class EnvironmentBackupKeyProvider:
     def _key_name(key_id: str) -> str:
         if not isinstance(key_id, str) or not KEY_ID_PATTERN.fullmatch(key_id):
             raise BackupKeyError("Invalid AgentBox backup key identifier")
-        return "AGENTBOX_BACKUP_KEY_" + re.sub(r"[^A-Za-z0-9]", "_", key_id).upper()
+        return "AGENTBOX_BACKUP_KEY_" + key_id.upper()
 
     def key_for(self, key_id: str) -> bytes:
         encoded = self.environ.get(self._key_name(key_id))
