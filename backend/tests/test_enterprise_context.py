@@ -93,8 +93,9 @@ def test_entity_creation_conflict_and_stale_version_are_rejected(tmp_path):
     service.create_entity(entity(), "tenant-alpha", "test-user")
     with pytest.raises(ContextConflictError):
         service.create_entity(entity(name="Different"), "tenant-alpha", "test-user")
+    service.version_entity(entity(name="Version two"), "tenant-alpha", "test-user", 1)
     with pytest.raises(ContextConflictError, match="version changed"):
-        service.version_entity(entity(name="Stale update"), "tenant-alpha", "test-user", 0)
+        service.version_entity(entity(name="Stale update"), "tenant-alpha", "test-user", 1)
 
 
 def test_entity_reads_and_queries_are_tenant_scoped(tmp_path):
@@ -189,9 +190,9 @@ def test_context_api_requires_existing_oidc_tenant_and_explicit_grants(tmp_path)
         "test-user", "user", "test-tenant"
     )
     response = TestClient(app).post(
-        "/v1/enterprise-context/entities", json={"entity": entity()}
+        "/v1/enterprise-context/entities", json=entity()
     )
-    assert response.status_code == 422 or response.status_code == 403
+    assert response.status_code == 403
 
 
 def test_context_api_create_query_version_relationship_and_evidence(tmp_path):
