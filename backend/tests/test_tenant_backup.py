@@ -19,10 +19,10 @@ from app.tenant_backup import (
     BackupError,
     BackupFormatError,
     BackupKeyError,
-    _aad,
-    _canonical,
     EnvironmentBackupKeyProvider,
     TenantBackupService,
+    _aad,
+    _canonical,
 )
 from app.tenant_registry import TenantRegistry
 
