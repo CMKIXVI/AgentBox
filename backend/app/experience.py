@@ -372,6 +372,8 @@ class ExecutionExperienceService:
         if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
             raise ExperienceValidationError("actor_id must contain 1 to 256 characters")
 
+        if experience_id not in evidence_refs:
+            raise ExperienceValidationError("evidence_refs must include the source experience_id")
         normalized_statement = statement.strip()
         statement_hash = _hash({
             "lesson_type": lesson_type,
