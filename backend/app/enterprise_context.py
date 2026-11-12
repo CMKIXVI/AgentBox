@@ -65,8 +65,8 @@ def _validate_period(payload: dict[str, Any]) -> None:
     start = payload.get("valid_from")
     end = payload.get("valid_to")
     if start and end:
-        start_at = datetime.fromisoformat(start.replace("Z", "+00:00"))
-        end_at = datetime.fromisoformat(end.replace("Z", "+00:00"))
+        start_at = datetime.fromisoformat(start)
+        end_at = datetime.fromisoformat(end)
         if start_at > end_at:
             raise ContextValidationError("valid_from must not be later than valid_to")
 
