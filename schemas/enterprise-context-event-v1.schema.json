@@ -43,7 +43,10 @@
       "minimum": 1
     },
     "source_ref": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "maxLength": 1024
     },
     "observed_at": {
