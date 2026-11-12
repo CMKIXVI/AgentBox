@@ -63,6 +63,27 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _require_agentbox_database(database_path: str) -> None:
+    """Refuse to silently create or operate on a different/empty SQLite database."""
+    path = Path(database_path)
+    if not path.is_file():
+        raise ValueError(f"AgentBox database does not exist: {path}")
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    with sqlite3.connect(uri, uri=True) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    required = {"agent_versions", "evaluation_profiles", "tenants"}
+    missing = sorted(required - tables)
+    if missing:
+        raise ValueError(
+            f"Database is not an initialized AgentBox database; missing tables: {missing}"
+        )
+
+
 def _emit(value: object) -> None:
     print(json.dumps(value, sort_keys=True, separators=(",", ":")))
 
@@ -72,6 +93,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     actor_id = local_operator_actor_id()
     try:
+        _require_agentbox_database(args.database)
         registry = TenantRegistry(args.database)
         if args.command == "create":
             try:
