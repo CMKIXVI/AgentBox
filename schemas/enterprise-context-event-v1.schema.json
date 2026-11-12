@@ -39,7 +39,10 @@
       "maxLength": 128
     },
     "object_version": {
-      "type": "integer",
+      "type": [
+        "integer",
+        "null"
+      ],
       "minimum": 1
     },
     "source_ref": {
