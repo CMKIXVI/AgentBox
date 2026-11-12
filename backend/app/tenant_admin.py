@@ -14,7 +14,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from .tenant_backup import EnvironmentBackupKeyProvider, TenantBackupService\nfrom .tenant_registry import TenantConflictError, TenantNotFoundError, TenantRegistry
+from .tenant_backup import EnvironmentBackupKeyProvider, TenantBackupService
+from .tenant_registry import TenantConflictError, TenantNotFoundError, TenantRegistry
 
 VALID_TRANSITIONS = ("active", "suspended", "decommissioned")
 
