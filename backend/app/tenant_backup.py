@@ -234,7 +234,7 @@ class TenantBackupService:
         try:
             envelope = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(envelope, dict):
-                raise ValueError("envelope must be an object")
+                raise TypeError("envelope must be an object")
             required = {"format", "version", "algorithm", "key_id", "tenant_id", "nonce", "ciphertext"}
             if set(envelope) != required:
                 raise ValueError("unexpected envelope fields")
@@ -295,7 +295,7 @@ class TenantBackupService:
         try:
             metadata = json.loads(tenant["metadata_json"])
             if not isinstance(metadata, dict):
-                raise ValueError("metadata is not an object")
+                raise TypeError("metadata is not an object")
         except (ValueError, TypeError) as exc:
             raise BackupFormatError("Backup tenant metadata is invalid") from exc
 
@@ -316,7 +316,6 @@ class TenantBackupService:
                 columns = TABLE_COLUMNS[table]
                 keys = TABLE_KEYS[table]
                 quoted_columns = ", ".join(f'"{column}"' for column in columns)
-                placeholders = ", ".join("?" for _ in columns)
                 where = " AND ".join(f'"{column}" = ?' for column in keys)
                 for row in payload["tables"][table]:
                     key_values = tuple(row[column] for column in keys)
