@@ -110,3 +110,9 @@ The extracted research is attributed to ZIP paths. It is not a production implem
 - [Agent runtime language and governance](research/extracted/agent-runtime-language-and-governance.md)
 - [Hybrid symbolic agent reasoning](research/extracted/hybrid-symbolic-agent-reasoning.md)
 - [Autonomous world models and embodied agents](research/extracted/autonomous-world-model-and-embodied-agents.md)
+
+
+## Autonomous improvement
+
+- [Autonomous Improvement Controller](docs/engines/autonomous-improvement-controller.md) — normalized adoption of the reviewed experience → learning → candidate evolution → evaluation → governed promotion → repeat architecture.
+- The controller is an architecture specification, not an implemented autonomous runtime. It reuses the existing AgentBox registry, execution, evaluation, tenant, authorization and backup authorities. It is disabled by design until the operational controls and end-to-end evidence described in the specification exist.
