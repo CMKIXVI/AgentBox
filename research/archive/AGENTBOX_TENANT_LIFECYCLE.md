@@ -29,3 +29,27 @@ The protected-route dependency chains from verified OIDC authentication into a s
 The test access helper provisions a test tenant explicitly. Tests cover missing, pending, suspended and decommissioned tenants, active tenant authorization, policy enforcement after lifecycle validation, and suspension taking effect without restarting the API. Public validation endpoints remain side-effect-free.
 
 The registry is not exposed through public provisioning endpoints. A trusted bootstrap/operator process must create and activate tenants using controlled access to the registry. This PR does not yet provide an operator CLI or administrator API.
+
+
+## Local operator workflow
+
+Tenant administration is available as the offline `agentbox-tenant` command, installed from the backend package. It has no HTTP endpoint and derives its audit actor label from the local operating-system identity; callers cannot supply an arbitrary actor ID.
+
+Run it on the AgentBox host under a trusted operator account that has controlled access to the same SQLite database used by the API. The database can be selected with `--database` or `AGENTBOX_DATABASE_PATH`. Keep the database, its containing directory, and SQLite WAL/SHM files protected by host filesystem permissions. The CLI does not itself authenticate an OS administrator or replace host access controls; anyone who can write the database can administer tenants.
+
+Example:
+
+```bash
+cd backend
+pip install -e .
+agentbox-tenant create --tenant-id customer-001 --display-name "Customer 001"
+agentbox-tenant active --tenant-id customer-001
+agentbox-tenant list --limit 100
+agentbox-tenant audit --tenant-id customer-001
+agentbox-tenant suspended --tenant-id customer-001
+agentbox-tenant decommissioned --tenant-id customer-001
+```
+
+Creation always produces a `pending` tenant. Activation, suspension, reactivation and decommissioning are separate explicit commands governed by the lifecycle transition table. Decommissioning is terminal. Listing and audit inspection are read-only. Invalid metadata, unknown tenants, duplicate tenant IDs, and illegal transitions return a non-zero exit status. Metadata is limited to scalar JSON values and must never contain credentials or secrets.
+
+The command's actor label is audit attribution, not cryptographic proof of an individual's identity. For stronger production governance, run the command through a controlled host-admin process with OS account controls, recorded privileged sessions, and restricted database permissions. No administrator HTTP API, self-service tenant registration, or tenant switching is provided.
