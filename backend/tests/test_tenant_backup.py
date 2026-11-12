@@ -132,11 +132,11 @@ def test_backup_requires_external_32_byte_key_and_key_identifier():
     with pytest.raises(BackupKeyError):
         provider.active_key()
     values = {
-        "AGENTBOX_BACKUP_KEY_ID": "key-2026-01",
+        "AGENTBOX_BACKUP_KEY_ID": "key_2026_01",
         "AGENTBOX_BACKUP_KEY_KEY_2026_01": base64.b64encode(b"K" * 32).decode(),
     }
     key_id, key = EnvironmentBackupKeyProvider(values).active_key()
-    assert key_id == "key-2026-01"
+    assert key_id == "key_2026_01"
     assert key == b"K" * 32
     values["AGENTBOX_BACKUP_KEY_KEY_2026_01"] = base64.b64encode(b"short").decode()
     with pytest.raises(BackupKeyError):
