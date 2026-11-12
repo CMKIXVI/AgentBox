@@ -4,16 +4,21 @@ A standalone environment for creating, cloning, testing, evaluating, versioning 
 
 ## Current repository status
 
-AgentBox now has an initial, bounded backend implementation—not merely a research extraction:
+AgentBox has a bounded Python/FastAPI backend with an additive security and enterprise-context foundation:
 
-- Immutable SQLite agent manifest registry with schema validation, versioning, cloning, content hashes, idempotency and lineage.
-- Versioned evaluation profiles/runs with deterministic scoring of submitted outputs. The evaluator does **not** execute agents.
-- A bounded execution API with provider adapter contracts, persisted execution records, idempotency and output-token limits.
-- The API currently registers only a deterministic fake provider. Manifests declaring tools are deliberately rejected because principal-aware tool authorization is not implemented.
-- The current runtime is not yet a production multi-tenant, multi-agent or tool-execution platform. Real provider integration, secret resolution, authorization/tenant isolation, durable queues/cancellation and production persistence remain gaps.
-- Source-derived archive reviews and the consolidated requirements catalogue are under `research/` and `requirements/`.
+- Immutable, tenant-scoped agent manifest versions, content hashes, clone lineage and schema validation.
+- Versioned evaluation profiles/runs and deterministic scoring of submitted outputs; evaluation does not itself execute an agent.
+- A bounded execution API with persisted records and tenant-scoped idempotency. The API currently registers only a deterministic fake provider.
+- OIDC JWT verification, server-owned active-tenant lifecycle enforcement, exact-match deny-by-default authorization and tenant-scoped agent, execution and evaluation persistence.
+- Encrypted tenant logical backup/restore using AES-256-GCM and externally supplied key material.
+- Enterprise Context Engine v1: tenant-scoped immutable entity versions, typed relationships, evidence references, append-only context events and bounded deterministic query APIs, integrated with existing identity and authorization.
+- Workflow and capability contracts are validated, but there is not yet a general workflow interpreter, multi-agent orchestrator, live discovery connector or production tool/action gateway.
 
-Do not infer production readiness from the existence of these APIs. Validate the current code and CI evidence before making readiness claims.
+The ECE is an additive domain over the existing AgentBox runtime, SQLite database, API, OIDC, policy and tenant foundations. It does not introduce a replacement backend, new database, graph platform or independent microservices.
+
+**Important limitations:** no live enterprise source connector is included in this foundation; no PostgreSQL metadata introspector has yet been wired; no real model provider, autonomous multi-agent runtime, tool sandbox, secret resolver or production action gateway is enabled. SQLite remains the current single-instance persistence layer. Backup key custody and recovery operations still depend on external operational controls.
+
+Do not infer production readiness from code generation or a green unit-test workflow. Verify live integrations, security boundaries, deployment and operational recovery separately.
 
 ## Working principles
 
