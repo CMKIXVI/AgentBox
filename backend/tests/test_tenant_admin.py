@@ -132,7 +132,9 @@ def test_cli_audit_actor_is_os_identity_and_cannot_be_caller_overridden(tmp_path
     event = json.loads(capsys.readouterr().out)[0]
     assert event["actor_id"] == local_operator_actor_id()
     assert event["actor_id"].startswith("os-user:")
-    assert main([
-        "--database", str(database), "create", "--tenant-id", "tenant-forged",
-        "--display-name", "Forged Actor", "--actor-id", "administrator"
-    ]) == 2
+    with pytest.raises(SystemExit) as error:
+        main([
+            "--database", str(database), "create", "--tenant-id", "tenant-forged",
+            "--display-name", "Forged Actor", "--actor-id", "administrator"
+        ])
+    assert error.value.code == 2
