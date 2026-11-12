@@ -12,6 +12,7 @@ AgentBox has a bounded Python/FastAPI backend with an additive security and ente
 - OIDC JWT verification, server-owned active-tenant lifecycle enforcement, exact-match deny-by-default authorization and tenant-scoped agent, execution and evaluation persistence.
 - Encrypted tenant logical backup/restore using AES-256-GCM and externally supplied key material.
 - Enterprise Context Engine v1: tenant-scoped immutable entity versions, typed relationships, evidence references, append-only context events and bounded deterministic query APIs, integrated with existing identity and authorization.
+- Execution experience v1: tenant-scoped minimized links to completed executions and evaluation runs, proposed traceable lessons, and profile-version-pinned fitness selection with minimum sample thresholds. Source linkage remains caller-asserted and unverified.
 - Workflow and capability contracts are validated, but there is not yet a general workflow interpreter, multi-agent orchestrator, live discovery connector or production tool/action gateway.
 
 The ECE is an additive domain over the existing AgentBox runtime, SQLite database, API, OIDC, policy and tenant foundations. It does not introduce a replacement backend, new database, graph platform or independent microservices.
@@ -115,4 +116,5 @@ The extracted research is attributed to ZIP paths. It is not a production implem
 ## Autonomous improvement
 
 - [Autonomous Improvement Controller](docs/engines/autonomous-improvement-controller.md) — normalized adoption of the reviewed experience → learning → candidate evolution → evaluation → governed promotion → repeat architecture.
+- [Execution experience and learning records](docs/engines/execution-experience.md) — implemented tenant-scoped experience records, proposed lessons, fitness selection, trust boundaries and backup integration.
 - The controller is an architecture specification, not an implemented autonomous runtime. It reuses the existing AgentBox registry, execution, evaluation, tenant, authorization and backup authorities. It is disabled by design until the operational controls and end-to-end evidence described in the specification exist.
