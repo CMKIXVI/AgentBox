@@ -295,7 +295,7 @@ def test_public_client_uses_no_client_assertion():
     try:
         adapter.exchange_and_validate(
             code="code", client_id=CLIENT_ID,
-            redirect_uri="com.agentbox.app:/callback",
+            redirect_uri="com.agentbox.app://callback",
             code_verifier="verifier", now_epoch=1001,
         )
     finally:
