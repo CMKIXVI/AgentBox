@@ -10,7 +10,7 @@ Metadata is cached for the lifetime of the adapter. JWKS is fetched for each ID-
 
 ## Authorization-code exchange
 
-The adapter submits the one-time code, exact registered redirect URI, client ID, and PKCE verifier to the discovered token endpoint. Public native clients use `token_endpoint_auth_method=none`. Confidential web clients use `private_key_jwt`; a deployment-provided key resolver returns the signing key and optional `kid`. Client assertions use RS256 and a 60-second lifetime.
+The adapter validates the one-time code and RFC 7636 verifier shape, binds the exact redirect URI to the registered client, and submits the code, redirect URI, client ID, and PKCE verifier to the discovered token endpoint. Public native clients use `token_endpoint_auth_method=none`. Confidential web clients use `private_key_jwt`; a deployment-provided key resolver returns the signing key and optional `kid`. Client assertions use RS256 and a 60-second lifetime.
 
 The adapter deliberately does not implement `client_secret_basic`. Registrations using that method fail closed until a dedicated secret resolver and tests are added.
 
