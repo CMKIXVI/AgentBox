@@ -147,7 +147,7 @@ Do not manually maintain duplicate API models when they can be generated from th
 
 ## 6. Identity, tenant, and authorization
 
-The existing AgentBox OIDC and authorization foundations remain authoritative.
+The existing AgentBox OIDC and authorization foundations remain authoritative. The backend verifier validates issuer, audience, signature, time claims, and the configured tenant claim. The Next.js and Flutter session ports are provider-neutral adapters only; a maintained OIDC SDK or reviewed BFF must own Authorization Code + PKCE, callback validation, refresh, logout, and secure credential storage. See [the OIDC client/session contract](docs/security/oidc-client-session-contract.md).
 
 Requirements:
 - OIDC authentication and validated server-side principals
@@ -285,8 +285,6 @@ The frontend strategy is introduced without displacing backend and security work
 | 1 | Canonical architecture and API contract inventory | Reviewed master architecture and endpoint/schema inventory |
 | 2 | Frontend workspace foundations | Flutter and Next.js app skeletons, independent CI, documented local run |
 | 3 | Authentication and tenant integration | OIDC login/session flows and negative tenant-isolation tests |
-
-Current progress: the route inventory is now checked against FastAPI's generated OpenAPI paths. Both clients have bearer-token-injected API transports; OIDC login, callback, refresh, and session storage remain deliberately unimplemented until an identity-provider/session strategy is selected.
 | 4 | Shared client generation | Reproducible Dart/TypeScript clients from the same OpenAPI contract |
 | 5 | Next.js Agent Studio foundation | Agent list, details, version view, and authorized create/clone flow |
 | 6 | Flutter operational foundation | Login, agent inventory, execution status, and notifications |
@@ -327,6 +325,6 @@ Important limitations remain:
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
 - A genuine code-execution sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
-- Flutter and Next.js are approved architectural strategies; their production applications and shared client contracts are not yet implemented.
+- Flutter and Next.js application shells, shared API transports, and provider-neutral session-reader ports are implemented on feature branches. The ports are not live OIDC login implementations; no provider, callback, token refresh, Next.js BFF, or native secure-storage adapter is configured.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.
