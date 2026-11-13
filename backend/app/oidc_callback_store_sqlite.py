@@ -117,7 +117,7 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
         if not isinstance(transaction_id, str) or not transaction_id:
             return None
         if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
-            raise ValueError("now_epoch must be an integer epoch timestamp")
+            raise TypeError("now_epoch must be an integer epoch timestamp")
 
         connection = self._connect()
         try:
@@ -167,7 +167,7 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
     def purge_expired(self, *, now_epoch: int) -> int:
         """Delete expired rows as maintenance; return the number removed."""
         if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
-            raise ValueError("now_epoch must be an integer epoch timestamp")
+            raise TypeError("now_epoch must be an integer epoch timestamp")
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
