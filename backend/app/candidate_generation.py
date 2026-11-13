@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from .registry import AgentRegistry, VersionConflictError
+from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .validation import validate_manifest
 
 VERSION_PATTERN = re.compile(
