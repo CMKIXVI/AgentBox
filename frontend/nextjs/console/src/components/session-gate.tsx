@@ -50,11 +50,11 @@ export function SessionGate({
   }, [sessionReader]);
 
   useEffect(() => {
-    const generation = ++readGeneration.current;
     if (state?.status !== "authenticated") return;
     let active = true;
     const delay = sessionRecheckDelayMs(state.session.expiresAt);
     const timer = setTimeout(() => {
+      const generation = ++readGeneration.current;
       void sessionReader.readSession().then(
         (session) => {
           if (active && generation === readGeneration.current) {
