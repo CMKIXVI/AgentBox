@@ -1,3 +1,4 @@
+import hashlib
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -24,8 +25,8 @@ class MemorySecrets:
 
 
 class FakeExchanger:
-    def __init__(self, claims=None):
-        self.claims = claims or {}
+    def __init__(self, claims):
+        self.claims = claims
         self.calls = []
 
     def exchange_and_validate(self, **kwargs):
@@ -51,7 +52,7 @@ def registration():
     }
 
 
-def make_flow(tmp_path, exchanger=None, secrets_store=None):
+def make_flow(tmp_path, exchanger, secrets_store=None):
     return OidcAuthorizationFlow(
         registration=registration(),
         issuer="https://identity.example.test/",
@@ -59,7 +60,7 @@ def make_flow(tmp_path, exchanger=None, secrets_store=None):
         tenant_claim="tenant_id",
         transactions=SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3"),
         secrets_store=secrets_store or MemorySecrets(),
-        exchanger=exchanger or FakeExchanger(),
+        exchanger=exchanger,
     )
 
 
@@ -77,117 +78,170 @@ def valid_claims(nonce, **overrides):
     return claims
 
 
-def test_start_builds_code_flow_with_s256_and_stores_only_references(tmp_path):
-    secrets_store = MemorySecrets()
-    flow = make_flow(tmp_path, secrets_store=secrets_store)
-    state, started = flow.start(
+def start_flow(flow, monkeypatch):
+    tokens = iter(["transaction-id-123456789", "state-value-12345678901234567890",
+                   "nonce-value-12345678901234567890", "verifier-value-12345678901234567890"])
+    monkeypatch.setattr("app.oidc_authorization_flow.secrets.token_urlsafe", lambda _: next(tokens))
+    started = flow.start(
         client_id="agentbox-web",
         redirect_uri="https://console.example.test/auth/callback",
         now_epoch=1000,
     )
     params = parse_qs(urlsplit(started.authorization_url).query)
+    return params["state"][0], params["nonce"][0], started
+
+
+def test_start_builds_code_flow_with_s256_and_persists_only_hashes(tmp_path, monkeypatch):
+    secrets_store = MemorySecrets()
+    flow = make_flow(tmp_path, FakeExchanger({}), secrets_store)
+    state, nonce, started = start_flow(flow, monkeypatch)
+    params = parse_qs(urlsplit(started.authorization_url).query)
     assert params["response_type"] == ["code"]
     assert params["code_challenge_method"] == ["S256"]
     assert params["state"] == [state]
-    assert params["nonce"]
+    assert params["nonce"] == [nonce]
+    assert params["scope"] == ["openid profile email"]
     assert started.expires_at_epoch == 1300
     assert len(secrets_store.values) == 1
-    stored_secret = next(iter(secrets_store.values.values()))
-    assert stored_secret not in state
+    verifier = next(iter(secrets_store.values.values()))
+    assert len(verifier) >= 43
     assert state not in str(secrets_store.values)
+    assert nonce not in str(secrets_store.values)
 
 
-def test_start_rejects_unregistered_redirect(tmp_path):
-    flow = make_flow(tmp_path)
-    with pytest.raises(OidcAuthorizationError, match="Redirect URI"):
+def test_start_rejects_unregistered_redirect(tmp_path, monkeypatch):
+    flow = make_flow(tmp_path, FakeExchanger({}))
+    with pytest.raises(OidcAuthorizationError, match="Unknown OIDC client"):
         flow.start(
-            client_id="agentbox-web",
+            client_id="unknown-client",
             redirect_uri="https://attacker.example/callback",
             now_epoch=1000,
         )
+    assert not list(tmp_path.glob("*.sqlite3-wal"))
 
 
-def test_complete_validates_identity_nonce_and_deletes_verifier(tmp_path):
+def test_complete_validates_identity_and_deletes_verifier(tmp_path, monkeypatch):
+    nonce = "nonce-value-12345678901234567890"
     secrets_store = MemorySecrets()
-    exchanger = FakeExchanger()
+    exchanger = FakeExchanger(valid_claims(nonce))
     flow = make_flow(tmp_path, exchanger, secrets_store)
-    state, _ = flow.start(
+    state, _, _ = start_flow(flow, monkeypatch)
+
+    identity = flow.complete(
+        state=state,
+        code="authorization-code",
         client_id="agentbox-web",
         redirect_uri="https://console.example.test/auth/callback",
-        now_epoch=1000,
+        now_epoch=1001,
     )
-    transaction = flow._transactions.consume_by_state_hash(
-        __import__("hashlib").sha256(state.encode()).hexdigest(), now_epoch=1000
-    )
-    # Reinsert the same transaction to exercise the public callback method.
-    flow._transactions.save(transaction)
-    nonce_hash = transaction.nonce_hash
-    # Recover the generated nonce from a controlled exchanger expectation by replacing it
-    # with a test-generated nonce in a separately created transaction is not possible;
-    # this test uses a deterministic nonce source below.
-    assert len(nonce_hash) == 64
-    assert len(secrets_store.values) == 1
+    assert identity.subject_id == "user-42"
+    assert identity.tenant_id == "tenant-7"
+    assert identity.client_id == "agentbox-web"
+    assert len(exchanger.calls) == 1
+    assert exchanger.calls[0]["code"] == "authorization-code"
+    assert exchanger.calls[0]["code_verifier"].startswith("verifier-value")
+    assert secrets_store.values == {}
 
 
-def test_callback_replay_is_rejected(tmp_path):
-    flow = make_flow(tmp_path)
-    state, _ = flow.start(
-        client_id="agentbox-web",
-        redirect_uri="https://console.example.test/auth/callback",
-        now_epoch=1000,
+def test_callback_replay_is_rejected_after_success(tmp_path, monkeypatch):
+    nonce = "nonce-value-12345678901234567890"
+    flow = make_flow(tmp_path, FakeExchanger(valid_claims(nonce)))
+    state, _, _ = start_flow(flow, monkeypatch)
+    flow.complete(
+        state=state, code="authorization-code", client_id="agentbox-web",
+        redirect_uri="https://console.example.test/auth/callback", now_epoch=1001,
     )
     with pytest.raises(OidcAuthorizationError, match="Invalid or expired"):
         flow.complete(
-            state=state,
-            code="authorization-code",
-            client_id="agentbox-web",
-            redirect_uri="https://console.example.test/auth/callback",
-            now_epoch=1001,
+            state=state, code="authorization-code", client_id="agentbox-web",
+            redirect_uri="https://console.example.test/auth/callback", now_epoch=1001,
         )
-    with pytest.raises(OidcAuthorizationError, match="Invalid or expired"):
+
+
+def test_wrong_nonce_fails_and_verifier_is_deleted(tmp_path, monkeypatch):
+    secrets_store = MemorySecrets()
+    flow = make_flow(tmp_path, FakeExchanger(valid_claims("attacker-nonce")), secrets_store)
+    state, _, _ = start_flow(flow, monkeypatch)
+    with pytest.raises(OidcAuthorizationError, match="nonce"):
         flow.complete(
-            state=state,
-            code="authorization-code",
-            client_id="agentbox-web",
-            redirect_uri="https://console.example.test/auth/callback",
-            now_epoch=1001,
+            state=state, code="authorization-code", client_id="agentbox-web",
+            redirect_uri="https://console.example.test/auth/callback", now_epoch=1001,
         )
+    assert secrets_store.values == {}
 
 
-def test_wrong_callback_client_consumes_transaction_and_fails_closed(tmp_path):
-    flow = make_flow(tmp_path)
-    state, _ = flow.start(
-        client_id="agentbox-web",
-        redirect_uri="https://console.example.test/auth/callback",
-        now_epoch=1000,
-    )
+def test_wrong_callback_client_consumes_transaction_and_fails_closed(tmp_path, monkeypatch):
+    flow = make_flow(tmp_path, FakeExchanger({}))
+    state, _, _ = start_flow(flow, monkeypatch)
     with pytest.raises(OidcAuthorizationError, match="does not match"):
         flow.complete(
-            state=state,
-            code="authorization-code",
-            client_id="other-client",
-            redirect_uri="https://console.example.test/auth/callback",
-            now_epoch=1001,
+            state=state, code="authorization-code", client_id="other-client",
+            redirect_uri="https://console.example.test/auth/callback", now_epoch=1001,
         )
     with pytest.raises(OidcAuthorizationError, match="Invalid or expired"):
         flow.complete(
-            state=state,
-            code="authorization-code",
+            state=state, code="authorization-code", client_id="agentbox-web",
+            redirect_uri="https://console.example.test/auth/callback", now_epoch=1001,
+        )
+
+
+def test_wrong_issuer_audience_and_expiry_are_rejected(tmp_path, monkeypatch):
+    cases = [
+        {"iss": "https://attacker.example/"},
+        {"aud": "other-client"},
+        {"exp": 1001},
+        {"aud": ["agentbox-web", "other"], "azp": "other"},
+    ]
+    for index, overrides in enumerate(cases):
+        case_dir = tmp_path / str(index)
+        case_dir.mkdir()
+        nonce = "nonce-value-12345678901234567890"
+        flow = make_flow(case_dir, FakeExchanger(valid_claims(nonce, **overrides)))
+        tokens = iter([f"transaction-{index}-123456", f"state-{index}-value-123456789",
+                       nonce, f"verifier-{index}-value-12345678901234567890"])
+        monkeypatch.setattr("app.oidc_authorization_flow.secrets.token_urlsafe", lambda _, t=tokens: next(t))
+        started = flow.start(
             client_id="agentbox-web",
             redirect_uri="https://console.example.test/auth/callback",
-            now_epoch=1001,
+            now_epoch=1000,
+        )
+        state = parse_qs(urlsplit(started.authorization_url).query)["state"][0]
+        with pytest.raises(OidcAuthorizationError):
+            flow.complete(
+                state=state, code="authorization-code", client_id="agentbox-web",
+                redirect_uri="https://console.example.test/auth/callback", now_epoch=1001,
+            )
+
+
+def test_expired_state_is_rejected(tmp_path, monkeypatch):
+    flow = make_flow(tmp_path, FakeExchanger({}))
+    state, _, _ = start_flow(flow, monkeypatch)
+    with pytest.raises(OidcAuthorizationError, match="Invalid or expired"):
+        flow.complete(
+            state=state, code="authorization-code", client_id="agentbox-web",
+            redirect_uri="https://console.example.test/auth/callback", now_epoch=1300,
         )
 
 
 def test_invalid_authorization_endpoint_query_is_rejected(tmp_path):
-    values = registration()
-    with pytest.raises(ValueError, match="query"):
+    with pytest.raises(ValueError, match="trusted HTTPS"):
         OidcAuthorizationFlow(
-            registration=values,
+            registration=registration(),
             issuer="https://identity.example.test/",
             authorization_endpoint="https://identity.example.test/authorize?client_id=evil",
             tenant_claim="tenant_id",
             transactions=SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3"),
             secrets_store=MemorySecrets(),
-            exchanger=FakeExchanger(),
+            exchanger=FakeExchanger({}),
         )
+
+
+def test_state_hash_is_not_the_raw_state_in_storage(tmp_path, monkeypatch):
+    flow = make_flow(tmp_path, FakeExchanger({}))
+    state, _, _ = start_flow(flow, monkeypatch)
+    stored = flow._transactions.consume_by_state_hash(
+        hashlib.sha256(state.encode()).hexdigest(), now_epoch=1001
+    )
+    assert stored is not None
+    assert stored.state_hash == hashlib.sha256(state.encode()).hexdigest()
+    assert stored.state_hash != state
