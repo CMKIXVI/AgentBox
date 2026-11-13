@@ -16,9 +16,9 @@ AgentBox has two first-class clients backed by one FastAPI platform:
 
 ## Current implementation status
 
-The Next.js and Flutter application shells and API transports are implemented. Both clients now have provider-neutral session-reader interfaces that supply a short-lived access token to the existing transport. Flutter has unit tests for valid, missing, expired, near-expiry, and incomplete sessions.
+The Next.js and Flutter application shells and API transports are implemented. Both clients have provider-neutral session-reader interfaces that supply a short-lived access token to the existing transport. The Next.js client includes a reusable `SessionGate`; Flutter includes `AgentBoxSessionGate`. Both render protected content only when a session is present, complete, and valid beyond a 30-second expiry safety window. Missing, invalid, expired, or unreadable sessions fail closed to the unauthenticated UI state.
 
-No live OIDC provider is configured. There is no login/callback, token exchange, refresh, logout, Next.js BFF, or native secure-storage adapter yet. Do not treat the session interfaces as a working login implementation.
+These gates are presentation boundaries only. They do not sign users in, redirect to a provider, refresh credentials, or replace backend authorization. No live OIDC provider is configured. There is no login/callback, token exchange, refresh, logout, Next.js BFF, or native secure-storage adapter yet. Do not treat the session interfaces or gates as a working login implementation.
 
 ## Local development
 
@@ -42,8 +42,8 @@ See [the master architecture](../ARCHITECTURE.md) and [OIDC session contract](..
 
 ## Continuous integration
 
-The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js console (TypeScript and production build) and Flutter client (static analysis and widget/unit tests) independently. The pipeline is a code-quality gate, not evidence of live API integration or production deployment.
+The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js console (TypeScript, session-state tests, and production build) and Flutter client (static analysis and widget/unit tests) independently. The pipeline is a code-quality gate, not evidence of live API integration or production deployment.
 
 ## Shared API transport
 
-The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports. Their session ports do not persist or refresh credentials and never send a tenant-authority header. Both API clients now expose a constructor/factory that accepts the provider-neutral session reader directly; invalid or near-expiry sessions are rejected before a protected request. CI runs session adapter unit tests for both clients.
+The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports. Their session ports do not persist or refresh credentials and never send a tenant-authority header. Both API clients expose a constructor/factory that accepts the provider-neutral session reader directly; invalid or near-expiry sessions are rejected before a protected request. CI runs session adapter and fail-closed UI-state tests for both clients.
