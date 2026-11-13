@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
+import 'oidc_auth.dart';
+
 void main() {
   runApp(const AgentBoxApp());
 }
@@ -30,8 +32,47 @@ class AgentBoxApp extends StatelessWidget {
   }
 }
 
-class AgentBoxHomePage extends StatelessWidget {
+class AgentBoxHomePage extends StatefulWidget {
   const AgentBoxHomePage({super.key});
+
+  @override
+  State<AgentBoxHomePage> createState() => _AgentBoxHomePageState();
+}
+
+class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
+  static const _oidcConfig = AgentBoxOidcConfig(
+    issuer: String.fromEnvironment('AGENTBOX_OIDC_ISSUER'),
+    clientId: String.fromEnvironment('AGENTBOX_OIDC_MOBILE_CLIENT_ID'),
+    redirectUrl: String.fromEnvironment('AGENTBOX_OIDC_MOBILE_REDIRECT_URI'),
+  );
+
+  late final AgentBoxOidcAuth _oidcAuth = AgentBoxOidcAuth(config: _oidcConfig);
+  bool _busy = false;
+  bool _signedIn = false;
+
+  Future<void> _signIn() async {
+    setState(() => _busy = true);
+    try {
+      await _oidcAuth.signIn();
+      if (!mounted) return;
+      setState(() => _signedIn = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authenticated with AgentBox Identity.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sign-in failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    await _oidcAuth.signOut();
+    if (mounted) setState(() => _signedIn = false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +97,18 @@ class AgentBoxHomePage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('AgentBox'),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Icon(Icons.account_circle_outlined),
-          ),
+        actions: [
+          if (_signedIn)
+            IconButton(
+              tooltip: 'Sign out',
+              onPressed: _busy ? null : _signOut,
+              icon: const Icon(Icons.logout),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Icon(Icons.account_circle_outlined),
+            ),
         ],
       ),
       body: SafeArea(
@@ -100,9 +148,35 @@ class AgentBoxHomePage extends StatelessWidget {
               const SizedBox(height: 12),
             ],
             const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _busy
+                  ? null
+                  : _signedIn
+                      ? _signOut
+                      : _oidcConfig.isConfigured
+                          ? _signIn
+                          : null,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(_signedIn ? Icons.logout : Icons.login),
+              label: Text(
+                _signedIn
+                    ? 'Sign out'
+                    : _oidcConfig.isConfigured
+                        ? 'Sign in with your organization'
+                        : 'OIDC configuration required',
+              ),
+            ),
+            const SizedBox(height: 12),
             Text(
-              'Preview foundation · Authentication and live API integration '
-              'are not yet enabled.',
+              _signedIn
+                  ? 'Authenticated · Tokens are held in platform-protected storage.'
+                  : 'Preview foundation · Configure OIDC issuer, mobile client ID, '
+                      'and redirect URI to enable sign-in.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
