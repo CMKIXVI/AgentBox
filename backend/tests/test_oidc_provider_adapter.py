@@ -302,3 +302,85 @@ def test_public_client_uses_no_client_assertion():
         adapter.close()
     assert "client_assertion" not in token_fields
     assert token_fields["client_id"] == [CLIENT_ID]
+
+
+def test_jwks_key_rotation_is_observed_between_exchanges():
+    key_a = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key_b = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwks_calls = 0
+
+    def handler(request):
+        nonlocal jwks_calls
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            token_key = key_a if jwks_calls == 0 else key_b
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(token_key, kid="rotating-key")
+            })
+        if request.url.path == "/jwks":
+            jwks_calls += 1
+            current = key_a if jwks_calls == 1 else key_b
+            return httpx.Response(200, json=_jwks(current.public_key(), kid="rotating-key"))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        for _ in range(2):
+            claims = adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="verifier", now_epoch=NOW + 1,
+            )
+            assert claims["sub"] == "user-42"
+    finally:
+        adapter.close()
+    assert jwks_calls == 2
+
+
+def test_jwks_redirect_is_rejected():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(signing_key)
+            })
+        return httpx.Response(302, headers={"Location": "https://attacker.example/jwks"})
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="signing keys"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="verifier", now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_adapter_rejects_invalid_client_registration():
+    with pytest.raises(ValueError, match="Invalid OIDC client registration"):
+        HttpOidcProviderAdapter(
+            issuer=ISSUER,
+            registration={"clients": []},
+            http_client=httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200))),
+        )
+
+
+def test_metadata_response_size_is_bounded():
+    def handler(_request):
+        return httpx.Response(
+            200, content=b" " * (1_048_577),
+            headers={"Content-Type": "application/json"},
+        )
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="discovery could not be loaded"):
+            _ = adapter.authorization_endpoint
+    finally:
+        adapter.close()
