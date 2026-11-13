@@ -20,9 +20,12 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
 
     def __init__(self, database_path: str | Path, *, timeout_seconds: float = 5.0):
         self._database_path = str(database_path)
+        if self._database_path == ":memory:":
+            raise ValueError("A durable SQLite file path is required; :memory: is unsupported")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
         self._timeout_seconds = timeout_seconds
-        if self._database_path != ":memory:":
-            Path(self._database_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self._database_path).parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
     def _connect(self) -> sqlite3.Connection:
@@ -39,9 +42,9 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
 
     def initialize(self) -> None:
         """Create the durable transaction table; safe to call on startup."""
-        with self._connect() as connection:
-            if self._database_path != ":memory:":
-                connection.execute("PRAGMA journal_mode = WAL")
+        connection = self._connect()
+        try:
+            connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS oidc_callback_transactions (
@@ -64,6 +67,8 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
                 ON oidc_callback_transactions(expires_at_epoch)
                 """
             )
+        finally:
+            connection.close()
 
     def save(self, transaction: OidcCallbackTransaction) -> None:
         """Insert a validated transaction; duplicate IDs are rejected."""
