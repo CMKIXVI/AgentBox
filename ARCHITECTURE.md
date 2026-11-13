@@ -285,6 +285,8 @@ The frontend strategy is introduced without displacing backend and security work
 | 1 | Canonical architecture and API contract inventory | Reviewed master architecture and endpoint/schema inventory |
 | 2 | Frontend workspace foundations | Flutter and Next.js app skeletons, independent CI, documented local run |
 | 3 | Authentication and tenant integration | OIDC login/session flows and negative tenant-isolation tests |
+
+Current progress: the route inventory is now checked against FastAPI's generated OpenAPI paths. Both clients have bearer-token-injected API transports; OIDC login, callback, refresh, and session storage remain deliberately unimplemented until an identity-provider/session strategy is selected.
 | 4 | Shared client generation | Reproducible Dart/TypeScript clients from the same OpenAPI contract |
 | 5 | Next.js Agent Studio foundation | Agent list, details, version view, and authorized create/clone flow |
 | 6 | Flutter operational foundation | Login, agent inventory, execution status, and notifications |
