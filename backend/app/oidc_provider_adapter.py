@@ -6,6 +6,7 @@ the issuer's live JWKS with an asymmetric algorithm allowlist.
 """
 from __future__ import annotations
 
+import json
 import secrets
 import time
 from collections.abc import Mapping
@@ -90,16 +91,26 @@ class HttpOidcProviderAdapter:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    @staticmethod
-    def _json_response(response: httpx.Response, label: str) -> dict[str, Any]:
-        if response.is_redirect:
-            raise OidcAuthorizationError(f"OIDC {label} endpoint must not redirect")
-        response.raise_for_status()
-        if len(response.content) > _MAX_DOCUMENT_BYTES:
-            raise OidcAuthorizationError(f"OIDC {label} response exceeds the size limit")
+    def _request_json(
+        self, method: str, url: str, label: str, **kwargs: Any
+    ) -> dict[str, Any]:
         try:
-            value = response.json()
-        except ValueError as exc:
+            with self._http.stream(method, url, **kwargs) as response:
+                if response.is_redirect:
+                    raise OidcAuthorizationError(f"OIDC {label} endpoint must not redirect")
+                response.raise_for_status()
+                body = bytearray()
+                for chunk in response.iter_bytes():
+                    body.extend(chunk)
+                    if len(body) > _MAX_DOCUMENT_BYTES:
+                        raise OidcAuthorizationError(
+                            f"OIDC {label} response exceeds the size limit"
+                        )
+        except httpx.HTTPError as exc:
+            raise OidcAuthorizationError(f"OIDC {label} request failed") from exc
+        try:
+            value = json.loads(body)
+        except (ValueError, UnicodeDecodeError) as exc:
             raise OidcAuthorizationError(f"OIDC {label} response is not valid JSON") from exc
         if not isinstance(value, dict):
             raise OidcAuthorizationError(f"OIDC {label} response must be a JSON object")
@@ -110,8 +121,8 @@ class HttpOidcProviderAdapter:
             return self._metadata
         discovery_url = f"{self._issuer.rstrip('/')}/.well-known/openid-configuration"
         try:
-            metadata = self._json_response(self._http.get(discovery_url), "discovery")
-        except (httpx.HTTPError, OidcAuthorizationError) as exc:
+            metadata = self._request_json("GET", discovery_url, "discovery")
+        except OidcAuthorizationError as exc:
             raise OidcAuthorizationError("OIDC discovery could not be loaded") from exc
         if metadata.get("issuer") != self._issuer:
             raise OidcAuthorizationError("OIDC discovery issuer does not exactly match configuration")
@@ -194,10 +205,8 @@ class HttpOidcProviderAdapter:
 
         metadata = self._get_metadata()
         try:
-            jwks = self._json_response(
-                self._http.get(metadata["jwks_uri"]), "JWKS"
-            )
-        except (httpx.HTTPError, OidcAuthorizationError) as exc:
+            jwks = self._request_json("GET", metadata["jwks_uri"], "JWKS")
+        except OidcAuthorizationError as exc:
             raise OidcAuthorizationError("OIDC signing keys could not be loaded") from exc
         keys = jwks.get("keys")
         if not isinstance(keys, list) or not 1 <= len(keys) <= _MAX_JWKS_KEYS:
@@ -269,13 +278,11 @@ class HttpOidcProviderAdapter:
             **self._client_auth(client, metadata["token_endpoint"]),
         }
         try:
-            response = self._http.post(
-                metadata["token_endpoint"],
-                data=form,
-                headers={"Accept": "application/json"},
+            token_payload = self._request_json(
+                "POST", metadata["token_endpoint"], "token",
+                data=form, headers={"Accept": "application/json"},
             )
-            token_payload = self._json_response(response, "token")
-        except (httpx.HTTPError, OidcAuthorizationError) as exc:
+        except OidcAuthorizationError as exc:
             raise OidcAuthorizationError("OIDC authorization code exchange failed") from exc
         id_token = token_payload.get("id_token")
         return self._verify_id_token(id_token, client_id=client_id, now_epoch=now_epoch)
