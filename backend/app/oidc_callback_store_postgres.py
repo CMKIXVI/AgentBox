@@ -34,6 +34,10 @@ _CREATE_EXPIRY_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_oidc_callback_transactions_expiry
 ON oidc_callback_transactions (expires_at_epoch)
 """
+_CREATE_STATE_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oidc_callback_transactions_state_hash
+ON oidc_callback_transactions (state_hash)
+"""
 
 
 def _from_row(row: dict[str, Any]) -> OidcCallbackTransaction:
@@ -73,6 +77,7 @@ class PostgresOidcCallbackTransactionStore(OidcCallbackTransactionStore):
         with self._connect() as connection:
             connection.execute(_CREATE_TABLE)
             connection.execute(_CREATE_EXPIRY_INDEX)
+            connection.execute(_CREATE_STATE_INDEX)
 
     def save(self, transaction: OidcCallbackTransaction) -> None:
         errors = validate_callback_transaction(transaction)
@@ -121,6 +126,13 @@ class PostgresOidcCallbackTransactionStore(OidcCallbackTransactionStore):
                 (transaction_id, now_epoch),
             )
             return None
+
+    def consume_by_state_hash(
+        self, state_hash: str, *, now_epoch: int
+    ) -> OidcCallbackTransaction | None:
+        if not isinstance(state_hash, str) or not _SHA256_HEX.fullmatch(state_hash):
+            return None
+        return self._consume("state_hash", state_hash, now_epoch=now_epoch)
 
     def purge_expired(self, *, now_epoch: int) -> int:
         if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
