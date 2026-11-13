@@ -16,6 +16,7 @@ import httpx
 import jwt
 
 from app.oidc_authorization_flow import OidcAuthorizationError
+from app.oidc_client_registration import validate_oidc_client_registration
 
 
 _ALLOWED_ID_TOKEN_ALGORITHMS = frozenset({"RS256", "PS256", "ES256"})
@@ -57,6 +58,9 @@ class HttpOidcProviderAdapter:
         timeout_seconds: float = 5.0,
         clock_skew_seconds: int = 60,
     ) -> None:
+        errors = validate_oidc_client_registration(registration)
+        if errors:
+            raise ValueError("Invalid OIDC client registration")
         issuer = _require_https_endpoint(issuer, "issuer")
         if urlsplit(issuer).query:
             raise ValueError("OIDC issuer must not contain a query")
