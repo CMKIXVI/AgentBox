@@ -59,4 +59,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sign-in required'), findsOneWidget);
   });
+
+  testWidgets('rechecks and closes protected UI at the expiry safety boundary', (tester) async {
+    final nearExpiry = AgentBoxSession(
+      subject: 'user-1',
+      accessToken: 'short-lived-token',
+      expiresAt: DateTime.now().add(const Duration(seconds: 31)),
+    );
+    await tester.pumpWidget(gate(FixedSessionReader(nearExpiry)));
+    await tester.pump();
+    expect(find.text('Welcome user-1'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.text('Sign-in required'), findsOneWidget);
+  });
 }
