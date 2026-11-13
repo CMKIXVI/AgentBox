@@ -123,7 +123,7 @@ def test_discovery_and_token_exchange_verify_signature_and_pkce():
             code="one-time-code",
             client_id=CLIENT_ID,
             redirect_uri="https://console.example.test/auth/callback",
-            code_verifier="a-long-pkce-verifier",
+            code_verifier="v" * 43,
             now_epoch=NOW + 1,
         )
     finally:
@@ -136,7 +136,7 @@ def test_discovery_and_token_exchange_verify_signature_and_pkce():
     token_form = parse_qs(requests[1].content.decode())
     assert token_form["grant_type"] == ["authorization_code"]
     assert token_form["code"] == ["one-time-code"]
-    assert token_form["code_verifier"] == ["a-long-pkce-verifier"]
+    assert token_form["code_verifier"] == ["v" * 43]
 
 
 def test_private_key_jwt_assertion_is_signed_for_token_endpoint():
@@ -176,7 +176,7 @@ def test_private_key_jwt_assertion_is_signed_for_token_endpoint():
         adapter.exchange_and_validate(
             code="code", client_id=CLIENT_ID,
             redirect_uri="https://console.example.test/auth/callback",
-            code_verifier="verifier", now_epoch=1001,
+            code_verifier="v" * 43, now_epoch=1001,
         )
     finally:
         adapter.close()
@@ -222,7 +222,7 @@ def test_id_token_with_unknown_kid_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=1001,
+                code_verifier="v" * 43, now_epoch=1001,
             )
     finally:
         adapter.close()
@@ -248,7 +248,7 @@ def test_hmac_signed_id_token_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=1001,
+                code_verifier="v" * 43, now_epoch=1001,
             )
     finally:
         adapter.close()
@@ -266,7 +266,7 @@ def test_token_endpoint_redirect_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=1001,
+                code_verifier="v" * 43, now_epoch=1001,
             )
     finally:
         adapter.close()
@@ -299,7 +299,7 @@ def test_public_client_uses_no_client_assertion():
         adapter.exchange_and_validate(
             code="code", client_id=CLIENT_ID,
             redirect_uri="com.agentbox.app://callback",
-            code_verifier="verifier", now_epoch=1001,
+            code_verifier="v" * 43, now_epoch=1001,
         )
     finally:
         adapter.close()
@@ -333,7 +333,7 @@ def test_jwks_key_rotation_is_observed_between_exchanges():
             claims = adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=NOW + 1,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
             assert claims["sub"] == "user-42"
     finally:
@@ -359,7 +359,7 @@ def test_jwks_redirect_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=NOW + 1,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -411,7 +411,7 @@ def test_signed_token_with_wrong_issuer_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=NOW + 1,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -439,7 +439,7 @@ def test_expired_id_token_is_rejected_against_supplied_clock():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=NOW + 1,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -458,7 +458,7 @@ def test_unregistered_redirect_is_rejected_before_network_exchange():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://attacker.example/callback",
-                code_verifier="verifier", now_epoch=NOW + 1,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -481,7 +481,7 @@ def test_client_secret_basic_is_not_silently_accepted():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="verifier", now_epoch=NOW + 1,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
