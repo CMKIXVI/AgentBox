@@ -181,6 +181,49 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
             return None
         return self._consume("state_hash", state_hash, now_epoch=now_epoch)
 
+    def _consume(self, key: str, value: str, *, now_epoch: int) -> OidcCallbackTransaction | None:
+        if key != "state_hash":
+            raise ValueError("Unsupported callback transaction lookup key")
+        if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
+            raise TypeError("now_epoch must be an integer epoch timestamp")
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """
+                SELECT transaction_id, client_id, redirect_uri, state_hash,
+                       nonce_hash, pkce_verifier_ref, created_at_epoch, expires_at_epoch
+                FROM oidc_callback_transactions
+                WHERE state_hash = ? AND expires_at_epoch > ?
+                """,
+                (value, now_epoch),
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    "DELETE FROM oidc_callback_transactions WHERE state_hash = ? AND expires_at_epoch <= ?",
+                    (value, now_epoch),
+                )
+                connection.commit()
+                return None
+            deleted = connection.execute(
+                "DELETE FROM oidc_callback_transactions WHERE state_hash = ?", (value,)
+            ).rowcount
+            if deleted != 1:
+                connection.rollback()
+                return None
+            connection.commit()
+            return OidcCallbackTransaction(
+                transaction_id=row["transaction_id"], client_id=row["client_id"],
+                redirect_uri=row["redirect_uri"], state_hash=row["state_hash"],
+                nonce_hash=row["nonce_hash"], pkce_verifier_ref=row["pkce_verifier_ref"],
+                created_at_epoch=row["created_at_epoch"], expires_at_epoch=row["expires_at_epoch"],
+            )
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def purge_expired(self, *, now_epoch: int) -> int:
         """Delete expired rows as maintenance; return the number removed."""
         if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
