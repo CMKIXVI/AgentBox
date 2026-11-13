@@ -44,7 +44,7 @@ class AgentBoxOidcAuth {
         config.clientId,
         config.redirectUrl,
         issuer: config.issuer,
-        scopes: const ['openid', 'profile', 'email'],
+        scopes: const ['openid', 'profile', 'email', 'offline_access'],
       ),
     );
 
@@ -64,7 +64,7 @@ class AgentBoxOidcAuth {
 
     final expiryValue = await _secureStorage.read(key: _expiryKey);
     final expiry = expiryValue == null ? null : DateTime.tryParse(expiryValue);
-    if (expiry == null || expiry.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
+    if (expiry != null && expiry.isAfter(DateTime.now().add(const Duration(minutes: 1)))) {
       return accessToken;
     }
 
