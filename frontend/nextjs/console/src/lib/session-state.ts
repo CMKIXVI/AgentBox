@@ -5,6 +5,7 @@ export type SessionState =
   | { status: "unauthenticated" };
 
 const EXPIRY_SKEW_SECONDS = 30;
+const MAX_TIMEOUT_MS = 2_147_000_000;
 
 /** Resolve a read-only session into a fail-closed UI state. */
 export function resolveSessionState(
@@ -21,4 +22,14 @@ export function resolveSessionState(
     return { status: "unauthenticated" };
   }
   return { status: "authenticated", session };
+}
+
+/** Milliseconds until the gate must re-read the session, capped to timer limits. */
+export function sessionRecheckDelayMs(
+  expiresAt: number,
+  nowMs: number = Date.now(),
+): number {
+  if (!Number.isFinite(expiresAt) || !Number.isFinite(nowMs)) return 0;
+  const remaining = expiresAt * 1000 - nowMs - EXPIRY_SKEW_SECONDS * 1000;
+  return Math.min(Math.max(0, remaining), MAX_TIMEOUT_MS);
 }
