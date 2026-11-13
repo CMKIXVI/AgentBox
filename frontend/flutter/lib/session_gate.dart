@@ -16,6 +16,7 @@ class AgentBoxSessionGate extends StatefulWidget {
     required this.authenticatedBuilder,
     required this.unauthenticatedBuilder,
     required this.loadingBuilder,
+    this.clock,
     super.key,
   });
 
@@ -23,6 +24,7 @@ class AgentBoxSessionGate extends StatefulWidget {
   final AgentBoxAuthenticatedBuilder authenticatedBuilder;
   final WidgetBuilder unauthenticatedBuilder;
   final WidgetBuilder loadingBuilder;
+  final DateTime Function()? clock;
 
   @override
   State<AgentBoxSessionGate> createState() => _AgentBoxSessionGateState();
@@ -48,12 +50,14 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
     }
   }
 
+  DateTime get _now => widget.clock?.call() ?? DateTime.now();
+
   bool _isValid(AgentBoxSession? session) {
     return session != null &&
         session.subject.isNotEmpty &&
         session.accessToken.isNotEmpty &&
         session.expiresAt.isAfter(
-          DateTime.now().add(const Duration(seconds: 30)),
+          _now.add(const Duration(seconds: 30)),
         );
   }
 
@@ -86,7 +90,7 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
       final recheckAt = session!.expiresAt.subtract(
         const Duration(seconds: 30),
       );
-      final delay = recheckAt.difference(DateTime.now());
+      final delay = recheckAt.difference(_now);
       _expiryTimer = Timer(delay.isNegative ? Duration.zero : delay, _loadSession);
     } catch (_) {
       if (!mounted) return;
