@@ -29,7 +29,9 @@ def _registration(**overrides):
         "pkce_method": "S256",
     }
     client.update(overrides)
-    return {"clients": [client]}
+    if client["platform"] == "native":
+        client.pop("client_secret_ref", None)
+    return {"schema_version": "1.0", "protocol": "oidc", "clients": [client]}
 
 
 def _metadata(**overrides):
@@ -276,6 +278,7 @@ def test_public_client_uses_no_client_assertion():
         platform="native",
         client_type="public",
         token_endpoint_auth_method="none",
+        redirect_uris=["com.agentbox.app://callback"],
     )
     token_fields = {}
 
