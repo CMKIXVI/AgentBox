@@ -5,5 +5,6 @@ declare module "next-auth/jwt" {
     agentboxAccessToken?: string;
     agentboxRefreshToken?: string;
     agentboxExpiresAt?: number;
+    agentboxAuthError?: string;
   }
 }
