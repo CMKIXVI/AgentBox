@@ -70,6 +70,8 @@ AgentBox will maintain two first-class frontend applications.
 
 **Primary role:** mobile-first and device-oriented access to AgentBox.
 
+The client uses Flutter with the standalone `material_ui` design package (rather than the deprecated in-SDK Material import on current Flutter stable).
+
 Target platforms:
 - Android
 - iOS
