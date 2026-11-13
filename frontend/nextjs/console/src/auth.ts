@@ -14,7 +14,7 @@ const providers = oidcConfigured
       issuer,
       clientId,
       clientSecret,
-      authorization: { params: { scope: "openid profile email" } },
+      authorization: { params: { scope: process.env.AGENTBOX_OIDC_SCOPES ?? "openid profile email offline_access" } },
       checks: ["pkce", "state", "nonce"] as ["pkce", "state", "nonce"],
     }]
   : [];
