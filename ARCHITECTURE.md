@@ -325,6 +325,6 @@ Important limitations remain:
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
 - A genuine code-execution sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
-- Flutter and Next.js are approved architectural strategies; their production applications and shared client contracts are not yet implemented.
+- Initial Next.js console and Flutter operational app shells, plus a widget test and frontend CI jobs, are being introduced in stacked PR #22. They remain preview foundations: OIDC login, live API integration, generated Dart/TypeScript clients, and end-to-end verification are not yet implemented.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.
