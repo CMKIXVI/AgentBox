@@ -2,11 +2,11 @@ import json
 import time
 from urllib.parse import parse_qs
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 import httpx
 import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.oidc_authorization_flow import OidcAuthorizationError
 from app.oidc_provider_adapter import HttpOidcProviderAdapter
