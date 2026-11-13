@@ -6,12 +6,12 @@ the issuer's live JWKS with an asymmetric algorithm allowlist.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import re
 import secrets
 import time
-from collections.abc import Mapping
-from typing import Any, Protocol
+from typing import Any, Protocol, Self
 from urllib.parse import urlsplit
 
 import httpx
@@ -88,7 +88,7 @@ class HttpOidcProviderAdapter:
         if self._owns_http:
             self._http.close()
 
-    def __enter__(self) -> HttpOidcProviderAdapter:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *_: object) -> None:
