@@ -5,8 +5,11 @@ processes sharing this database file on one host. This is not a multi-host store
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
+
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 from app.oidc_callback_contract import (
     OidcCallbackTransaction,
