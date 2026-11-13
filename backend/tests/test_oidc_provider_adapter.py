@@ -443,3 +443,45 @@ def test_expired_id_token_is_rejected_against_supplied_clock():
             )
     finally:
         adapter.close()
+
+
+def test_unregistered_redirect_is_rejected_before_network_exchange():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json=_metadata())
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="Redirect URI"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://attacker.example/callback",
+                code_verifier="verifier", now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+    assert requests == []
+
+
+def test_client_secret_basic_is_not_silently_accepted():
+    registration = _registration(token_endpoint_auth_method="client_secret_basic")
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata(
+                token_endpoint_auth_methods_supported=["client_secret_basic"]
+            ))
+        return httpx.Response(200, json={})
+
+    adapter = _make_adapter(handler, registration=registration)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="supports only none and private_key_jwt"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="verifier", now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
