@@ -204,8 +204,8 @@ class ContextEvidenceRequest(BaseModel):
 
 
 MUTABLE_MANIFEST_FIELDS = {
-    "name", "description", "purpose", "behavior", "model_binding", "tools",
-    "workflow_ref", "memory", "knowledge_sources", "permissions", "policy_refs",
+    "name", "description", "purpose", "behavior", "model_binding",
+    "workflow_ref", "memory", "knowledge_sources", "policy_refs",
     "dependencies", "runtime_targets", "evaluation_profile_refs", "tags",
 }
 
