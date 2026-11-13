@@ -79,7 +79,7 @@ def test_expiry_purge_removes_only_expired_rows(tmp_path):
 
 def test_consume_rejects_boolean_clock(tmp_path):
     store = SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3")
-    with pytest.raises(ValueError, match="integer epoch"):
+    with pytest.raises(TypeError, match="integer epoch"):
         store.consume_once("txn-123", now_epoch=True)
 
 
