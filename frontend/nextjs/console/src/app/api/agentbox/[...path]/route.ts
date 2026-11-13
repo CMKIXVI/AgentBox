@@ -22,7 +22,11 @@ async function proxy(request: NextRequest, context: RouteContext) {
 
   const token = await getToken({ req: request, secret });
   const accessToken = token?.agentboxAccessToken;
-  if (typeof accessToken !== "string" || accessToken.length === 0) {
+  if (
+    token?.agentboxAuthError ||
+    typeof accessToken !== "string" ||
+    accessToken.length === 0
+  ) {
     return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
   }
 
