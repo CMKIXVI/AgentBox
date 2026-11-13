@@ -10,8 +10,8 @@ import base64
 import hashlib
 import hmac
 import secrets
-from contextlib import suppress
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlencode, urlsplit, urlunsplit
