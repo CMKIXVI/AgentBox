@@ -7,6 +7,7 @@ the issuer's live JWKS with an asymmetric algorithm allowlist.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import time
 from collections.abc import Mapping
@@ -24,6 +25,7 @@ from app.oidc_client_registration import validate_oidc_client_registration
 _ALLOWED_ID_TOKEN_ALGORITHMS = frozenset({"RS256", "PS256", "ES256"})
 _MAX_DOCUMENT_BYTES = 1_048_576
 _MAX_JWKS_KEYS = 100
+_PKCE_VERIFIER = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
 
 
 class PrivateKeyResolver(Protocol):
@@ -274,6 +276,12 @@ class HttpOidcProviderAdapter:
         code_verifier: str,
         now_epoch: int,
     ) -> Mapping[str, Any]:
+        if not isinstance(code, str) or not 1 <= len(code) <= 8192:
+            raise OidcAuthorizationError("OIDC authorization code is invalid")
+        if not isinstance(code_verifier, str) or not _PKCE_VERIFIER.fullmatch(code_verifier):
+            raise OidcAuthorizationError("OIDC PKCE verifier must be 43 to 128 unreserved characters")
+        if isinstance(now_epoch, bool) or not isinstance(now_epoch, int) or now_epoch < 0:
+            raise ValueError("now_epoch must be a non-negative integer")
         client = self._client(client_id)
         if not is_registered_redirect_uri(self._registration, client_id, redirect_uri):
             raise OidcAuthorizationError("Redirect URI is not registered for this OIDC client")
