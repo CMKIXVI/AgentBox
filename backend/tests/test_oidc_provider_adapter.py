@@ -11,7 +11,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from app.oidc_authorization_flow import OidcAuthorizationError
 from app.oidc_provider_adapter import HttpOidcProviderAdapter
 
-
 ISSUER = "https://identity.example.test/"
 NOW = int(time.time())
 CLIENT_ID = "agentbox-web"
