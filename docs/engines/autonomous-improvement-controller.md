@@ -178,11 +178,13 @@ The sequence is additive. A batch is not considered production-ready merely beca
 - No automatic production promotion without independent policy and approval.
 - No blind import of thousands of Go files or their dependencies.
 
-## 12. First runtime slice implemented
+## 12. Runtime slices implemented
 
 PR #19 adds tenant-scoped execution experience records, traceable proposed lessons, profile-version-pinned fitness selection with minimum sample counts, exact authorization and encrypted backup/restore coverage. See [Execution experience and learning records](execution-experience.md).
 
-The current experience-to-execution/evaluation linkage is caller-asserted and marked unverified. The existing evaluation service scores caller-submitted outputs; it does not execute a benchmark suite. Fitness selection is therefore a triage signal only, not a promotion gate. Automated learning, candidate generation, same-workload parent/candidate execution, a durable autonomous controller, sandboxing and governed promotion remain unimplemented.
+PR #20 adds deterministic bounded candidate generation from an immutable parent version. Registered operators adjust only bounded behavioural settings and selected numeric model parameters. Agent identity, tenant, tools and permissions remain unchanged; schema validation and parent lineage are required. See [Bounded candidate generation](candidate-generation.md).
+
+The experience-to-execution/evaluation linkage remains caller-asserted and unverified. The existing evaluation service scores caller-submitted outputs; it does not execute a benchmark suite. Fitness selection is a triage signal, not a promotion gate. Candidates are unverified and cannot be promoted. Same-workload parent/candidate execution, a durable autonomous controller, sandboxing, mandatory gates and governed promotion remain unimplemented.
 
 ## 13. Readiness and definition of done
 
