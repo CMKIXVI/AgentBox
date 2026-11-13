@@ -16,7 +16,7 @@ AgentBox has two first-class clients backed by one FastAPI platform:
 
 ## Current implementation status
 
-This workspace is the initial application foundation. The Next.js and Flutter shells are not yet authenticated or connected to live AgentBox APIs. Their current screens are intentionally static until the API contract inventory and OIDC client flows are implemented.
+The Next.js and Flutter application shells, bearer-token API transports, and versioned route inventory are implemented on the current stacked feature branches. Screens remain preview/static: client login/session flows and live end-to-end API integration are not yet enabled. The backend validates OIDC access tokens and derives tenant context from a configured verified claim.
 
 ## Local development
 
@@ -44,4 +44,4 @@ The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js
 
 ## Shared API transport
 
-The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports; an OIDC/session provider must supply the access token. Neither client sends a tenant-authority header or persists credentials in this transport layer.
+The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports; an OIDC session integration must supply short-lived access tokens. Neither client sends a tenant-authority header or persists credentials in the transport layer. The provider-neutral implementation contract is documented in [OIDC client integration](../docs/security/oidc-client-integration-contract.md). Web login is planned as a Next.js BFF session with Secure/HttpOnly cookies; Flutter login uses system-browser Authorization Code + PKCE and platform-protected storage. Provider selection remains a deployment decision.
