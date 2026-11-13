@@ -37,7 +37,7 @@ The selected adapter must:
 - Next.js `SessionGate` and Flutter `AgentBoxSessionGate` read the existing session port and expose loading, authenticated, and unauthenticated presentation states.
 - Both require a non-empty subject, non-empty access token, and expiry more than 30 seconds in the future.
 - At 30 seconds before expiry, each gate re-reads its session adapter. If the adapter returns a refreshed valid session, the timer is rescheduled; otherwise protected UI is removed and the unauthenticated state is rendered.
-- A session-reader exception fails closed. The Flutter timer is cancelled on disposal or reader replacement; the Next.js timer is cleaned up when state changes or the component unmounts.
+- A session-reader exception fails closed. If the reader is replaced while a read is pending, only the newest read may update the gate; stale successes and failures are ignored. Flutter invalidates in-flight reads with a monotonically increasing generation and cancels the prior timer. Next.js combines effect cleanup with a read-generation guard. Timers are cleaned up on reader/state changes and disposal/unmount.
 - These gates do not redirect, initiate login, or imply that a user is authorized for any backend resource.
 - Every protected API operation must still pass FastAPI authentication, tenant isolation, and exact authorization checks.
 
