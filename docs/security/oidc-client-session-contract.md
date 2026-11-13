@@ -27,10 +27,18 @@ The selected adapter must:
 
 ## Client adapter ports
 
-- Next.js: frontend/nextjs/console/src/lib/auth-session.ts defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements SessionReader.
-- Flutter: frontend/flutter/lib/auth_session.dart defines the equivalent port. The future native OIDC adapter implements AgentBoxSessionReader and must use platform secure storage through a maintained SDK.
+- Next.js: `frontend/nextjs/console/src/lib/auth-session.ts` defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements `SessionReader`.
+- Flutter: `frontend/flutter/lib/auth_session.dart` defines the equivalent port. The future native OIDC adapter implements `AgentBoxSessionReader` and must use platform secure storage through a maintained SDK.
 - Both access-token providers reject missing or near-expiry sessions. They do not refresh or persist tokens.
-- Existing AgentBoxApiClient transports continue to receive an injected access-token provider. No duplicate API auth path is introduced.
+- Existing `AgentBoxApiClient` transports continue to receive an injected access-token provider. No duplicate API auth path is introduced.
+
+## Provider-neutral UI session gates
+
+- Next.js `SessionGate` and Flutter `AgentBoxSessionGate` read the existing session port and expose loading, authenticated, and unauthenticated presentation states.
+- Both require a non-empty subject, non-empty access token, and expiry more than 30 seconds in the future.
+- Session-reader exceptions, missing sessions, incomplete sessions, and expired/near-expiry sessions fail closed.
+- These gates do not redirect, initiate login, refresh tokens, or imply that a user is authorized for any backend resource.
+- Every protected API operation must still pass FastAPI authentication, tenant isolation, and exact authorization checks.
 
 ## Required provider/deployment inputs
 
@@ -62,4 +70,4 @@ Never commit client secrets, signing keys, refresh tokens, or production credent
 
 ## Current limitation
 
-This batch adds provider-neutral client ports and tests only. It does not create a functional sign-in button, OAuth callback, token exchange, refresh mechanism, BFF, provider configuration, or live identity-provider connection. Those require a provider decision and registered client applications.
+The provider-neutral session ports, API transport adapters, and UI gates are implemented and unit-tested. This does not create a functional sign-in button, OAuth callback, token exchange, refresh mechanism, logout flow, BFF, provider configuration, or live identity-provider connection. Those require a provider decision and registered client applications.
