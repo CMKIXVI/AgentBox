@@ -39,6 +39,18 @@ The Next.js client includes `src/lib/safe-return-target.ts`, a standalone naviga
 
 These are policy helpers only. No cookie is issued or read, no session identifier is generated or stored, no CSRF token is issued, and no BFF route exists yet. Every future route must authenticate the session, apply this guard before processing mutations, and enforce FastAPI authorization for the underlying operation.
 
+## Provider-neutral BFF upstream boundary
+
+`frontend/nextjs/console/src/lib/bff-upstream.ts` adds a tested request-policy boundary for a future Next.js BFF:
+- Backend origin is configured server-side and must be HTTPS, except localhost development.
+- Only existing AgentBox client operations are allowlisted: health GET, agent creation POST, agent-version collection/detail GET, and execution-detail GET.
+- Version-list query parameters are limited to bounded, unique `limit` and `offset` values. Other routes reject query strings.
+- Path traversal, encoded separators, backslashes, malformed encodings, and unlisted methods/routes fail closed.
+- Only `Accept` and `Content-Type` are forwarded by the header helper. Browser cookies, Authorization, tenant/user identity, host, and forwarded headers are not copied.
+- Request bodies are limited to JSON POST operations; safe methods must be bodyless.
+
+This remains a policy layer, not an HTTP proxy. No Next.js route handler exists, no session cookie is read, no server-side access token is attached, and no backend request is made. A future route must obtain identity only from the server session adapter, attach its server-derived bearer token, and let FastAPI enforce authorization and tenant isolation.
+
 ## Client adapter ports
 
 - Next.js: `frontend/nextjs/console/src/lib/auth-session.ts` defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements `SessionReader`.
