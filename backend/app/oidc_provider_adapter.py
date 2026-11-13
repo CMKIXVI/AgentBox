@@ -6,11 +6,11 @@ the issuer's live JWKS with an asymmetric algorithm allowlist.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
 import json
 import re
 import secrets
 import time
+from collections.abc import Mapping
 from typing import Any, Protocol, Self
 from urllib.parse import urlsplit
 
