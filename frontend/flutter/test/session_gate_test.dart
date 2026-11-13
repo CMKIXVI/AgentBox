@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agentbox/auth_session.dart';
 import 'package:agentbox/session_gate.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +17,13 @@ class FixedSessionReader implements AgentBoxSessionReader {
   }
 }
 
+class DeferredSessionReader implements AgentBoxSessionReader {
+  final Completer<AgentBoxSession?> completer = Completer<AgentBoxSession?>();
+
+  @override
+  Future<AgentBoxSession?> readSession() => completer.future;
+}
+
 void main() {
   final validSession = AgentBoxSession(
     subject: 'user-1',
@@ -22,7 +31,8 @@ void main() {
     expiresAt: DateTime.now().add(const Duration(minutes: 5)),
   );
 
-  Widget gate(FixedSessionReader reader, {DateTime Function()? clock}) => MaterialApp(
+  Widget gate(AgentBoxSessionReader reader, {DateTime Function()? clock}) =>
+      MaterialApp(
         home: AgentBoxSessionGate(
           sessionReader: reader,
           loadingBuilder: (_) => const Text('Loading session'),
@@ -56,12 +66,16 @@ void main() {
   });
 
   testWidgets('fails closed when session reader throws', (tester) async {
-    await tester.pumpWidget(gate(FixedSessionReader(null, error: Exception('offline'))));
+    await tester.pumpWidget(
+      gate(FixedSessionReader(null, error: Exception('offline'))),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Sign-in required'), findsOneWidget);
   });
 
-  testWidgets('rechecks and closes protected UI at the expiry safety boundary', (tester) async {
+  testWidgets('rechecks and closes protected UI at the expiry safety boundary', (
+    tester,
+  ) async {
     var now = DateTime.now();
     final nearExpiry = AgentBoxSession(
       subject: 'user-1',
@@ -78,5 +92,50 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.text('Sign-in required'), findsOneWidget);
+  });
+
+  testWidgets('ignores an older reader result after reader replacement', (
+    tester,
+  ) async {
+    final oldReader = DeferredSessionReader();
+    final replacementSession = AgentBoxSession(
+      subject: 'replacement-user',
+      accessToken: 'replacement-token',
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
+
+    await tester.pumpWidget(gate(oldReader));
+    await tester.pump();
+    expect(find.text('Loading session'), findsOneWidget);
+
+    await tester.pumpWidget(gate(FixedSessionReader(replacementSession)));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome replacement-user'), findsOneWidget);
+
+    oldReader.completer.complete(validSession);
+    await tester.pump();
+    expect(find.text('Welcome replacement-user'), findsOneWidget);
+    expect(find.text('Welcome user-1'), findsNothing);
+  });
+
+  testWidgets('ignores an older reader error after reader replacement', (
+    tester,
+  ) async {
+    final oldReader = DeferredSessionReader();
+    final replacementSession = AgentBoxSession(
+      subject: 'replacement-user',
+      accessToken: 'replacement-token',
+      expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+    );
+
+    await tester.pumpWidget(gate(oldReader));
+    await tester.pump();
+    await tester.pumpWidget(gate(FixedSessionReader(replacementSession)));
+    await tester.pumpAndSettle();
+
+    oldReader.completer.completeError(Exception('stale reader failure'));
+    await tester.pump();
+    expect(find.text('Welcome replacement-user'), findsOneWidget);
+    expect(find.text('Sign-in required'), findsNothing);
   });
 }
