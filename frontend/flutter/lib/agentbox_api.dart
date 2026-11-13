@@ -1,3 +1,4 @@
+import 'auth_session.dart';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -28,6 +29,17 @@ class AgentBoxApiClient {
       throw ArgumentError('AgentBox API must use HTTPS outside localhost development');
     }
   }
+
+  AgentBoxApiClient.withSessionReader({
+    required String baseUrl,
+    required AgentBoxSessionReader sessionReader,
+    DateTime Function()? clock,
+    http.Client? httpClient,
+  }) : this(
+          baseUrl: baseUrl,
+          accessTokenProvider: createAccessTokenProvider(sessionReader, clock: clock),
+          httpClient: httpClient,
+        );
 
   final Uri _baseUri;
   final AccessTokenProvider _accessTokenProvider;
