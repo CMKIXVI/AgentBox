@@ -14,6 +14,7 @@ from app.oidc_provider_adapter import HttpOidcProviderAdapter
 ISSUER = "https://identity.example.test/"
 NOW = int(time.time())
 CLIENT_ID = "agentbox-web"
+DEFAULT_CLIENT_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
 def _registration(**overrides):
@@ -85,13 +86,17 @@ class MemoryPrivateKeys:
 
 
 def _make_adapter(handler, *, registration=None, key_resolver=None, follow_redirects=False):
+    selected_registration = registration or _registration()
+    auth_method = selected_registration["clients"][0]["token_endpoint_auth_method"]
+    if key_resolver is None and auth_method == "private_key_jwt":
+        key_resolver = MemoryPrivateKeys(DEFAULT_CLIENT_KEY)
     client = httpx.Client(
         transport=httpx.MockTransport(handler),
         follow_redirects=follow_redirects,
     )
     return HttpOidcProviderAdapter(
         issuer=ISSUER,
-        registration=registration or _registration(),
+        registration=selected_registration,
         private_key_resolver=key_resolver,
         http_client=client,
     )
