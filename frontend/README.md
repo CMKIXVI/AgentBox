@@ -40,4 +40,4 @@ See [the master architecture](../ARCHITECTURE.md) for client responsibilities, s
 
 ## Continuous integration
 
-The repository workflow `.github/workflows/frontend-ci.yml` validates the Next.js console (TypeScript and production build) and Flutter client (static analysis and widget tests) independently. The pipeline is a code-quality gate, not evidence of live API integration or production deployment.
+The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js console (TypeScript and production build) and Flutter client (static analysis and widget tests) independently. The pipeline is a code-quality gate, not evidence of live API integration or production deployment.
