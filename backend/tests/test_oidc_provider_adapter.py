@@ -1,9 +1,11 @@
 import json
+import time
 from urllib.parse import parse_qs
 
 import httpx
 import jwt
 import pytest
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from app.oidc_authorization_flow import OidcAuthorizationError
@@ -11,6 +13,7 @@ from app.oidc_provider_adapter import HttpOidcProviderAdapter
 
 
 ISSUER = "https://identity.example.test/"
+NOW = int(time.time())
 CLIENT_ID = "agentbox-web"
 
 
@@ -49,8 +52,8 @@ def _signed_id_token(private_key, *, kid="signing-key", **overrides):
         "iss": ISSUER,
         "sub": "user-42",
         "aud": CLIENT_ID,
-        "iat": 1000,
-        "exp": 1600,
+        "iat": NOW,
+        "exp": NOW + 600,
         "nonce": "nonce-value",
     }
     claims.update(overrides)
@@ -119,7 +122,7 @@ def test_discovery_and_token_exchange_verify_signature_and_pkce():
             client_id=CLIENT_ID,
             redirect_uri="https://console.example.test/auth/callback",
             code_verifier="a-long-pkce-verifier",
-            now_epoch=1001,
+            now_epoch=NOW + 1,
         )
     finally:
         adapter.close()
@@ -139,9 +142,9 @@ def test_private_key_jwt_assertion_is_signed_for_token_endpoint():
     client_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     resolver = MemoryPrivateKeys(
         client_key.private_bytes(
-            encoding=__import__("cryptography").hazmat.primitives.serialization.Encoding.PEM,
-            format=__import__("cryptography").hazmat.primitives.serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=__import__("cryptography").hazmat.primitives.serialization.NoEncryption(),
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
         )
     )
     assertion_headers = {}
@@ -229,7 +232,7 @@ def test_hmac_signed_id_token_is_rejected():
             return httpx.Response(200, json=_metadata())
         if request.url.path == "/token":
             token = jwt.encode(
-                {"iss": ISSUER, "sub": "u", "aud": CLIENT_ID, "iat": 1000, "exp": 1600},
+                {"iss": ISSUER, "sub": "u", "aud": CLIENT_ID, "iat": NOW, "exp": NOW + 600},
                 "shared-secret", algorithm="HS256",
             )
             return httpx.Response(200, json={"id_token": token})
