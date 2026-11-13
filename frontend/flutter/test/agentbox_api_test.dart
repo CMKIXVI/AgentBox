@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:agentbox/agentbox_api.dart';
+import 'package:agentbox/auth_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
