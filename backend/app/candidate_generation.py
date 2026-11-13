@@ -98,6 +98,13 @@ OPERATORS: dict[str, MutationOperator] = {
 }
 
 
+def _value_at(manifest: dict[str, Any], path: str) -> Any:
+    value: Any = manifest
+    for segment in path.strip("/").split("/"):
+        value = value.get(segment) if isinstance(value, dict) else None
+    return value
+
+
 class CandidateGenerationService:
     """Create a new immutable manifest version from bounded deterministic mutations."""
 
@@ -199,7 +206,10 @@ class CandidateGenerationService:
             "seed": seed,
             "operator_version": OPERATOR_VERSION,
             "operator_ids": [item.operator_id for item in ordered],
-            "changed_paths": sorted({item.path for item in ordered}),
+            "changed_paths": sorted({
+                item.path for item in ordered
+                if _value_at(parent.manifest, item.path) != _value_at(candidate, item.path)
+            }),
             "trust_status": "unverified_candidate",
             "promotion_eligible": False,
         }
