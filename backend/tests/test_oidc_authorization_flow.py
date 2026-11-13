@@ -80,7 +80,7 @@ def valid_claims(nonce, **overrides):
 
 def start_flow(flow, monkeypatch):
     tokens = iter(["transaction-id-123456789", "state-value-12345678901234567890",
-                   "nonce-value-12345678901234567890", "verifier-value-12345678901234567890"])
+                   "nonce-value-12345678901234567890", "verifier-value-12345678901234567890123456789012345678901234567890"])
     monkeypatch.setattr("app.oidc_authorization_flow.secrets.token_urlsafe", lambda _: next(tokens))
     started = flow.start(
         client_id="agentbox-web",
