@@ -90,8 +90,15 @@ class OidcAuthorizationFlow:
             raise ValueError("Invalid OIDC client registration")
         issuer_parts = urlsplit(issuer)
         endpoint_parts = urlsplit(authorization_endpoint)
-        if issuer_parts.scheme != "https" or not issuer_parts.netloc:
-            raise ValueError("OIDC issuer must be an HTTPS URL")
+        if (
+            issuer_parts.scheme != "https"
+            or not issuer_parts.netloc
+            or issuer_parts.username is not None
+            or issuer_parts.password is not None
+            or issuer_parts.query
+            or issuer_parts.fragment
+        ):
+            raise ValueError("OIDC issuer must be a trusted HTTPS URL")
         if (
             endpoint_parts.scheme != "https"
             or not endpoint_parts.netloc
@@ -109,8 +116,11 @@ class OidcAuthorizationFlow:
             or not 1 <= transaction_ttl_seconds <= 600
         ):
             raise ValueError("transaction_ttl_seconds must be between 1 and 600")
-        if not scopes or "openid" not in scopes or any(
-            not isinstance(scope, str) or not scope or " " in scope for scope in scopes
+        if (
+            not isinstance(scopes, (tuple, list))
+            or not scopes
+            or "openid" not in scopes
+            or any(not isinstance(scope, str) or not scope or " " in scope for scope in scopes)
         ):
             raise ValueError("OIDC scopes must include openid and contain valid scope tokens")
         self._registration = registration
