@@ -36,8 +36,9 @@ The selected adapter must:
 
 - Next.js `SessionGate` and Flutter `AgentBoxSessionGate` read the existing session port and expose loading, authenticated, and unauthenticated presentation states.
 - Both require a non-empty subject, non-empty access token, and expiry more than 30 seconds in the future.
-- Session-reader exceptions, missing sessions, incomplete sessions, and expired/near-expiry sessions fail closed.
-- These gates do not redirect, initiate login, refresh tokens, or imply that a user is authorized for any backend resource.
+- At 30 seconds before expiry, each gate re-reads its session adapter. If the adapter returns a refreshed valid session, the timer is rescheduled; otherwise protected UI is removed and the unauthenticated state is rendered.
+- A session-reader exception fails closed. The Flutter timer is cancelled on disposal or reader replacement; the Next.js timer is cleaned up when state changes or the component unmounts.
+- These gates do not redirect, initiate login, or imply that a user is authorized for any backend resource.
 - Every protected API operation must still pass FastAPI authentication, tenant isolation, and exact authorization checks.
 
 ## Required provider/deployment inputs
@@ -70,4 +71,4 @@ Never commit client secrets, signing keys, refresh tokens, or production credent
 
 ## Current limitation
 
-The provider-neutral session ports, API transport adapters, and UI gates are implemented and unit-tested. This does not create a functional sign-in button, OAuth callback, token exchange, refresh mechanism, logout flow, BFF, provider configuration, or live identity-provider connection. Those require a provider decision and registered client applications.
+The provider-neutral session ports, API transport adapters, and UI gates are implemented and unit-tested, including expiry-boundary rechecks. This does not create a functional sign-in button, OAuth callback, token exchange, refresh mechanism, logout flow, BFF, provider configuration, or live identity-provider connection. Those require a provider decision and registered client applications.
