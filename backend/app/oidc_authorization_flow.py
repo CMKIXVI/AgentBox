@@ -10,8 +10,10 @@ import base64
 import hashlib
 import hmac
 import secrets
+from contextlib import suppress
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from app.oidc_callback_contract import (
@@ -172,15 +174,12 @@ class OidcAuthorizationFlow:
         try:
             self._transactions.save(transaction)
         except Exception:
-            try:
+            with suppress(Exception):
                 self._secrets_store.delete(secret_ref)
-            except Exception:
-                pass
             raise
 
         endpoint = urlsplit(self._authorization_endpoint)
-        query = dict()
-        query.update({
+        query = {
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
@@ -189,7 +188,7 @@ class OidcAuthorizationFlow:
             "nonce": nonce,
             "code_challenge": _pkce_challenge(verifier),
             "code_challenge_method": "S256",
-        })
+        }
         authorization_url = urlunsplit((
             endpoint.scheme, endpoint.netloc, endpoint.path, urlencode(query), ""
         ))
@@ -277,8 +276,6 @@ class OidcAuthorizationFlow:
         except Exception as exc:
             raise OidcAuthorizationError("OIDC authorization code could not be validated") from exc
         finally:
-            try:
-                self._secrets_store.delete(secret_ref)
-            except Exception:
+            with suppress(Exception):
                 # A verifier left in the secret store is unusable after transaction consumption.
-                pass
+                self._secrets_store.delete(secret_ref)
