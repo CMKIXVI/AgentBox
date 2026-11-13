@@ -243,6 +243,7 @@ class OidcAuthorizationFlow:
                 or not isinstance(audience_values, list)
                 or client_id not in audience_values
                 or (len(audience_values) > 1 and claims.get("azp") != client_id)
+                or (claims.get("azp") is not None and claims.get("azp") != client_id)
             ):
                 raise OidcAuthorizationError("OIDC identity issuer or audience mismatch")
             expiry = claims.get("exp")
