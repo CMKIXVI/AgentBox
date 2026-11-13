@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 
 import pytest
 
@@ -11,7 +12,7 @@ def transaction(transaction_id="txn-123", **overrides):
         "transaction_id": transaction_id,
         "client_id": "agentbox-web",
         "redirect_uri": "https://console.example.test/auth/callback",
-        "state_hash": "a" * 64,
+        "state_hash": hashlib.sha256(transaction_id.encode()).hexdigest(),
         "nonce_hash": "b" * 64,
         "pkce_verifier_ref": "vault://agentbox/oidc/transactions/txn-123",
         "created_at_epoch": 1000,
@@ -81,6 +82,19 @@ def test_consume_rejects_boolean_clock(tmp_path):
     store = SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3")
     with pytest.raises(TypeError, match="integer epoch"):
         store.consume_once("txn-123", now_epoch=True)
+
+
+def test_state_hash_consumption_is_atomic_and_single_use(tmp_path):
+    store = SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3")
+    item = transaction()
+    store.save(item)
+    assert store.consume_by_state_hash(item.state_hash, now_epoch=1200) == item
+    assert store.consume_by_state_hash(item.state_hash, now_epoch=1200) is None
+
+
+def test_state_hash_lookup_rejects_malformed_hash(tmp_path):
+    store = SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3")
+    assert store.consume_by_state_hash("not-a-hash", now_epoch=1200) is None
 
 
 def test_in_memory_database_is_rejected(tmp_path):
