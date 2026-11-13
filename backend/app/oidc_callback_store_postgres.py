@@ -5,6 +5,7 @@ locking guarantees that concurrent consumers across backend instances have one w
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import psycopg
@@ -15,6 +16,8 @@ from app.oidc_callback_contract import (
     OidcCallbackTransactionStore,
     validate_callback_transaction,
 )
+
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS oidc_callback_transactions (
