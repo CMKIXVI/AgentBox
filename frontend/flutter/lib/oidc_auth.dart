@@ -81,7 +81,7 @@ class AgentBoxOidcAuth {
           config.redirectUrl,
           issuer: config.issuer,
           refreshToken: refreshToken,
-          scopes: const ['openid', 'profile', 'email'],
+          scopes: const ['openid', 'profile', 'email', 'offline_access'],
         ),
       );
       if (response == null || response.accessToken == null) {
