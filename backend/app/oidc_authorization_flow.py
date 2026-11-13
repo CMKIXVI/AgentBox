@@ -98,6 +98,7 @@ class OidcAuthorizationFlow:
             or endpoint_parts.username is not None
             or endpoint_parts.password is not None
             or endpoint_parts.fragment
+            or endpoint_parts.query
         ):
             raise ValueError("OIDC authorization endpoint must be a trusted HTTPS URL")
         if not tenant_claim or len(tenant_claim) > 128:
@@ -133,10 +134,10 @@ class OidcAuthorizationFlow:
 
     def start(
         self, *, client_id: str, redirect_uri: str, now_epoch: int
-    ) -> tuple[str, OidcLoginStart]:
+    ) -> OidcLoginStart:
         if isinstance(now_epoch, bool) or not isinstance(now_epoch, int) or now_epoch < 0:
             raise ValueError("now_epoch must be a non-negative integer")
-        client = self._client(client_id)
+        self._client(client_id)
         if not is_registered_redirect_uri(self._registration, client_id, redirect_uri):
             raise OidcAuthorizationError("Redirect URI is not registered for this client")
 
@@ -169,8 +170,6 @@ class OidcAuthorizationFlow:
 
         endpoint = urlsplit(self._authorization_endpoint)
         query = dict()
-        if endpoint.query:
-            raise OidcAuthorizationError("Authorization endpoint must not contain a pre-existing query")
         query.update({
             "client_id": client_id,
             "redirect_uri": redirect_uri,
@@ -184,7 +183,7 @@ class OidcAuthorizationFlow:
         authorization_url = urlunsplit((
             endpoint.scheme, endpoint.netloc, endpoint.path, urlencode(query), ""
         ))
-        return state, OidcLoginStart(
+        return OidcLoginStart(
             authorization_url=authorization_url,
             expires_at_epoch=expires_at,
         )
@@ -234,6 +233,7 @@ class OidcAuthorizationFlow:
                 claims.get("iss") != self._issuer
                 or not isinstance(audience_values, list)
                 or client_id not in audience_values
+                or (len(audience_values) > 1 and claims.get("azp") != client_id)
             ):
                 raise OidcAuthorizationError("OIDC identity issuer or audience mismatch")
             expiry = claims.get("exp")
