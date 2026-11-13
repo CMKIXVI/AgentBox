@@ -16,7 +16,7 @@ AgentBox has two first-class clients backed by one FastAPI platform:
 
 ## Current implementation status
 
-The Next.js and Flutter application shells, bearer-token API transports, and versioned route inventory are implemented on the current stacked feature branches. Screens remain preview/static: client login/session flows and live end-to-end API integration are not yet enabled. The backend validates OIDC access tokens and derives tenant context from a configured verified claim.
+The Next.js and Flutter application shells, bearer-token API transports, versioned route inventory, and provider-configurable OIDC login foundations are implemented on the current stacked feature branches. Next.js uses a server-managed Auth.js session and same-origin API proxy; Flutter uses AppAuth and platform-secure token storage. The backend validates OIDC access tokens and derives tenant context from a configured verified claim. Live identity-provider deployment and client-to-API end-to-end verification remain pending.
 
 ## Local development
 
@@ -44,7 +44,7 @@ The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js
 
 ## Shared API transport
 
-The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports; an OIDC session integration must supply short-lived access tokens. Neither client sends a tenant-authority header or persists credentials in the transport layer. The provider-neutral implementation contract is documented in [OIDC client integration](../docs/security/oidc-client-integration-contract.md). Web login is planned as a Next.js BFF session with Secure/HttpOnly cookies; Flutter login uses system-browser Authorization Code + PKCE and platform-protected storage. Provider selection remains a deployment decision.
+The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports; an OIDC session integration must supply short-lived access tokens. Neither client sends a tenant-authority header or persists credentials in the transport layer. The provider-neutral implementation contract is documented in [OIDC client integration](../docs/security/oidc-client-integration-contract.md). Web login uses a Next.js BFF session with protected HttpOnly cookies; Flutter login uses system-browser Authorization Code + PKCE and platform-protected storage. Provider selection remains a deployment decision.
 
 
 ## OIDC client configuration
@@ -59,7 +59,7 @@ Set these server-side environment variables in the deployment secret/configurati
 - `AGENTBOX_OIDC_CLIENT_ISSUER`: exact OIDC issuer URL.
 - `AGENTBOX_OIDC_WEB_CLIENT_ID`: confidential web client identifier.
 - `AGENTBOX_OIDC_WEB_CLIENT_SECRET`: confidential web client secret.
-- `AGENTBOX_API_BASE_URL`: AgentBox FastAPI base URL.
+- `AGENTBOX_API_BASE_URL`: AgentBox FastAPI base URL.\n- `AGENTBOX_OIDC_SCOPES`: requested OIDC scopes; default includes `openid profile email offline_access`.
 
 Register the Auth.js callback URL `/api/auth/callback/agentbox-oidc` and the exact post-logout/return URLs used by the deployment. The web client uses Authorization Code + PKCE, state and nonce checks. Auth.js keeps the session in its protected HttpOnly cookie; access and refresh tokens are never returned in the browser session object. Browser API calls should use the same-origin `/api/agentbox/*` proxy, which attaches the server-held bearer token.
 
@@ -82,4 +82,4 @@ Configure the FastAPI OIDC issuer, API audience, JWKS URI and trusted tenant cla
 
 ### Current integration boundary
 
-The code now includes a configurable Next.js OIDC sign-in/session flow, server-side token refresh and same-origin API proxy, plus a Flutter AppAuth/secure-storage token lifecycle. Provider registration, native platform redirect configuration, live issuer/JWKS validation and deployed client-to-API end-to-end tests remain environment-specific release gates. CI validates code, not a real identity-provider deployment.
+The code includes a configurable Next.js OIDC sign-in/session flow, server-side refresh-token renewal and same-origin API proxy, plus a Flutter AppAuth/secure-storage token lifecycle. Provider registration, native platform redirect configuration, live issuer/JWKS validation and deployed client-to-API end-to-end tests remain environment-specific release gates. CI validates code, not a real identity-provider deployment.
