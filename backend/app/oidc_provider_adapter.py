@@ -95,7 +95,7 @@ class HttpOidcProviderAdapter:
         self, method: str, url: str, label: str, **kwargs: Any
     ) -> dict[str, Any]:
         try:
-            with self._http.stream(method, url, **kwargs) as response:
+            with self._http.stream(method, url, follow_redirects=False, **kwargs) as response:
                 if response.is_redirect:
                     raise OidcAuthorizationError(f"OIDC {label} endpoint must not redirect")
                 response.raise_for_status()
@@ -233,8 +233,9 @@ class HttpOidcProviderAdapter:
                 options={
                     "require": ["exp", "iat", "iss", "sub", "aud"],
                     "verify_signature": True,
-                    "verify_exp": True,
-                    "verify_iat": True,
+                    "verify_exp": False,
+                    "verify_iat": False,
+                    "verify_nbf": False,
                     "verify_iss": True,
                     "verify_aud": True,
                 },
@@ -243,11 +244,24 @@ class HttpOidcProviderAdapter:
             raise OidcAuthorizationError("OIDC ID token cryptographic validation failed") from exc
         if not isinstance(claims, dict):
             raise OidcAuthorizationError("OIDC ID token claims are invalid")
+        expiry = claims.get("exp")
         issued_at = claims.get("iat")
-        if isinstance(issued_at, bool) or not isinstance(issued_at, int):
-            raise OidcAuthorizationError("OIDC ID token issued-at claim is invalid")
-        if issued_at > now_epoch + self._clock_skew:
-            raise OidcAuthorizationError("OIDC ID token issued-at claim is in the future")
+        not_before = claims.get("nbf")
+        if (
+            isinstance(expiry, bool) or not isinstance(expiry, int)
+            or expiry <= now_epoch
+            or isinstance(issued_at, bool) or not isinstance(issued_at, int)
+            or issued_at > now_epoch + self._clock_skew
+            or (
+                not_before is not None
+                and (
+                    isinstance(not_before, bool)
+                    or not isinstance(not_before, int)
+                    or not_before > now_epoch + self._clock_skew
+                )
+            )
+        ):
+            raise OidcAuthorizationError("OIDC ID token time claims are invalid")
         return claims
 
     def exchange_and_validate(
