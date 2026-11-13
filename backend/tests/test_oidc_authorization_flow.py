@@ -190,6 +190,7 @@ def test_wrong_issuer_audience_and_expiry_are_rejected(tmp_path, monkeypatch):
         {"aud": "other-client"},
         {"exp": 1001},
         {"aud": ["agentbox-web", "other"], "azp": "other"},
+        {"azp": "other"},
     ]
     for index, overrides in enumerate(cases):
         case_dir = tmp_path / str(index)
