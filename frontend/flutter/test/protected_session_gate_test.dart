@@ -49,15 +49,15 @@ void main() {
   });
 
   testWidgets('fails closed when session reader throws', (tester) async {
+    final completer = Completer<AgentBoxSession?>();
     await tester.pumpWidget(MaterialApp(
       home: AgentBoxProtectedSessionGate(
-        sessionReader: ControlledSessionReader(
-          Future.error(StateError('session unavailable')),
-        ),
+        sessionReader: ControlledSessionReader(completer.future),
         authenticatedBuilder: (_, __) => const Text('Protected content'),
         unauthenticatedBuilder: (_) => const Text('Sign in required'),
       ),
     ));
+    completer.completeError(StateError('session unavailable'));
     await tester.pumpAndSettle();
     expect(find.text('Sign in required'), findsOneWidget);
     expect(find.text('Protected content'), findsNothing);
