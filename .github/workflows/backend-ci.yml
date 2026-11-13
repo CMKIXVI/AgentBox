@@ -4,6 +4,10 @@ on:
   push:
     paths:
       - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/backend-ci.yml"
+      - "frontend/**"
+      - ".github/workflows/backend-ci.yml"
       - "schemas/agent-manifest-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
@@ -35,3 +39,40 @@ jobs:
         run: ruff check app tests
       - name: Test
         run: pytest
+
+  nextjs-console:
+    name: Next.js console
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/nextjs/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Type check
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+
+  flutter-client:
+    name: Flutter client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze
+      - name: Widget tests
+        run: flutter test
