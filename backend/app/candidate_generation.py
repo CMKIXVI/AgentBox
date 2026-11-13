@@ -151,7 +151,12 @@ class CandidateGenerationService:
         for operator in ordered:
             operator.apply(candidate)
 
-        if candidate == parent.manifest:
+        comparable_candidate = copy.deepcopy(candidate)
+        comparable_parent = copy.deepcopy(parent.manifest)
+        for item in (comparable_candidate, comparable_parent):
+            item.pop("version", None)
+            item.pop("provenance", None)
+        if comparable_candidate == comparable_parent:
             raise CandidateValidationError("The requested operators produced no candidate change")
 
         candidate["provenance"] = copy.deepcopy(candidate["provenance"])
