@@ -4,7 +4,7 @@ const issuer = process.env.AGENTBOX_OIDC_CLIENT_ISSUER;
 const clientId = process.env.AGENTBOX_OIDC_WEB_CLIENT_ID;
 const clientSecret = process.env.AGENTBOX_OIDC_WEB_CLIENT_SECRET;
 
-export const oidcConfigured = Boolean(issuer && clientId && clientSecret);
+export const oidcConfigured = Boolean(issuer && clientId && clientSecret && process.env.AUTH_SECRET);
 
 const providers = oidcConfigured
   ? [{
@@ -52,12 +52,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const form = new URLSearchParams({
           grant_type: "refresh_token",
           refresh_token: token.agentboxRefreshToken,
-          client_id: clientId,
-          client_secret: clientSecret,
         });
         const refreshResponse = await fetch(discovery.token_endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: "Basic " + Buffer.from(clientId + ":" + clientSecret).toString("base64"),
+          },
           body: form,
           cache: "no-store",
         });
