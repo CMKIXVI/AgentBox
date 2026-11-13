@@ -70,7 +70,7 @@ export function isBffUpstreamResponseAllowed(
     if (!Number.isSafeInteger(length) || length > MAX_BFF_RESPONSE_BYTES) return false;
   }
 
-  if (status === 204 || status === 304) return contentLength === null || contentLength === "0";
+  if (status === 204) return contentLength === null || contentLength === "0";
   if (!contentType) return false;
   return ALLOWED_RESPONSE_TYPES.has(contentType.split(";")[0].trim().toLowerCase());
 }
