@@ -19,13 +19,14 @@ export type AgentVersionList = {
 };
 
 export class AgentBoxApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly detail: unknown,
-  ) {
+  readonly status: number;
+  readonly detail: unknown;
+
+  constructor(message: string, status: number, detail: unknown) {
     super(message);
     this.name = "AgentBoxApiError";
+    this.status = status;
+    this.detail = detail;
   }
 }
 
