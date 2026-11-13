@@ -8,9 +8,10 @@ from __future__ import annotations
 import copy
 import random
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .validation import validate_manifest
@@ -137,10 +138,7 @@ class CandidateGenerationService:
         if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
             raise CandidateValidationError("actor_id must contain 1 to 256 characters")
 
-        try:
-            parent = self.registry.get(agent_id, parent_version, tenant_id)
-        except AgentNotFoundError:
-            raise
+        parent = self.registry.get(agent_id, parent_version, tenant_id)
 
         try:
             self.registry.get(agent_id, candidate_version, tenant_id)
