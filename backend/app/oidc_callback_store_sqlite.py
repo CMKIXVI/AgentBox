@@ -67,6 +67,12 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
                 ON oidc_callback_transactions(expires_at_epoch)
                 """
             )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_oidc_callback_state_hash
+                ON oidc_callback_transactions(state_hash)
+                """
+            )
         finally:
             connection.close()
 
@@ -163,6 +169,14 @@ class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
             raise
         finally:
             connection.close()
+
+    def consume_by_state_hash(
+        self, state_hash: str, *, now_epoch: int
+    ) -> OidcCallbackTransaction | None:
+        """Atomically consume a callback transaction by the hash of returned state."""
+        if not isinstance(state_hash, str) or not _SHA256_HEX.fullmatch(state_hash):
+            return None
+        return self._consume("state_hash", state_hash, now_epoch=now_epoch)
 
     def purge_expired(self, *, now_epoch: int) -> int:
         """Delete expired rows as maintenance; return the number removed."""
