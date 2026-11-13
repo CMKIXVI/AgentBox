@@ -83,10 +83,10 @@ class MemoryPrivateKeys:
         return self.key, "client-key-1"
 
 
-def _make_adapter(handler, *, registration=None, key_resolver=None):
+def _make_adapter(handler, *, registration=None, key_resolver=None, follow_redirects=False):
     client = httpx.Client(
         transport=httpx.MockTransport(handler),
-        follow_redirects=False,
+        follow_redirects=follow_redirects,
     )
     return HttpOidcProviderAdapter(
         issuer=ISSUER,
@@ -258,7 +258,7 @@ def test_token_endpoint_redirect_is_rejected():
             return httpx.Response(200, json=_metadata())
         return httpx.Response(302, headers={"Location": "https://attacker.example/token"})
 
-    adapter = _make_adapter(handler)
+    adapter = _make_adapter(handler, follow_redirects=True)
     try:
         with pytest.raises(OidcAuthorizationError, match="exchange failed"):
             adapter.exchange_and_validate(
@@ -382,5 +382,61 @@ def test_metadata_response_size_is_bounded():
     try:
         with pytest.raises(OidcAuthorizationError, match="discovery could not be loaded"):
             _ = adapter.authorization_endpoint
+    finally:
+        adapter.close()
+
+
+def test_signed_token_with_wrong_issuer_is_rejected():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(
+                    signing_key, iss="https://attacker.example/"
+                )
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="cryptographic validation"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="verifier", now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_expired_id_token_is_rejected_against_supplied_clock():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(
+                    signing_key, exp=NOW, iat=NOW - 100
+                )
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="time claims"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="verifier", now_epoch=NOW + 1,
+            )
     finally:
         adapter.close()
