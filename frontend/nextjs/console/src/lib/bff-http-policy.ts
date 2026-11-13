@@ -38,7 +38,7 @@ export function validateBffRequestEnvelope(
 
   if (input.hasBody) {
     const rawLength = input.request.headers.get("content-length");
-    if (!rawLength || !/^\\d+$/.test(rawLength)) {
+    if (!rawLength || !/^\d+$/.test(rawLength)) {
       return { allowed: false, reason: "content-length" };
     }
     const length = Number(rawLength);
@@ -65,7 +65,7 @@ export function isBffUpstreamResponseAllowed(
   if (status >= 300 && status < 400) return false;
 
   if (contentLength !== null) {
-    if (!/^\\d+$/.test(contentLength)) return false;
+    if (!/^\d+$/.test(contentLength)) return false;
     const length = Number(contentLength);
     if (!Number.isSafeInteger(length) || length > MAX_BFF_RESPONSE_BYTES) return false;
   }
