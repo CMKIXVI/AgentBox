@@ -176,7 +176,7 @@ def test_private_key_jwt_assertion_is_signed_for_token_endpoint():
         adapter.exchange_and_validate(
             code="code", client_id=CLIENT_ID,
             redirect_uri="https://console.example.test/auth/callback",
-            code_verifier="v" * 43, now_epoch=1001,
+            code_verifier="v" * 43, now_epoch=NOW + 1,
         )
     finally:
         adapter.close()
@@ -222,7 +222,7 @@ def test_id_token_with_unknown_kid_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="v" * 43, now_epoch=1001,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -248,7 +248,7 @@ def test_hmac_signed_id_token_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="v" * 43, now_epoch=1001,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -266,7 +266,7 @@ def test_token_endpoint_redirect_is_rejected():
             adapter.exchange_and_validate(
                 code="code", client_id=CLIENT_ID,
                 redirect_uri="https://console.example.test/auth/callback",
-                code_verifier="v" * 43, now_epoch=1001,
+                code_verifier="v" * 43, now_epoch=NOW + 1,
             )
     finally:
         adapter.close()
@@ -299,7 +299,7 @@ def test_public_client_uses_no_client_assertion():
         adapter.exchange_and_validate(
             code="code", client_id=CLIENT_ID,
             redirect_uri="com.agentbox.app://callback",
-            code_verifier="v" * 43, now_epoch=1001,
+            code_verifier="v" * 43, now_epoch=NOW + 1,
         )
     finally:
         adapter.close()
