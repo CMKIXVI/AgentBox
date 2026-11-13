@@ -16,7 +16,7 @@ from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .validation import validate_manifest
 
 VERSION_PATTERN = re.compile(
-    r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
 )
 MAX_OPERATORS_PER_CANDIDATE = 5
 MAX_SEED = (2**32) - 1
