@@ -1,3 +1,4 @@
+import { createAccessTokenProvider, type SessionReader } from "./auth-session";
 export type AccessTokenProvider = () => Promise<string | null>;
 
 export type AgentVersionRecord = {
@@ -29,6 +30,19 @@ export class AgentBoxApiError extends Error {
 }
 
 export class AgentBoxApiClient {
+  static fromSessionReader(
+    baseUrl: string,
+    sessionReader: SessionReader,
+    fetcher: typeof fetch = fetch,
+    now?: () => number,
+  ): AgentBoxApiClient {
+    return new AgentBoxApiClient(
+      baseUrl,
+      createAccessTokenProvider(sessionReader, now),
+      fetcher,
+    );
+  }
+
   private readonly baseUrl: string;
 
   constructor(
