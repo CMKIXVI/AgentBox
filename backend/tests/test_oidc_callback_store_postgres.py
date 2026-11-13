@@ -1,6 +1,6 @@
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
-import hashlib
 from uuid import uuid4
 
 import psycopg
