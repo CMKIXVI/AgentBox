@@ -1,9 +1,9 @@
+import os
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
-import os
-import pytest
 import psycopg
+import pytest
 
 from app.oidc_callback_contract import OidcCallbackTransaction
 from app.oidc_callback_store_postgres import PostgresOidcCallbackTransactionStore
