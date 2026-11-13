@@ -71,7 +71,7 @@ void main() {
     expect(find.text('Welcome user-1'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 2));
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('Sign-in required'), findsOneWidget);
   });
 }
