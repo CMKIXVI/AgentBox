@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AgentBoxApiClient } from "./agentbox-api";
 import { createAccessTokenProvider } from "./auth-session.ts";
 
 const now = 1_794_571_200;
@@ -32,4 +33,48 @@ test("rejects expired, near-expiry, and incomplete sessions", async () => {
     const provider = createAccessTokenProvider({ readSession: async () => session }, () => now);
     assert.equal(await provider(), null);
   }
+});
+
+
+test("API client obtains bearer token through the session reader", async () => {
+  let requested = false;
+  const client = AgentBoxApiClient.fromSessionReader(
+    "https://api.example.test",
+    {
+      readSession: async () => ({
+        subject: "user-1",
+        accessToken: "session-token",
+        expiresAt: now + 300,
+      }),
+    },
+    async (_input, init) => {
+      requested = true;
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("authorization"), "Bearer session-token");
+      assert.equal(headers.has("x-tenant-id"), false);
+      return new Response(JSON.stringify({ agent_id: "demo", items: [], limit: 50, offset: 0 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+    () => now,
+  );
+  const result = await client.listAgentVersions("demo");
+  assert.equal(requested, true);
+  assert.equal(result.agent_id, "demo");
+});
+
+test("API client does not send a request without a valid session", async () => {
+  let requested = false;
+  const client = AgentBoxApiClient.fromSessionReader(
+    "https://api.example.test",
+    { readSession: async () => null },
+    async () => {
+      requested = true;
+      return new Response(null, { status: 500 });
+    },
+    () => now,
+  );
+  await assert.rejects(client.listAgentVersions("demo"), { status: 401 });
+  assert.equal(requested, false);
 });
