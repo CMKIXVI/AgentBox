@@ -1,4 +1,4 @@
-import { createAccessTokenProvider, type SessionReader } from "./auth-session";
+import { createAccessTokenProvider, type SessionReader } from "./auth-session.ts";
 export type AccessTokenProvider = () => Promise<string | null>;
 
 export type AgentVersionRecord = {
