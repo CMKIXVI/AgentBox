@@ -25,12 +25,14 @@ The selected adapter must:
 9. Supply only a short-lived access token to the existing AgentBox API transport.
 10. Never pass tenant authority from the UI. Tenant claim mapping is configured and checked server-side.
 
-## Client adapter ports
+## Client adapter and guard ports
 
-- Next.js: frontend/nextjs/console/src/lib/auth-session.ts defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements SessionReader.
-- Flutter: frontend/flutter/lib/auth_session.dart defines the equivalent port. The future native OIDC adapter implements AgentBoxSessionReader and must use platform secure storage through a maintained SDK.
-- Both access-token providers reject missing or near-expiry sessions. They do not refresh or persist tokens.
-- Existing AgentBoxApiClient transports continue to receive an injected access-token provider. No duplicate API auth path is introduced.
+- Next.js: `frontend/nextjs/console/src/lib/auth-session.ts` defines the read-only session port and fail-closed access-token provider. `protected-session.ts` exposes `requireAgentBoxSession` for server components and protected server-side operations. The future provider SDK/BFF implements `SessionReader`.
+- Flutter: `frontend/flutter/lib/auth_session.dart` defines the equivalent port and session validity check. `protected_session_gate.dart` exposes a reusable widget gate; the future native OIDC adapter implements `AgentBoxSessionReader` and must use platform secure storage through a maintained SDK.
+- Both guards reject missing, malformed, or near-expiry sessions. Session-reader errors fail closed. They do not refresh or persist tokens.
+- Both API transports continue to receive an injected access-token provider. No duplicate API auth path is introduced.
+- The preview home screens are not protected routes. Do not enable protected navigation until a real provider-backed session reader and its callback/storage lifecycle are configured.
+- Backend authorization and tenant isolation remain decisive even after a client guard passes.
 
 ## Required provider/deployment inputs
 
@@ -52,14 +54,15 @@ Never commit client secrets, signing keys, refresh tokens, or production credent
 
 - Valid login, callback, state, nonce, PKCE, issuer and audience.
 - Invalid/replayed state, nonce mismatch, wrong issuer/audience, expired token, and signature/key rotation failures.
-- Missing or expired session fails closed before an API request.
+- Missing or expired session fails closed before an API request or protected UI render.
+- Session-reader errors fail closed.
 - API requests attach only the access token and never a tenant-authority header.
 - Tenant A cannot access Tenant B resources, including by guessed IDs.
 - Disabled users and revoked sessions are rejected.
 - Logout clears the client session and prevents subsequent protected API calls.
-- Browser cookie flags, CSRF, redirect allowlist, and absence of browser token storage are verified.
-- Native credentials use platform-protected storage and are not present in logs, crash reports, or backups.
+- Browser cookie flags, CSRF, redirect allowlist, and absence of browser token persistence are verified.
+- Native secure storage, app-link handling, logout, and platform builds are verified on supported devices.
 
-## Current limitation
+## Explicitly not implemented
 
-This batch adds provider-neutral client ports and tests only. It does not create a functional sign-in button, OAuth callback, token exchange, refresh mechanism, BFF, provider configuration, or live identity-provider connection. Those require a provider decision and registered client applications.
+This contract and its guards do not implement an identity provider, login screen, OAuth callback, token exchange, refresh-token rotation, Next.js BFF, provider configuration, native secure storage, or live identity-provider connection. Those require a provider decision and registered client applications.
