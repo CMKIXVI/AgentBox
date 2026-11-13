@@ -35,3 +35,11 @@ jobs:
         run: ruff check app tests
       - name: Test
         run: pytest
+      - name: Export generated OpenAPI contract
+        run: python scripts/export_openapi.py --output ../contracts/openapi/agentbox-openapi.json
+      - name: Upload generated OpenAPI contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentbox-openapi-contract
+          path: contracts/openapi/agentbox-openapi.json
+          if-no-files-found: error
