@@ -1,8 +1,8 @@
 # AgentBox Master Architecture
 
 **Document status:** Canonical architecture authority  
-**Version:** 1.2  
-**Updated:** 2026-11-13  
+**Version:** 1.3  
+**Updated:** 2026-11-14  
 **Scope:** AgentBox platform, backend, runtime, security, data, and dual frontend strategy
 
 > This document defines the intended architecture and decision boundaries for AgentBox. It does not claim that every described capability is implemented. The repository's implementation status, CI results, and production-readiness evidence must be reported separately from target architecture.
@@ -159,7 +159,7 @@ Requirements:
 - Short-lived access credentials and secure refresh/session handling
 - No secrets embedded in frontend bundles, mobile binaries, source maps, or local configuration committed to source control
 
-Web sessions must use secure browser session practices, preferably HttpOnly, Secure, appropriately SameSite cookies where the chosen OIDC flow supports them. Flutter must use platform-protected secure storage for credentials. Neither client may trust a tenant ID supplied by the user interface as proof of tenant membership.
+Web sessions must use secure browser session practices, preferably HttpOnly, Secure, appropriately SameSite cookies where the chosen OIDC flow supports them. Flutter must use platform-protected secure storage for credentials. Neither client may trust a tenant ID supplied by the user interface as proof of tenant membership. Both clients use OIDC Authorization Code Flow with PKCE. The web client uses a server-managed BFF session; Flutter uses the system browser and a maintained AppAuth implementation. The provider remains replaceable and is selected through deployment configuration, not product-specific code. See [the OIDC client integration contract](docs/security/oidc-client-integration-contract.md).
 
 ## 7. Backend and domain architecture
 
@@ -286,7 +286,7 @@ The frontend strategy is introduced without displacing backend and security work
 | 2 | Frontend workspace foundations | Flutter and Next.js app skeletons, independent CI, documented local run |
 | 3 | Authentication and tenant integration | OIDC login/session flows and negative tenant-isolation tests |
 
-Current progress: the route inventory is now checked against FastAPI's generated OpenAPI paths. Both clients have bearer-token-injected API transports; OIDC login, callback, refresh, and session storage remain deliberately unimplemented until an identity-provider/session strategy is selected.
+Current progress: route inventory/OpenAPI drift checks and bearer-token-injected transports exist on the stacked frontend branches. Backend OIDC JWT validation is implemented. Client login/session integration is not yet implemented; the provider-neutral contract is documented, and provider selection plus deployment configuration remain rollout prerequisites.
 | 4 | Shared client generation | Reproducible Dart/TypeScript clients from the same OpenAPI contract |
 | 5 | Next.js Agent Studio foundation | Agent list, details, version view, and authorized create/clone flow |
 | 6 | Flutter operational foundation | Login, agent inventory, execution status, and notifications |
@@ -327,6 +327,6 @@ Important limitations remain:
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
 - A genuine code-execution sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
-- Flutter and Next.js are approved architectural strategies; their production applications and shared client contracts are not yet implemented.
+- Flutter and Next.js foundations, bearer-token API transports, route inventory and OpenAPI export are implemented on stacked feature branches, not yet merged to main. Client login/session integration and live end-to-end API use remain incomplete.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.
