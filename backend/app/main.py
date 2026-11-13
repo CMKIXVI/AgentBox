@@ -12,6 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_policy import validate_authorization_policy
+from .candidate_generation import (
+    CandidateConflictError,
+    CandidateGenerationService,
+    CandidateValidationError,
+)
 from .enterprise_context import (
     ContextConflictError,
     ContextNotFoundError,
@@ -30,11 +35,6 @@ from .execution import (
     ExecutionNotFoundError,
     ExecutionPolicyError,
     ExecutionService,
-)
-from .candidate_generation import (
-    CandidateConflictError,
-    CandidateGenerationService,
-    CandidateValidationError,
 )
 from .experience import (
     ExecutionExperienceService,
