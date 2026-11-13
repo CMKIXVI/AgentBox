@@ -23,7 +23,7 @@ class AgentBoxOidcAuth {
     required this.config,
     FlutterAppAuth? appAuth,
     FlutterSecureStorage? secureStorage,
-  })  : _appAuth = appAuth ?? const FlutterAppAuth(),
+  })  : _appAuth = appAuth ?? FlutterAppAuth(),
         _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
   final AgentBoxOidcConfig config;
