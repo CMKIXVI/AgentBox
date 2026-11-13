@@ -21,7 +21,6 @@ from app.oidc_authorization_flow import OidcAuthorizationError
 from app.oidc_callback_contract import is_registered_redirect_uri
 from app.oidc_client_registration import validate_oidc_client_registration
 
-
 _ALLOWED_ID_TOKEN_ALGORITHMS = frozenset({"RS256", "PS256", "ES256"})
 _MAX_DOCUMENT_BYTES = 1_048_576
 _MAX_JWKS_KEYS = 100
