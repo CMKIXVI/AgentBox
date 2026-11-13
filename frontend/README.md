@@ -41,3 +41,7 @@ See [the master architecture](../ARCHITECTURE.md) for client responsibilities, s
 ## Continuous integration
 
 The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js console (TypeScript and production build) and Flutter client (static analysis and widget tests) independently. The pipeline is a code-quality gate, not evidence of live API integration or production deployment.
+
+## Shared API transport
+
+The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports; an OIDC/session provider must supply the access token. Neither client sends a tenant-authority header or persists credentials in this transport layer.
