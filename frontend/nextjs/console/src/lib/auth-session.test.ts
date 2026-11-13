@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AgentBoxApiClient } from "./agentbox-api";
+import { AgentBoxApiClient } from "./agentbox-api.ts";
 import { createAccessTokenProvider } from "./auth-session.ts";
 
 const now = 1_794_571_200;
