@@ -56,8 +56,9 @@ def test_only_one_concurrent_consumer_wins(tmp_path):
     path = tmp_path / "oidc.sqlite3"
     SQLiteOidcCallbackTransactionStore(path).save(transaction())
 
+    store = SQLiteOidcCallbackTransactionStore(path)
+
     def consume(_):
-        store = SQLiteOidcCallbackTransactionStore(path)
         return store.consume_once("txn-123", now_epoch=1200)
 
     with ThreadPoolExecutor(max_workers=12) as executor:
@@ -80,3 +81,8 @@ def test_consume_rejects_boolean_clock(tmp_path):
     store = SQLiteOidcCallbackTransactionStore(tmp_path / "oidc.sqlite3")
     with pytest.raises(ValueError, match="integer epoch"):
         store.consume_once("txn-123", now_epoch=True)
+
+
+def test_in_memory_database_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="durable SQLite file path"):
+        SQLiteOidcCallbackTransactionStore(":memory:")
