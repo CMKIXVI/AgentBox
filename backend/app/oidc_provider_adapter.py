@@ -17,6 +17,7 @@ import httpx
 import jwt
 
 from app.oidc_authorization_flow import OidcAuthorizationError
+from app.oidc_callback_contract import is_registered_redirect_uri
 from app.oidc_client_registration import validate_oidc_client_registration
 
 
@@ -274,6 +275,8 @@ class HttpOidcProviderAdapter:
         now_epoch: int,
     ) -> Mapping[str, Any]:
         client = self._client(client_id)
+        if not is_registered_redirect_uri(self._registration, client_id, redirect_uri):
+            raise OidcAuthorizationError("Redirect URI is not registered for this OIDC client")
         metadata = self._get_metadata()
         if "private_key_jwt" not in metadata.get(
             "token_endpoint_auth_methods_supported", ["client_secret_basic"]
