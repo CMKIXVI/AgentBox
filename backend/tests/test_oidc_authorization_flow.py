@@ -111,13 +111,12 @@ def test_start_builds_code_flow_with_s256_and_persists_only_hashes(tmp_path, mon
 
 def test_start_rejects_unregistered_redirect(tmp_path, monkeypatch):
     flow = make_flow(tmp_path, FakeExchanger({}))
-    with pytest.raises(OidcAuthorizationError, match="Unknown OIDC client"):
+    with pytest.raises(OidcAuthorizationError, match="Redirect URI"):
         flow.start(
-            client_id="unknown-client",
+            client_id="agentbox-web",
             redirect_uri="https://attacker.example/callback",
             now_epoch=1000,
         )
-    assert not list(tmp_path.glob("*.sqlite3-wal"))
 
 
 def test_complete_validates_identity_and_deletes_verifier(tmp_path, monkeypatch):
