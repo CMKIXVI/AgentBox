@@ -1,25 +1,27 @@
-name: AgentBox backend CI
+name: AgentBox CI
 
 on:
   push:
     paths:
       - "backend/**"
       - "frontend/**"
-      - ".github/workflows/backend-ci.yml"
-      - "frontend/**"
-      - ".github/workflows/backend-ci.yml"
       - "schemas/agent-manifest-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "frontend/**"
       - "schemas/agent-manifest-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  backend:
+    name: Backend (Ruff + pytest)
     runs-on: ubuntu-latest
     defaults:
       run:
