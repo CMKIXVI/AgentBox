@@ -9,13 +9,13 @@ import re
 import sqlite3
 from pathlib import Path
 
-_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
-
 from app.oidc_callback_contract import (
     OidcCallbackTransaction,
     OidcCallbackTransactionStore,
     validate_callback_transaction,
 )
+
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
 class SQLiteOidcCallbackTransactionStore(OidcCallbackTransactionStore):
