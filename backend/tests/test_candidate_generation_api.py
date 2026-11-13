@@ -123,3 +123,21 @@ def test_candidate_generation_rejects_duplicate_version_and_noop(tmp_path: Path)
         },
     )
     assert noop.status_code == 422
+
+
+
+def test_clone_api_cannot_override_security_boundaries(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    agent_id, version = create_agent(client)
+    parent = client.get(f"/v1/agents/{agent_id}/versions/{version}").json()["manifest"]
+
+    for field in ("permissions", "tools"):
+        response = client.post(
+            f"/v1/agents/{agent_id}/versions/{version}/clone",
+            json={
+                "new_version": "1.0.1" if field == "permissions" else "1.0.2",
+                "overrides": {field: parent[field]},
+            },
+        )
+        assert response.status_code == 422
+        assert field in response.json()["detail"]["fields"]
