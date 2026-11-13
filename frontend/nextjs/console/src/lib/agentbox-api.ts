@@ -45,12 +45,16 @@ export class AgentBoxApiClient {
   }
 
   private readonly baseUrl: string;
+  private readonly accessTokenProvider: AccessTokenProvider;
+  private readonly fetcher: typeof fetch;
 
   constructor(
     baseUrl: string,
-    private readonly accessTokenProvider: AccessTokenProvider,
-    private readonly fetcher: typeof fetch = fetch,
+    accessTokenProvider: AccessTokenProvider,
+    fetcher: typeof fetch = fetch,
   ) {
+    this.accessTokenProvider = accessTokenProvider;
+    this.fetcher = fetcher;
     const parsed = new URL(baseUrl);
     if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
       throw new Error("AgentBox API must use HTTPS outside localhost development");
