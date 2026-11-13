@@ -45,7 +45,6 @@ class AgentBoxOidcAuth {
         config.redirectUrl,
         issuer: config.issuer,
         scopes: const ['openid', 'profile', 'email'],
-        preferEphemeralSession: true,
       ),
     );
 
