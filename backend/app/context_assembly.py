@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from datetime import UTC, datetime
 from typing import Any
+
+from jsonschema import Draft202012Validator, FormatChecker
 
 from .enterprise_context import (
     ContextNotFoundError,
@@ -15,6 +18,14 @@ MAX_SNAPSHOT_BYTES = 48 * 1024
 MAX_ENTITIES = 12
 MAX_RELATIONSHIPS = 24
 MAX_EVIDENCE = 36
+_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "schemas"
+    / "cognitive-context-snapshot-v1.schema.json"
+)
+_SCHEMA = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+Draft202012Validator.check_schema(_SCHEMA)
+_VALIDATOR = Draft202012Validator(_SCHEMA, format_checker=FormatChecker())
 ALLOWED_ASSERTIONS = {"observed_fact", "human_validated"}
 INFERRED_ASSERTIONS = {"inferred"}
 
@@ -167,6 +178,15 @@ class ContextAssemblyService:
             )[:MAX_RELATIONSHIPS],
             "evidence": sorted(evidence.values(), key=lambda item: item["evidence_id"])[:MAX_EVIDENCE],
         }
+        errors = sorted(
+            _VALIDATOR.iter_errors(packet),
+            key=lambda error: (list(error.absolute_path), error.message),
+        )
+        if errors:
+            raise ContextAssemblyValidationError(
+                "Context snapshot contract validation failed: "
+                + "; ".join(error.message for error in errors[:8])
+            )
         canonical = self._canonical(packet)
         if len(canonical.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
             raise ContextAssemblyValidationError("Assembled context exceeds the 48 KiB limit")
