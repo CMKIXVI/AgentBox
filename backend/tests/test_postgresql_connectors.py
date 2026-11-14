@@ -10,7 +10,9 @@ from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from app.enterprise_context import ContextConflictError, ContextNotFoundError, ContextValidationError
+from app.enterprise_context import (
+    ContextConflictError, ContextNotFoundError, ContextValidationError,
+)
 from app.postgresql_connectors import PostgreSQLConnectorRegistry
 from app.main import create_app
 from auth_helpers import configure_test_access
@@ -143,7 +145,7 @@ def test_api_registers_rotates_and_revokes_tenant_connector_keys(tmp_path):
         },
     )
     assert registered.status_code == 201, registered.text
-    private_v2, public_v2 = make_api_key()
+    _, public_v2 = make_api_key()
     rotated = client.post(
         "/v1/enterprise-discovery/postgresql/connectors/connector.alpha/keys",
         json={"key_id": "key-v2", "public_key": public_v2},
