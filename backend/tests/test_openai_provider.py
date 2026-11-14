@@ -276,7 +276,7 @@ def test_rejects_invalid_unicode_before_network_call(monkeypatch):
         provider_id="provider.openai",
         model_id="example-model",
         objective="Answer accurately",
-        user_input="\\ud800",
+        user_input=chr(0xD800),
         max_output_tokens=64,
     )
     with pytest.raises(ProviderError, match="request could not be encoded"):
