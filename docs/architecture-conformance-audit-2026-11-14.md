@@ -212,3 +212,8 @@ The evidence lifecycle now has an independent reviewer path: immutable submissio
 ## 2026-11-14 — connector provenance hardening
 
 Added optional Ed25519 attestation verification for PostgreSQL catalog snapshots. The signed payload binds authenticated tenant, exact source locator, snapshot hash and discovery timestamp; trusted public keys are provisioned server-side, with a 15-minute signature age bound. Signed evidence is stored as a distinct immutable evidence record but remains unverified until the existing independent reviewer workflow. Unsigned legacy ingestion remains explicitly unverified. Verification is covered by deterministic keypair tests and API tests; no test execution or live PostgreSQL connection is claimed. Remaining gaps: managed connector/key lifecycle, key rotation/revocation, hardware-backed key custody, source-role verification, live database E2E and external source truth assurance.
+
+
+## 2026-11-14 — tenant-scoped PostgreSQL connector lifecycle
+
+Added persisted tenant-scoped connector registration, normalized source binding, immutable Ed25519 public-key records, key overlap rotation, explicit revocation events and authorization-gated APIs. Signed ingestion now resolves the active key by authenticated tenant + connector ID + key ID + exact source locator. Revoked/unknown keys fail closed. Tests cover registry persistence, tenant isolation, rotation overlap, revocation, malformed keys, API authorization and signed ingestion. Tests have not been executed; no live PostgreSQL connection or production key-custody assurance is claimed. Remaining gates include secure connector-side private key storage, key backup/recovery, operator identity governance, distributed revocation propagation and live least-privilege PostgreSQL E2E.
