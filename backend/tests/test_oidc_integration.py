@@ -67,7 +67,7 @@ def test_mock_oidc_authorization_code_pkce_nonce_and_refresh(provider):
     with pytest.raises(MockOIDCError, match="invalid|expired|revoked"):
         provider.refresh(tokens["refresh_token"])
 
-    provider.revoke_refresh_token(renewed["refresh_token"])
+    provider.logout(renewed["refresh_token"])
     with pytest.raises(MockOIDCError):
         provider.refresh(renewed["refresh_token"])
 
