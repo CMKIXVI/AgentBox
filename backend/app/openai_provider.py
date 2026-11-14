@@ -47,6 +47,8 @@ class OpenAICompatibleProvider:
     def _validate_rate(value: float | None) -> float | None:
         if value is None:
             return None
+        if isinstance(value, bool):
+            raise ValueError("Provider token rates must be finite non-negative numbers")
         rate = float(value)
         if not math.isfinite(rate) or rate < 0:
             raise ValueError("Provider token rates must be finite non-negative numbers")
@@ -69,7 +71,10 @@ class OpenAICompatibleProvider:
         )
 
     def invoke(self, request: ProviderRequest, timeout_seconds: int) -> ProviderResponse:
-        if not 1 <= timeout_seconds <= 3600:
+        if (
+            type(timeout_seconds) is not int
+            or not 1 <= timeout_seconds <= 3600
+        ):
             raise ProviderError("Provider timeout is outside the supported range")
         try:
             user_content = (
