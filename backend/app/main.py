@@ -15,7 +15,13 @@ from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_audit import AuthorizationAuditStore
 from .authorization_policy import validate_authorization_policy
-from .cognitive_runtime import (\n    CognitiveRunConflictError,\n    CognitiveRunNotFoundError,\n    CognitiveRunService,\n    CognitiveRunValidationError,\n)\nfrom .candidate_generation import (
+from .cognitive_runtime import (
+    CognitiveRunConflictError,
+    CognitiveRunNotFoundError,
+    CognitiveRunService,
+    CognitiveRunValidationError,
+)
+from .candidate_generation import (
     CandidateConflictError,
     CandidateGenerationService,
     CandidateValidationError,
