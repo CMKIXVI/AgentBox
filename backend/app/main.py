@@ -1229,17 +1229,20 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app, principal, "enterprise.discovery", "discovery.snapshot.ingest", "tenant-context"
         )
         try:
+            normalized_source_ref = PostgreSQLSnapshotIngestion._validate_source_ref(
+                request.source_ref
+            )
             provenance = None
             if request.attestation is not None:
                 provenance = app.state.postgresql_provenance.verify(
                     request.attestation.model_dump(),
                     request.snapshot,
                     principal.tenant_id,
-                    request.source_ref,
+                    normalized_source_ref,
                 )
             return app.state.postgresql_ingestion.ingest(
                 request.snapshot, principal.tenant_id, principal.subject_id,
-                request.source_ref, provenance,
+                normalized_source_ref, provenance,
             )
         except ContextNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
