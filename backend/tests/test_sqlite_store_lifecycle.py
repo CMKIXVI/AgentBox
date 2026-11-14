@@ -5,6 +5,7 @@ import sqlite3
 import pytest
 
 from app.authorization_audit import AuthorizationAuditStore
+from app.cognitive_runtime import CognitiveRunService
 from app.enterprise_context import EnterpriseContextService
 from app.evaluation import EvaluationService
 from app.execution import ExecutionService
@@ -26,6 +27,7 @@ def test_all_sqlite_stores_release_in_memory_keepers_on_close():
         ExecutionExperienceService(":memory:"),
         EnterpriseContextService(":memory:"),
         AuthorizationAuditStore(":memory:"),
+        CognitiveRunService(":memory:"),
     ]
 
     try:
