@@ -385,3 +385,8 @@ The durable execution-job service exposes an idempotent `close()` operation. It 
 ## Durable-job shutdown integration
 
 The API registers the durable execution-job store's idempotent close operation with its FastAPI shutdown event. The standalone worker also closes the store in a `finally` block after polling stops or raises. This ensures the shared in-memory SQLite keeper is released by both supported process entry points; it does not close unrelated stores or alter the single-instance deployment constraint.
+
+
+## Worker heartbeat shutdown ordering
+
+A worker now waits for its heartbeat thread to exit before returning from a claimed job. This prevents the process shutdown path from closing the durable-job store while a heartbeat database operation is still in flight. The wait is intentionally bounded by the heartbeat operation's own SQLite busy timeout rather than a shorter arbitrary thread-join timeout.
