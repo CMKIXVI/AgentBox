@@ -30,6 +30,7 @@ class AuthorizationAuditStore:
         )
         self._uri = self.database_path == ":memory:"
         self._keeper = sqlite3.connect(self._dsn, uri=True) if self._uri else None
+        self._closed = False
         with self._connect() as connection:
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS authorization_decisions (
@@ -56,7 +57,18 @@ class AuthorizationAuditStore:
                 BEGIN SELECT RAISE(ABORT, 'authorization audit is append-only'); END
             """)
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
         connection = sqlite3.connect(
             self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
         )
