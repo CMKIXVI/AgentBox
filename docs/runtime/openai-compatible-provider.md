@@ -43,6 +43,20 @@ configured.
 - This adapter currently supports the OpenAI chat-completions request/response
   shape, not every provider-specific API extension.
 
+## Interrupted synchronous executions
+
+The synchronous execution store is SQLite single-instance. On exclusive process
+startup, any execution still marked `running` is changed to `interrupted` with
+error code `execution_interrupted_ambiguous_outcome`. This is intentionally
+conservative: a process may have died after the provider completed the request,
+so an idempotent API replay returns the interrupted record and does not invoke
+the provider again. Operators must reconcile the provider-side outcome before
+submitting a new request with a new idempotency key.
+
+Do not run multiple API processes against this SQLite execution store. Startup
+recovery assumes the previous process has stopped; a multi-instance deployment
+requires a database-backed lease/ownership design before enabling this behavior.
+
 ## Verification boundary
 
 CI uses mocked HTTP responses; it does not contact a live provider, validate
