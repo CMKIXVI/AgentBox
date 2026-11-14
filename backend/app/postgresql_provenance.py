@@ -116,7 +116,9 @@ class PostgreSQLProvenanceVerifier:
         if not isinstance(encoded, str) or not 80 <= len(encoded) <= 128:
             raise ContextValidationError("attestation signature must be base64url encoded Ed25519 bytes")
         try:
-            signature = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+            signature = base64.b64decode(
+                encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True
+            )
             if len(signature) != 64:
                 raise ValueError
             key.verify(
