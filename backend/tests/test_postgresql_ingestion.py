@@ -4,8 +4,6 @@ import base64
 import hashlib
 import json
 from datetime import UTC, datetime
-
-import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
@@ -244,7 +242,7 @@ def test_signed_connector_snapshot_persists_verified_provenance_separately(tmp_p
     assert evidence[0]["metadata"]["connector_attestation"]["key_id"] == "warehouse-connector-v1"
 
 
-def test_signed_connector_snapshot_rejects_tampering_and_cross_tenant_replay(tmp_path):
+def test_signed_connector_snapshot_rejects_tampering_and_accepts_idempotent_replay(tmp_path):
     app = configure_test_access(create_app(str(tmp_path / "discovery-signed-invalid.sqlite3")))
     client = TestClient(app)
     snapshot = catalog_snapshot()
