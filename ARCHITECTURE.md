@@ -407,3 +407,6 @@ The offline tenant administration CLI closes its `TenantRegistry` in a `finally`
 
 
 Tenant CLI database preflight uses an explicit `try/finally` close for its read-only SQLite connection; connection context managers alone do not close SQLite handles. A regression test verifies cleanup even when the database is rejected as uninitialized.
+
+
+Tenant backup restore validates exact integer version fields (excluding booleans), key identifier syntax, encoded-field types, and the complete payload top-level field set before applying data. This prevents Python's `True == 1` coercion from accepting malformed version markers.
