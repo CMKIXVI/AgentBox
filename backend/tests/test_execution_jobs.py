@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import sqlite3
 
 import pytest
 
@@ -30,6 +30,17 @@ def create(jobs, key="job-1", tenant="tenant-a"):
         workload_hash=hashlib.sha256(b"artifact").hexdigest(),
         payload={"input": "hello"}, idempotency_key=key,
     )
+
+
+def test_unregistered_handler_is_denied(jobs):
+    with pytest.raises(JobConflictError):
+        jobs.create(
+            tenant_id="tenant-a", subject_id="user-1", principal_type="user",
+            workload_kind="sandbox_workload", handler_id="arbitrary.handler",
+            handler_version="1.0.0", workload_ref="artifact://untrusted",
+            workload_hash=hashlib.sha256(b"artifact").hexdigest(),
+            payload={}, idempotency_key="unregistered",
+        )
 
 
 def test_create_is_durable_and_appends_initial_event(jobs):
