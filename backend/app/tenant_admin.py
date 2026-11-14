@@ -78,13 +78,16 @@ def _require_agentbox_database(database_path: str) -> None:
     if not path.is_file():
         raise ValueError(f"AgentBox database does not exist: {path}")
     uri = f"{path.resolve().as_uri()}?mode=ro"
-    with sqlite3.connect(uri, uri=True) as connection:
+    connection = sqlite3.connect(uri, uri=True)
+    try:
         tables = {
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
+    finally:
+        connection.close()
     required = {"agent_versions", "executions", "evaluation_profiles", "evaluation_runs", "tenants", "tenant_audit"}
     missing = sorted(required - tables)
     if missing:
