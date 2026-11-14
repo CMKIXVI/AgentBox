@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import re
 import sqlite3
@@ -89,7 +90,6 @@ class PostgreSQLConnectorRegistry:
                     connector_id TEXT NOT NULL,
                     key_id TEXT NOT NULL,
                     public_key_b64 TEXT NOT NULL,
-                    status TEXT NOT NULL CHECK(status IN ('active','revoked')),
                     created_at TEXT NOT NULL,
                     created_by TEXT NOT NULL,
                     PRIMARY KEY (tenant_id, connector_id, key_id),
@@ -185,13 +185,13 @@ class PostgreSQLConnectorRegistry:
                     (tenant_id, connector_id, source_ref, now, actor_id),
                 )
                 db.execute(
-                    "INSERT INTO pg_connector_keys VALUES (?, ?, ?, ?, 'active', ?, ?)",
+                    "INSERT INTO pg_connector_keys VALUES (?, ?, ?, ?, ?, ?)",
                     (tenant_id, connector_id, key_id, encoded, now, actor_id),
                 )
                 self._event(db, tenant_id, connector_id, "connector.registered",
                             actor_id, None, {"source_ref": source_ref})
                 self._event(db, tenant_id, connector_id, "connector.key_added",
-                            actor_id, key_id, {"public_key_sha256": __import__("hashlib").sha256(encoded.encode()).hexdigest()})
+                            actor_id, key_id, {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()})
         except sqlite3.IntegrityError as exc:
             raise ContextConflictError("Connector identity or source_ref already exists for this tenant") from exc
         return {"connector_id": connector_id, "source_ref": source_ref,
@@ -244,13 +244,7 @@ class PostgreSQLConnectorRegistry:
                 (str(uuid.uuid4()), tenant_id, connector_id, key_id, actor_id, _now(),
                  json.dumps({"reason": "operator_revocation"}, separators=(",", ":"))),
             )
-            db.execute(
-                """INSERT INTO pg_connector_keys
-                (tenant_id, connector_id, key_id, public_key_b64, status, created_at, created_by)
-                SELECT tenant_id, connector_id, key_id, public_key_b64, 'revoked', ?, ?
-                FROM pg_connector_keys WHERE tenant_id=? AND connector_id=? AND key_id=?""",
-                (_now(), actor_id, tenant_id, connector_id, key_id),
-            )
+
         return {"connector_id": connector_id, "key_id": key_id, "status": "revoked"}
 
     def get_active_key(self, tenant_id: str, connector_id: str,
@@ -267,9 +261,13 @@ class PostgreSQLConnectorRegistry:
             if connector["status"] != "active" or connector["source_ref"] != source_ref:
                 raise ContextValidationError("Connector is revoked or source_ref does not match registration")
             row = db.execute(
-                """SELECT public_key_b64 FROM pg_connector_keys
-                WHERE tenant_id=? AND connector_id=? AND key_id=? AND status='active'
-                ORDER BY created_at DESC LIMIT 1""",
+                """SELECT public_key_b64 FROM pg_connector_keys k
+                WHERE tenant_id=? AND connector_id=? AND key_id=?
+                AND NOT EXISTS (
+                    SELECT 1 FROM pg_connector_events e
+                    WHERE e.tenant_id=k.tenant_id AND e.connector_id=k.connector_id
+                    AND e.key_id=k.key_id AND e.event_type='connector.key_revoked'
+                ) LIMIT 1""",
                 (tenant_id, connector_id, key_id),
             ).fetchone()
         if row is None:
@@ -280,7 +278,12 @@ class PostgreSQLConnectorRegistry:
         with self._connection() as db:
             rows = db.execute(
                 """SELECT c.connector_id, c.source_ref, c.status, c.created_at, c.created_by,
-                k.key_id, k.status AS key_status, k.created_at AS key_created_at
+                k.key_id, CASE WHEN EXISTS (
+                    SELECT 1 FROM pg_connector_events e
+                    WHERE e.tenant_id=k.tenant_id AND e.connector_id=k.connector_id
+                    AND e.key_id=k.key_id AND e.event_type='connector.key_revoked'
+                ) THEN 'revoked' ELSE 'active' END AS key_status,
+                k.created_at AS key_created_at
                 FROM pg_connectors c LEFT JOIN pg_connector_keys k
                 ON c.tenant_id=k.tenant_id AND c.connector_id=k.connector_id
                 WHERE c.tenant_id=? ORDER BY c.connector_id, k.created_at""",
