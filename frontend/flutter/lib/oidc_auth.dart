@@ -23,8 +23,8 @@ class AgentBoxOidcAuth {
     required this.config,
     FlutterAppAuth? appAuth,
     FlutterSecureStorage? secureStorage,
-  })  : _appAuth = appAuth ?? FlutterAppAuth(),
-        _secureStorage = secureStorage ?? FlutterSecureStorage();
+  })  : _appAuth = appAuth ?? const FlutterAppAuth(),
+        _secureStorage = secureStorage ?? const FlutterSecureStorage();
 
   final AgentBoxOidcConfig config;
   final FlutterAppAuth _appAuth;
@@ -48,7 +48,7 @@ class AgentBoxOidcAuth {
       ),
     );
 
-    if (response == null || response.accessToken == null) {
+    if (response.accessToken == null) {
       throw StateError('The identity provider did not return an access token');
     }
     await _storeTokens(
@@ -84,7 +84,7 @@ class AgentBoxOidcAuth {
           scopes: const ['openid', 'profile', 'email', 'offline_access'],
         ),
       );
-      if (response == null || response.accessToken == null) {
+      if (response.accessToken == null) {
         await signOut();
         return null;
       }
