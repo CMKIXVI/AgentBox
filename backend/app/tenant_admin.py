@@ -101,6 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     actor_id = local_operator_actor_id()
+    registry: TenantRegistry | None = None
     try:
         _require_agentbox_database(args.database)
         registry = TenantRegistry(args.database)
@@ -132,6 +133,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ValueError, BackupError, TenantConflictError, TenantNotFoundError, sqlite3.Error, OSError) as exc:
         print(f"agentbox-tenant: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if registry is not None:
+            registry.close()
 
 
 if __name__ == "__main__":
