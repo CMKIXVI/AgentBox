@@ -35,14 +35,13 @@ The envelope carries references and bounded metadata, not executable code or aut
 
 ## Deliberately not implemented
 
-- Durable event persistence or hash-chained event storage.
-- Cognitive state store, goal decomposition, planner, reflection or memory consolidation.
+- Goal decomposition, planner, reflection, bounded reasoning loops or memory consolidation.
 - Capability invocation or orchestration.
-- Event-to-existing-audit atomic transaction.
+- Atomic coupling between cognitive event writes and the existing authorization audit transaction.
 - Trusted evidence attestation and provenance verification.
-- API routes and frontend surfaces.
+- Frontend surfaces and multi-instance persistence.
 
-These are later vertical slices. The next runtime step is a tenant-scoped cognitive run/state service that uses existing identity and authorization authorities and persists append-only events without creating a parallel tenant or agent registry.
+The tenant-scoped run journal and context assembly API are implemented as state infrastructure. They do not reason, choose capabilities, invoke tools, execute agents, or validate evidence.
 
 
 ## Tenant-scoped run journal
@@ -53,3 +52,16 @@ API: `POST /v1/cognitive-runs`, `GET /v1/cognitive-runs/{run_id}`, `GET /v1/cogn
 A run is bound server-side to an existing immutable agent version and its registry content hash. The caller supplies a goal reference, not tenant identity, actor identity, agent hash, or executable prompt. Tenant and actor are taken from the authenticated principal. Creation and event append require idempotency keys bound to the request and actor. Event sequence assignment and stage advancement occur in one SQLite transaction. Event rows are protected by database triggers against update and deletion. Reads are tenant-scoped; a run belonging to another tenant is indistinguishable from a missing run.
 
 The SQLite implementation is single-instance only. The service is included in API shutdown and in-memory store lifecycle coverage. Run/event persistence is not yet coupled atomically to the authorization audit transaction, and the event hash is an integrity digest for the stored envelope rather than a signed or chained tamper-proof log.
+
+
+## Deterministic context assembly
+
+Implementation: `backend/app/context_assembly.py`  
+Contract: `schemas/cognitive-context-snapshot-v1.schema.json`  
+API: `POST /v1/cognitive-runs/{run_id}/context`.
+
+Context assembly reads only the existing tenant-scoped Enterprise Context service. It binds the selected entities and relationships to their exact immutable versions, excludes expired records, includes observed and human-validated assertions by default, and permits inferred assertions only through an explicit request flag. AI hypotheses are never included. Relationships are included only when both selected endpoint versions match. Raw entity and relationship attributes are deliberately omitted.
+
+Evidence is restricted to records already marked `validated`; unverified and rejected evidence is never represented as trusted proof. The current evidence service only creates unverified records and does not yet expose an authorized validation workflow, so validated evidence will remain absent until that separate governance path exists. The snapshot is schema-validated, content-addressed, bounded to 48 KiB, and embedded in the append-only `context.assembled` lifecycle event. Idempotency replays the same event when the source context has not changed.
+
+The API requires an explicit `cognition.context.assemble` authorization grant. Tenant identity is taken from the authenticated principal and is not embedded in the event payload. The service is deterministic for unchanged source records; it is not a retrieval-augmented reasoning engine.
