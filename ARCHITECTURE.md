@@ -410,3 +410,5 @@ Tenant CLI database preflight uses an explicit `try/finally` close for its read-
 
 
 Tenant backup restore validates exact integer version fields (excluding booleans), key identifier syntax, encoded-field types, and the complete payload top-level field set before applying data. This prevents Python's `True == 1` coercion from accepting malformed version markers.
+
+Backup payload validation also restricts every table cell to SQLite-bindable scalar values, rejects non-finite floats, and bounds integers to SQLite's signed 64-bit range before opening the restore transaction.
