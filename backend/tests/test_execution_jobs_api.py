@@ -167,6 +167,7 @@ def test_api_shutdown_closes_all_sqlite_stores(tmp_path, monkeypatch):
         app.state.execution_jobs,
         app.state.executions,
         app.state.experiences,
+        app.state.cognitive_runs,
         app.state.enterprise_context,
         app.state.evaluations,
         app.state.registry,
