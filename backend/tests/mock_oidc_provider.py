@@ -198,3 +198,7 @@ class MockOIDCProvider:
     def revoke_refresh_token(self, refresh_token: str) -> None:
         self._refresh_tokens.pop(refresh_token, None)
         self._revoked_refresh_tokens.add(refresh_token)
+
+    def logout(self, refresh_token: str) -> None:
+        """Simulate provider logout by revoking the active refresh credential."""
+        self.revoke_refresh_token(refresh_token)
