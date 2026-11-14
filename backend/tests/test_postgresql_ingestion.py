@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from datetime import UTC, datetime
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.postgresql_provenance import PostgreSQLProvenanceVerifier
 
 
 def catalog_snapshot():
@@ -192,3 +198,86 @@ def test_catalog_snapshot_ingestion_enforces_eight_mib_body_limit(tmp_path):
         json={"source_ref": "postgresql-catalog://warehouse-prod/snapshot", "snapshot": snapshot},
     )
     assert response.status_code == 422
+
+
+
+def make_connector_attestation(snapshot, source_ref, tenant_id="test-tenant"):
+    private = Ed25519PrivateKey.generate()
+    public = private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    key_id = "warehouse-connector-v1"
+    signed_at = datetime.now(UTC).isoformat()
+    message = PostgreSQLProvenanceVerifier.signing_payload(
+        tenant_id=tenant_id, source_ref=source_ref, snapshot=snapshot,
+        key_id=key_id, signed_at=signed_at,
+    )
+    attestation = {
+        "algorithm": "Ed25519",
+        "key_id": key_id,
+        "signed_at": signed_at,
+        "signature": base64.urlsafe_b64encode(private.sign(message)).decode().rstrip("="),
+    }
+    return PostgreSQLProvenanceVerifier({key_id: public}), attestation
+
+
+def test_signed_connector_snapshot_persists_verified_provenance_separately(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "discovery-signed.sqlite3")))
+    client = TestClient(app)
+    snapshot = catalog_snapshot()
+    source_ref = "postgresql-catalog://warehouse-prod/snapshot"
+    verifier, attestation = make_connector_attestation(snapshot, source_ref)
+    app.state.postgresql_provenance = verifier
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": source_ref, "snapshot": snapshot, "attestation": attestation},
+    )
+    assert response.status_code == 201, response.text
+    result = response.json()
+    assert result["provenance_status"] == "cryptographically_verified"
+    assert result["provenance_key_id"] == "warehouse-connector-v1"
+    assert result["validation_status"] == "unverified"
+    evidence = app.state.enterprise_context.query_evidence(
+        app.state.enterprise_context.query_entities(
+            "test-tenant", entity_type="database_relation", limit=1
+        )[0]["entity_id"],
+        "test-tenant",
+    )
+    assert evidence[0]["metadata"]["connector_attestation"]["key_id"] == "warehouse-connector-v1"
+
+
+def test_signed_connector_snapshot_rejects_tampering_and_cross_tenant_replay(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "discovery-signed-invalid.sqlite3")))
+    client = TestClient(app)
+    snapshot = catalog_snapshot()
+    source_ref = "postgresql-catalog://warehouse-prod/snapshot"
+    verifier, attestation = make_connector_attestation(snapshot, source_ref)
+    app.state.postgresql_provenance = verifier
+    tampered = dict(snapshot)
+    tampered["schemas"] = ["other"]
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": source_ref, "snapshot": tampered, "attestation": attestation},
+    )
+    assert response.status_code == 422
+    assert "signature verification failed" in response.text
+    replay = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={
+            "source_ref": source_ref, "snapshot": snapshot,
+            "attestation": attestation,
+        },
+    )
+    assert replay.status_code == 201, replay.text
+
+
+def test_signed_connector_snapshot_fails_closed_when_key_is_not_trusted(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "discovery-no-trust.sqlite3")))
+    client = TestClient(app)
+    snapshot = catalog_snapshot()
+    source_ref = "postgresql-catalog://warehouse-prod/snapshot"
+    _, attestation = make_connector_attestation(snapshot, source_ref)
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json={"source_ref": source_ref, "snapshot": snapshot, "attestation": attestation},
+    )
+    assert response.status_code == 422
+    assert "not trusted" in response.text
