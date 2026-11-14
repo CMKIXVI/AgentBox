@@ -15,7 +15,7 @@ from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_audit import AuthorizationAuditStore
 from .authorization_policy import validate_authorization_policy
-from .candidate_generation import (
+from .cognitive_runtime import (\n    CognitiveRunConflictError,\n    CognitiveRunNotFoundError,\n    CognitiveRunService,\n    CognitiveRunValidationError,\n)\nfrom .candidate_generation import (
     CandidateConflictError,
     CandidateGenerationService,
     CandidateValidationError,
@@ -191,6 +191,26 @@ class LearningLessonRequest(BaseModel):
     source_kind: Literal["deterministic_rule", "human_review", "model_proposal"]
     extractor_version: str = Field(min_length=1, max_length=128)
     confidence: float = Field(ge=0, le=1)
+
+
+class CognitiveRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    goal_ref: str = Field(min_length=1, max_length=1024)
+    agent_ref: str = Field(min_length=3, max_length=512)
+
+
+class CognitiveEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    stage: str = Field(min_length=1, max_length=32)
+    event_type: str = Field(min_length=3, max_length=64)
+    evidence_status: Literal["unverified", "verified", "not_applicable"] = "unverified"
+    input_refs: list[str] = Field(default_factory=list, max_length=100)
+    output_refs: list[str] = Field(default_factory=list, max_length=100)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=100)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = Field(default=None, min_length=2, max_length=128)
+    causation_event_id: str | None = None
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class PostgreSQLSnapshotIngestRequest(BaseModel):
@@ -982,6 +1002,93 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except ExperienceNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ExperienceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/cognitive-runs", status_code=status.HTTP_201_CREATED)
+    def create_cognitive_run(
+        request: CognitiveRunRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=256),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        if "@" not in request.agent_ref:
+            raise HTTPException(status_code=422, detail="agent_ref must identify an immutable agent version")
+        agent_id, agent_version = request.agent_ref.rsplit("@", 1)
+        if not agent_id or not agent_version:
+            raise HTTPException(status_code=422, detail="agent_ref must identify an immutable agent version")
+        enforce_authorization(
+            app, principal, "agent.cognition", "cognition.run.create", agent_id
+        )
+        try:
+            agent = app.state.registry.get(agent_id, agent_version, principal.tenant_id)
+            run, event, created = app.state.cognitive_runs.create_run(
+                request.goal_ref, request.agent_ref, agent.agent_id, agent.version,
+                agent.content_hash, principal.tenant_id, principal.subject_id, idempotency_key,
+            )
+            return {"run": run, "initial_event": event, "created": created}
+        except AgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/cognitive-runs/{run_id}")
+    def get_cognitive_run(
+        run_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.run.read", run["agent_id"]
+            )
+            return run
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/v1/cognitive-runs/{run_id}/events")
+    def list_cognitive_run_events(
+        run_id: str,
+        after_sequence: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.run.read", run["agent_id"]
+            )
+            items = app.state.cognitive_runs.list_events(
+                run_id, principal.tenant_id, after_sequence, limit
+            )
+            return {"run_id": run_id, "items": items, "limit": limit, "after_sequence": after_sequence}
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/cognitive-runs/{run_id}/events", status_code=status.HTTP_201_CREATED)
+    def append_cognitive_run_event(
+        run_id: str,
+        request: CognitiveEventRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=256),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.event.append", run["agent_id"]
+            )
+            event, created = app.state.cognitive_runs.append_event(
+                run_id, request.model_dump(exclude_none=True), principal.tenant_id,
+                principal.subject_id, idempotency_key,
+            )
+            return {"event": event, "created": created}
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/v1/fitness/selection")
