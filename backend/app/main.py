@@ -39,7 +39,6 @@ from .execution import (
     ExecutionPolicyError,
     ExecutionService,
 )
-from .openai_provider import OpenAICompatibleProvider
 from .execution_jobs import (
     DurableExecutionJobService,
     JobConflictError,
@@ -52,6 +51,7 @@ from .experience import (
     ExperienceNotFoundError,
     ExperienceValidationError,
 )
+from .openai_provider import OpenAICompatibleProvider
 from .postgresql_ingestion import PostgreSQLSnapshotIngestion
 from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
