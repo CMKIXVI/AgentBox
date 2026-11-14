@@ -262,6 +262,7 @@ def test_signed_connector_snapshot_rejects_tampering_and_accepts_idempotent_repl
     assert registered.status_code == 201, registered.text
     tampered = dict(snapshot)
     tampered["schemas"] = ["other"]
+    tampered["snapshot_hash"] = "b" * 64
     response = client.post(
         "/v1/enterprise-discovery/postgresql/snapshots/ingest",
         json={"source_ref": source_ref, "connector_id": "warehouse-prod",
