@@ -12,7 +12,7 @@ def configure_test_access(app):
     )
     resources = [
         "research.summarizer", "runtime.test", "quality.research-summary",
-        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha",
+        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha", "evidence.alpha",
     ]
     grants = [
         ("agent.registry", "agent.create"),
