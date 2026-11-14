@@ -4,6 +4,7 @@ import pytest
 
 from app.cognitive_runtime import (
     CognitiveRunConflictError,
+    CognitiveRunError,
     CognitiveRunNotFoundError,
     CognitiveRunService,
     CognitiveRunValidationError,
@@ -233,5 +234,24 @@ def test_idempotency_keys_are_stored_only_as_hashes(tmp_path):
     assert create_hash != "sensitive-client-key"
     assert event_hash != "sensitive-event-key"
     assert len(create_hash) == len(event_hash) == 64
+    tenants.close()
+    service.close()
+
+
+def test_event_envelope_digest_is_verified_on_read(tmp_path):
+    service, tenants = make_service(tmp_path)
+    run, _, _ = create_run(service)
+    connection = service._connect()
+    try:
+        with connection:
+            connection.execute("DROP TRIGGER cognitive_events_no_update")
+            connection.execute(
+                "UPDATE cognitive_events SET event_json='{}' WHERE run_id=?",
+                (run["run_id"],),
+            )
+    finally:
+        connection.close()
+    with pytest.raises(CognitiveRunError, match="integrity"):
+        service.list_events(run["run_id"], "tenant-alpha")
     tenants.close()
     service.close()
