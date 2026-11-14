@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import pytest
-
 from app.sandbox import (
     DockerGVisorSandboxRunner,
     SandboxLimits,
     SandboxPolicyError,
     SandboxRequest,
 )
+
+import pytest
 
 
 IMAGE = "registry.example.test/agentbox/runner@sha256:" + "a" * 64
