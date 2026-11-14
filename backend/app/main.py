@@ -680,7 +680,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         request: WorkerLeaseRequest,
         authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> dict[str, Any]:
-        require_job_worker(app, authorization)
+        require_job_worker(authorization)
         try:
             return app.state.execution_jobs.start(
                 job_id, request.tenant_id, request.worker_id, request.lease_token
@@ -696,7 +696,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         request: WorkerLeaseRequest,
         authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> dict[str, Any]:
-        require_job_worker(app, authorization)
+        require_job_worker(authorization)
         try:
             expiry = app.state.execution_jobs.heartbeat(
                 job_id, request.tenant_id, request.worker_id, request.lease_token
@@ -732,7 +732,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         request: WorkerCompleteRequest,
         authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> dict[str, Any]:
-        require_job_worker(app, authorization)
+        require_job_worker(authorization)
         try:
             return app.state.execution_jobs.complete(
                 job_id, request.tenant_id, request.worker_id,
@@ -751,7 +751,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         request: WorkerFailRequest,
         authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> dict[str, Any]:
-        require_job_worker(app, authorization)
+        require_job_worker(authorization)
         try:
             return app.state.execution_jobs.fail(
                 job_id, request.tenant_id, request.worker_id,
