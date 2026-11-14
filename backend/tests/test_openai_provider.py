@@ -232,3 +232,20 @@ def test_rejects_nonstandard_json_numeric_constants(monkeypatch):
     )
     with pytest.raises(ProviderError, match="invalid JSON"):
         OpenAICompatibleProvider("secret").invoke(request(), 5)
+
+
+@pytest.mark.parametrize("document", [
+    [],
+    {"choices": {}},
+    {"choices": []},
+    {"choices": ["not-an-object"]},
+    {"choices": [{"message": []}]},
+    {"choices": [{"message": {"content": "ok"}}], "usage": ["not-an-object"]},
+])
+def test_rejects_malformed_response_structures(monkeypatch, document):
+    monkeypatch.setattr(
+        "app.openai_provider.urlopen",
+        lambda *_args, **_kwargs: FakeHTTPResponse(document),
+    )
+    with pytest.raises(ProviderError, match="chat-completions contract"):
+        OpenAICompatibleProvider("secret").invoke(request(), 5)
