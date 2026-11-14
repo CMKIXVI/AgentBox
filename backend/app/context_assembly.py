@@ -9,10 +9,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
-from .enterprise_context import (
-    ContextNotFoundError,
-    EnterpriseContextService,
-)
+from .enterprise_context import EnterpriseContextService
 
 MAX_SNAPSHOT_BYTES = 48 * 1024
 MAX_ENTITIES = 12
