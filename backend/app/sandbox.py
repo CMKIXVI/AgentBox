@@ -13,8 +13,8 @@ import signal
 import subprocess
 import time
 import uuid
-from dataclasses import dataclass
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 
 class SandboxError(RuntimeError):
