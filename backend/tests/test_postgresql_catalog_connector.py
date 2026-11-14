@@ -138,7 +138,7 @@ def test_catalog_reader_fails_closed_when_no_requested_schema_is_visible():
             return EmptyCursor(self)
 
     connection = EmptyConnection()
-    with pytest.raises(ContextValidationError, match="No requested"):
+    with pytest.raises(ContextValidationError, match="missing or not visible"):
         PostgreSQLCatalogReader().collect(lambda: connection, ["private"])
     assert connection.rolled_back and connection.closed
 
