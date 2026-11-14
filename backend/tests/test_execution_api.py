@@ -6,7 +6,7 @@ import pytest
 from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
-from app.execution import DeterministicFakeProvider, ProviderError, ProviderResponse
+from app.execution import DeterministicFakeProvider, ExecutionService, ProviderError, ProviderResponse
 from app.main import create_app
 
 
@@ -46,6 +46,50 @@ def test_execute_persists_output_and_usage(client):
     assert body["result"]["steps"] == 1
     fetched = client.get(f"/v1/executions/{body['execution_id']}")
     assert fetched.json() == body
+
+
+def test_interrupted_provider_call_is_fenced_on_restart_without_replay(client, tmp_path):
+    agent_id, version = create_agent(client)
+
+    class ProcessCrashProvider:
+        provider_id = "provider.fake"
+
+        def invoke(self, request, timeout_seconds):
+            del request, timeout_seconds
+            raise SystemExit("simulated process termination")
+
+    class MustNotReplayProvider:
+        provider_id = "provider.fake"
+
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, request, timeout_seconds):
+            del request, timeout_seconds
+            self.calls += 1
+            return ProviderResponse(output="replayed")
+
+    first_service = client.app.state.executions
+    first_service.providers["provider.fake"] = ProcessCrashProvider()
+    with pytest.raises(SystemExit, match="simulated process termination"):
+        first_service.execute(
+            agent_id, version, "charge-once", "crash-key", tenant_id="test-tenant"
+        )
+
+    safe_provider = MustNotReplayProvider()
+    restarted_service = ExecutionService(
+        tmp_path / "runtime.sqlite3",
+        client.app.state.registry,
+        providers=[safe_provider],
+    )
+    replay = restarted_service.execute(
+        agent_id, version, "charge-once", "crash-key", tenant_id="test-tenant"
+    )
+
+    assert replay["status"] == "interrupted"
+    assert replay["error_code"] == "execution_interrupted_ambiguous_outcome"
+    assert replay["completed_at"] is not None
+    assert safe_provider.calls == 0
 
 
 def test_idempotency_returns_same_execution(client):
