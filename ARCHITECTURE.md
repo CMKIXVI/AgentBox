@@ -448,3 +448,12 @@ Tenant CLI database preflight uses an explicit `try/finally` close for its read-
 Tenant backup restore validates exact integer version fields (excluding booleans), key identifier syntax, encoded-field types, and the complete payload top-level field set before applying data. This prevents Python's `True == 1` coercion from accepting malformed version markers.
 
 Backup payload validation also restricts every table cell to SQLite-bindable scalar values, rejects non-finite floats, and bounds integers to SQLite's signed 64-bit range before opening the restore transaction.
+
+
+## Cognitive context assembly
+
+The cognitive runtime includes a deterministic context assembly service backed exclusively by the existing tenant-scoped Enterprise Context authority. The service produces a schema-validated, content-addressed snapshot, binds graph edges to exact selected entity versions, excludes expired entities and relationships, and defaults to observed/human-validated assertions. Inferred assertions require explicit opt-in; AI hypotheses are excluded. Raw attributes are not copied into the snapshot.
+
+Only validated evidence can be included. Since the current context evidence API records evidence as unverified and has no authorized validation path, the assembled snapshot does not yet contain validated evidence. Context snapshots are bounded to 48 KiB and embedded in an append-only lifecycle event. The authenticated endpoint requires `cognition.context.assemble`; tenant identity remains server-derived.
+
+This adds context packaging, not reasoning or retrieval-augmented generation. It does not attest sources, invoke capabilities, or execute an agent.
