@@ -241,6 +241,30 @@
       "path": "/internal/v1/execution-jobs/{job_id}/fail",
       "auth_required": true,
       "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/cognitive-runs",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/cognitive-runs/{run_id}",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/cognitive-runs/{run_id}/events",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/cognitive-runs/{run_id}/events",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
     }
   ]
 }
