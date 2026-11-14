@@ -31,6 +31,7 @@ def configure_test_access(app):
         ("enterprise.context", "context.relationship.read"),
         ("enterprise.context", "context.evidence.create"),
         ("enterprise.context", "context.evidence.read"),
+        ("enterprise.context", "context.evidence.review"),
         ("enterprise.context", "context.event.read"),
         ("enterprise.discovery", "discovery.snapshot.ingest"),
         ("agent.experience", "experience.create"),
