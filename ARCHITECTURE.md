@@ -62,7 +62,13 @@ Keep these domains distinct while reusing shared artifact, lineage, evaluation, 
 
 The detailed repository conformance and implementation gaps are tracked in [the 2026-11-14 architecture audit](docs/architecture-conformance-audit-2026-11-14.md). That audit is a snapshot; this master document remains the canonical target.
 
-## 2.2 Cognitive runtime contract baseline
+## 2.2 Evidence validation and provenance governance
+
+Enterprise Context evidence submission is untrusted by default. Evidence records are immutable and begin as `unverified`; submitters cannot set a validated or rejected state. A separately authorized reviewer must be distinct from the recorded submitter. Each evidence record receives at most one terminal review (`validated` or `rejected`), stored in an append-only review table and represented by an append-only context event. Review decisions are tenant-scoped and cannot be edited or reversed in place; corrected evidence must be submitted as a new record with new provenance.
+
+Validation requires a source SHA-256 digest and an independent reviewer confirmation matching that digest. This is a human attestation to the recorded digest, not an automated retrieval or cryptographic verification of the external source bytes. The current platform does not fetch arbitrary source references or prove that an external system supplied those bytes. Context assembly exposes only evidence whose effective review status is `validated`; unverified and rejected records remain excluded. A stronger connector-backed source verification service remains a production gate.
+
+## 2.3 Cognitive runtime contract baseline
 
 The cognitive runtime now has a typed lifecycle event envelope (`schemas/cognitive-event-v1.schema.json`), deterministic validator (`backend/app/cognitive_contract.py`), and a tenant-scoped SQLite run journal (`backend/app/cognitive_runtime.py`). Authenticated APIs create runs bound to an existing immutable agent version, append ordered events, and read tenant-scoped run/event history. Events are append-only, idempotent, bounded, stage-validated, and tied to server-derived tenant/actor identity. Idempotency keys are stored only as SHA-256 digests; event payloads reject reserved authority, credential and executable-field names. Verification and accepted memory require verified evidence references; capability selection and responsibility decisions require explicit references.
 
