@@ -375,3 +375,8 @@ The durable execution-job store now closes each short-lived SQLite connection af
 ## Authorization-audit SQLite connection lifecycle
 
 The append-only authorization audit store closes each short-lived SQLite connection after its transaction context exits, retaining commit/rollback semantics. Its shared in-memory keeper remains open for the store lifetime. Audit immutability and persistence semantics are unchanged; this hardening does not provide atomic coupling with other service transactions.
+
+
+## Durable-job store shutdown lifecycle
+
+The durable execution-job service exposes an idempotent `close()` operation. It releases the shared in-memory SQLite keeper and rejects subsequent connections after shutdown; callers owning the service must invoke it during application shutdown. File-backed stores also enter the closed state, preventing accidental reuse after lifecycle termination.
