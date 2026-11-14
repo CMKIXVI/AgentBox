@@ -181,7 +181,7 @@ void main() {
       expect(store.values, isEmpty);
     });
 
-    test('does not retain an old refresh token when provider omits one', () async {
+    test('preserves refresh token when provider omits rotation', () async {
       await store.write(AgentBoxOidcAuth.accessTokenKey, 'old-access');
       await store.write(AgentBoxOidcAuth.refreshTokenKey, 'old-refresh');
       await store.write(
