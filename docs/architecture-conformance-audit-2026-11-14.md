@@ -188,3 +188,17 @@ The branch now includes a tenant-scoped cognitive run journal and authenticated 
 - API routes support create, append, get and paginated event reads, with tenant isolation and authorization.
 
 This is a stateful lifecycle journal only. It does not implement cognition, planning, capability invocation, trusted evidence, or memory consolidation. SQLite remains single-instance. The new tests were added but not executed; no CI or live integration evidence is claimed.
+
+
+## 11. P2 cognitive context assembly implementation update
+
+A deterministic context assembly engine and authenticated endpoint are now implemented:
+- Reads only through the existing tenant-scoped Enterprise Context service.
+- Binds relationships to exact selected entity versions and includes only edges whose endpoints are both selected.
+- Excludes expired records; defaults to observed/human-validated assertions; inferred assertions require explicit opt-in; AI hypotheses are excluded.
+- Omits raw attributes and limits snapshots to 48 KiB.
+- Validates snapshots against a dedicated versioned JSON Schema and derives a content-addressed reference.
+- Embeds the snapshot in the append-only `context.assembled` event with idempotent replay.
+- Requires a distinct `cognition.context.assemble` authorization grant; tenant identity remains principal-derived.
+
+Known blocker: the evidence store currently records evidence as unverified and has no authorized validation workflow. Context assembly therefore includes validated evidence only and currently cannot surface unverified records as proof. No evidence attestation, reasoning loop, retrieval-augmented generation, capability invocation, or agent execution is claimed. New regression tests were added but have not been executed; CI was not invoked.
