@@ -203,3 +203,26 @@ def test_api_connector_management_requires_explicit_authorization(tmp_path):
         },
     )
     assert response.status_code == 403
+
+
+
+def test_connector_key_material_and_lifecycle_events_are_append_only(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "append-only.sqlite3"
+    registry = PostgreSQLConnectorRegistry(path)
+    encoded, _ = public_key()
+    registry.register(
+        "tenant-a", "warehouse-prod", "postgresql-catalog://warehouse/snapshot",
+        "key-v1", encoded, "operator-a",
+    )
+    with sqlite3.connect(path) as db:
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "UPDATE pg_connector_keys SET public_key_b64=? WHERE key_id='key-v1'",
+                ("A" * 44,),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+            db.execute(
+                "DELETE FROM pg_connector_events WHERE event_type='connector.registered'"
+            )
