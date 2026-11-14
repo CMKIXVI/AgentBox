@@ -93,3 +93,29 @@ Every connection forces Psycopg's `sslmode=verify-full`, which requires certific
 Driver and secret-provider exceptions are deliberately replaced with a generic connector error because their original messages may contain credentials or private host details. The caller should use deployment-side secret-manager audit logs and database telemetry for diagnosis; it must not enable DSN-bearing debug logs.
 
 The factory is dependency-injectable for deterministic tests. These tests verify runtime secret resolution, TLS policy arguments, timeout validation, path traversal rejection and exception sanitization. They do not prove a real vault integration, CA deployment, database role permissions or a live TLS handshake. Production deployment must supply and test its own secret-provider adapter and trusted CA configuration.
+
+
+Example deployment wiring (the secret provider and CA path are deployment-owned):
+
+```python
+from app.postgresql_catalog_connector import PostgreSQLCatalogReader
+from app.postgresql_connection import (
+    PostgreSQLConnectionConfig,
+    PostgreSQLConnectionFactory,
+)
+
+connection_factory = PostgreSQLConnectionFactory(
+    config=PostgreSQLConnectionConfig(
+        secret_ref="vault://production/agentbox/postgres-reader",
+        connect_timeout_seconds=8,
+        sslrootcert="/run/secrets/postgres-ca.pem",
+    ),
+    secret_provider=deployment_secret_provider,
+)
+snapshot = PostgreSQLCatalogReader().collect(
+    connection_factory,
+    ["public", "sales"],
+)
+```
+
+The `deployment_secret_provider` symbol above is intentionally supplied by the deployment; AgentBox does not invent or embed a vault credential implementation.
