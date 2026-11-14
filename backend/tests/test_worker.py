@@ -36,7 +36,6 @@ def create_agent(client):
     manifest["tools"] = []
     response = client.post("/v1/agents", json={"manifest": manifest})
     assert response.status_code == 201
-    return manifest
 
 
 def submit(client, key="worker-test-job"):
@@ -70,33 +69,14 @@ def test_worker_dispatches_registered_provider_job(client):
 
 
 def test_worker_rejects_sandbox_workload(client):
-    create_agent(client)
-    jobs = client.app.state.execution_jobs
-    artifact = client.app.state.registry.get("worker.test", "1.0.0", "test-tenant")
-    record, created = jobs.create(
-        tenant_id="test-tenant", subject_id="test-user", principal_type="user",
-        workload_kind="sandbox_workload", handler_id="sandbox.gvisor",
-        handler_version="1.0.0", workload_ref="artifact://untrusted",
-        workload_hash=hashlib.sha256(b"untrusted").hexdigest(),
-        payload={}, idempotency_key="sandbox-worker-test",
-    ) if ("sandbox_workload", "sandbox.gvisor", "1.0.0") in jobs.allowed_handlers else (None, False)
-    if record is None:
-        # Admission itself remains disabled unless a deployment explicitly allows it.
-        with pytest.raises(Exception):
-            jobs.create(
-                tenant_id="test-tenant", subject_id="test-user", principal_type="user",
-                workload_kind="sandbox_workload", handler_id="sandbox.gvisor",
-                handler_version="1.0.0", workload_ref="artifact://untrusted",
-                workload_hash=hashlib.sha256(b"untrusted").hexdigest(),
-                payload={}, idempotency_key="sandbox-worker-test",
-            )
-        return
-    claim = jobs.claim("sandbox-test-worker", 30)
-    assert claim["job_id"] == record["job_id"]
-    worker = make_worker(client, "sandbox-test-worker")
-    jobs.start(claim["job_id"], "test-tenant", worker.worker_id, claim["lease_token"])
+    worker = make_worker(client)
+    sandbox_job = {
+        "workload_kind": "sandbox_workload",
+        "handler_id": "sandbox.gvisor",
+        "handler_version": "1.0.0",
+    }
     with pytest.raises(ValueError, match="does not support"):
-        worker._dispatch(claim)
+        worker._dispatch(sandbox_job)
 
 
 def test_worker_fails_closed_when_workload_hash_changes(client):
