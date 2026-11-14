@@ -127,3 +127,35 @@ def test_unconfigured_worker_auth_fails_closed(tmp_path, monkeypatch):
         json={"worker_id": "worker-1"},
     )
     assert response.status_code == 503
+
+
+
+def test_job_event_history_is_tenant_scoped(client):
+    create_agent(client)
+    job = submit_job(client).json()
+    response = client.get(f"/v1/execution-jobs/{job['job_id']}/events")
+    assert response.status_code == 200
+    assert [event["to_state"] for event in response.json()["items"]] == ["queued"]
+
+
+def test_supervised_recovery_requires_worker_secret(client):
+    create_agent(client)
+    job = submit_job(client).json()
+    claim = client.post(
+        "/internal/v1/execution-jobs/claim",
+        headers=worker_headers(),
+        json={"worker_id": "worker-recovery", "lease_seconds": 60},
+    ).json()["job"]
+    with client.app.state.execution_jobs._connect() as connection:
+        connection.execute(
+            "UPDATE execution_jobs SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE job_id=?",
+            (job["job_id"],),
+        )
+    response = client.post(
+        "/internal/v1/execution-jobs/recover",
+        headers=worker_headers(),
+        json={"supervisor_id": "test-supervisor"},
+    )
+    assert response.status_code == 200
+    assert response.json()["requeued_leased"] == 1
+    assert client.get(f"/v1/execution-jobs/{job['job_id']}").json()["state"] == "queued"
