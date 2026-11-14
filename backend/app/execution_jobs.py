@@ -25,6 +25,16 @@ MAX_RESULT_BYTES = 64 * 1024
 MAX_PAYLOAD_BYTES = 256 * 1024
 
 
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Commit/rollback transaction scopes and close short-lived DB handles."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -74,7 +84,9 @@ class DurableExecutionJobService:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._dsn, uri=self._uri, timeout=10)
+        connection = sqlite3.connect(
+            self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         connection.execute("PRAGMA foreign_keys = ON")
