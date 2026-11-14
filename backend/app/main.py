@@ -288,6 +288,14 @@ class ContextEvidenceRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+
+class ContextEvidenceReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["validated", "rejected"]
+    reason: str = Field(min_length=10, max_length=2000)
+    confirmed_source_hash: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+
+
 MUTABLE_MANIFEST_FIELDS = {
     "name", "description", "purpose", "behavior", "model_binding",
     "workflow_ref", "memory", "knowledge_sources", "policy_refs",
@@ -1366,6 +1374,30 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 request.model_dump(exclude_none=True),
                 principal.tenant_id,
                 principal.subject_id,
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/enterprise-context/evidence/{evidence_id}/reviews",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def review_context_evidence(
+        evidence_id: str,
+        request: ContextEvidenceReviewRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.evidence.review", evidence_id
+        )
+        try:
+            return app.state.enterprise_context.review_evidence(
+                evidence_id, principal.tenant_id, principal.subject_id,
+                request.decision, request.reason, request.confirmed_source_hash,
             )
         except ContextNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
