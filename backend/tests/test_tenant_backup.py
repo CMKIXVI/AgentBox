@@ -427,3 +427,16 @@ def test_pre_context_v1_backup_remains_restorable_after_ece_tables_are_added(tmp
     assert counts["context_relationships"] == 0
     assert counts["context_evidence"] == 0
     assert counts["context_events"] == 0
+
+
+def test_restore_rejects_symlinked_backup_source(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    link = tmp_path / "tenant-link.agb"
+    link.symlink_to(backup)
+    with pytest.raises(BackupError, match="regular file"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", link
+        )
