@@ -99,13 +99,18 @@ class OpenAICompatibleProvider:
                 raw = response.read(self.MAX_RESPONSE_BYTES + 1)
                 if len(raw) > self.MAX_RESPONSE_BYTES:
                     raise ProviderError("Provider response exceeded the configured size limit")
-                document = json.loads(raw)
+                document = json.loads(
+                    raw,
+                    parse_constant=lambda _value: (_ for _ in ()).throw(
+                        ValueError("non-standard JSON numeric constant")
+                    ),
+                )
         except HTTPError as exc:
             # Do not include response bodies or request headers; they can contain secrets.
             raise ProviderError(f"Provider returned HTTP status {exc.code}") from None
         except (URLError, TimeoutError, OSError):
             raise ProviderError("Provider request failed or timed out") from None
-        except (UnicodeDecodeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             raise ProviderError("Provider returned invalid JSON") from None
 
         try:
@@ -117,6 +122,8 @@ class OpenAICompatibleProvider:
             output_tokens = usage.get("completion_tokens", 0)
         except (KeyError, IndexError, TypeError, ValueError):
             raise ProviderError("Provider response did not match the chat-completions contract") from None
+        if not isinstance(output, str):
+            raise ProviderError("Provider returned invalid message content")
         if (
             type(input_tokens) is not int
             or type(output_tokens) is not int
