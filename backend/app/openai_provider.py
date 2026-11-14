@@ -133,7 +133,9 @@ class OpenAICompatibleProvider:
         if not isinstance(message, dict):
             raise ProviderError("Provider response did not match the chat-completions contract")
         output = message.get("content")
-        usage = document.get("usage") or {}
+        usage = document.get("usage", {})
+        if usage is None:
+            usage = {}
         if not isinstance(usage, dict):
             raise ProviderError("Provider response did not match the chat-completions contract")
         input_tokens = usage.get("prompt_tokens", 0)
