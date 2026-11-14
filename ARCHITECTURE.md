@@ -62,6 +62,12 @@ Keep these domains distinct while reusing shared artifact, lineage, evaluation, 
 
 The detailed repository conformance and implementation gaps are tracked in [the 2026-11-14 architecture audit](docs/architecture-conformance-audit-2026-11-14.md). That audit is a snapshot; this master document remains the canonical target.
 
+## 2.2 Cognitive runtime contract baseline
+
+The first contract-only slice defines the nine lifecycle stages and a typed, tenant-scoped event envelope in `schemas/cognitive-event-v1.schema.json`, with deterministic validation in `backend/app/cognitive_contract.py`. It validates stage/event compatibility, verified-evidence requirements for verification and accepted memory, capability references, authorization-decision references, and non-skipping forward lifecycle transitions.
+
+This is not a cognitive runtime. It adds no durable event store, planner, memory engine, capability invocation, orchestration, evidence attestation, or API route. Existing identity, tenant, registry, authorization, execution, experience, enterprise-context and audit services remain the only authorities. See [Cognitive Runtime Contracts](docs/runtime/cognitive-runtime-contracts.md).
+
 ## 3. Platform topology
 
 ```text
