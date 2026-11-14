@@ -265,3 +265,19 @@ def test_rejects_oversized_serialized_provider_request(monkeypatch):
     )
     with pytest.raises(ProviderError, match="request exceeded"):
         OpenAICompatibleProvider("secret").invoke(oversized, 5)
+
+
+def test_rejects_invalid_unicode_before_network_call(monkeypatch):
+    def unexpected_request(*_args, **_kwargs):
+        pytest.fail("invalid Unicode must not reach the network adapter")
+
+    monkeypatch.setattr("app.openai_provider.urlopen", unexpected_request)
+    invalid_unicode = ProviderRequest(
+        provider_id="provider.openai",
+        model_id="example-model",
+        objective="Answer accurately",
+        user_input="\\ud800",
+        max_output_tokens=64,
+    )
+    with pytest.raises(ProviderError, match="request could not be encoded"):
+        OpenAICompatibleProvider("secret").invoke(invalid_unicode, 5)
