@@ -87,3 +87,38 @@ def test_operator_cli_closes_registry_after_success_and_failure(tmp_path, monkey
     capsys.readouterr()
     assert len(created) == 2
     assert created[1]._closed is True
+
+
+def test_database_preflight_closes_read_only_connection(tmp_path, monkeypatch):
+    import sqlite3
+
+    from app import tenant_admin
+
+    database = tmp_path / "empty.sqlite3"
+    sqlite3.connect(database).close()
+    connections = []
+    real_connect = sqlite3.connect
+
+    class TrackingConnection(sqlite3.Connection):
+        was_closed = False
+
+        def close(self):
+            self.was_closed = True
+            super().close()
+
+    def tracking_connect(*args, **kwargs):
+        kwargs["factory"] = TrackingConnection
+        connection = real_connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(tenant_admin.sqlite3, "connect", tracking_connect)
+    try:
+        tenant_admin._require_agentbox_database(str(database))
+    except ValueError as exc:
+        assert "not an initialized AgentBox database" in str(exc)
+    else:
+        raise AssertionError("empty SQLite database should be rejected")
+
+    assert len(connections) == 1
+    assert connections[0].was_closed is True
