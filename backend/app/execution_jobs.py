@@ -55,8 +55,13 @@ class JobLeaseError(JobError):
 class DurableExecutionJobService:
     """Transactional SQLite queue for one AgentBox API/worker instance."""
 
-    def __init__(self, database_path: str | Path):
+    def __init__(
+        self, database_path: str | Path,
+        allowed_handlers: set[tuple[str, str, str]] | None = None,
+    ):
         self.database_path = str(database_path)
+        # Trusted deployment configuration: (workload_kind, handler_id, handler_version).
+        self.allowed_handlers = frozenset(allowed_handlers or set())
         if self.database_path == ":memory:":
             self._dsn = f"file:agentbox-jobs-{id(self)}?mode=memory&cache=shared"
             self._uri = True
@@ -198,6 +203,8 @@ class DurableExecutionJobService:
             raise ValueError("tenant, principal, handler, workload and idempotency fields are required")
         if workload_kind not in WORKLOAD_KINDS:
             raise ValueError("unsupported workload_kind")
+        if (workload_kind, handler_id, handler_version) not in self.allowed_handlers:
+            raise JobConflictError("workload handler is not registered by trusted server configuration")
         if len(idempotency_key) > 128:
             raise ValueError("idempotency_key must be at most 128 characters")
         if len(workload_hash) != 64 or any(c not in "0123456789abcdefABCDEF" for c in workload_hash):
