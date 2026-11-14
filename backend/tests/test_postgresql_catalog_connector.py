@@ -210,3 +210,43 @@ def test_fake_source_connector_round_trips_signed_snapshot_through_api(tmp_path)
     assert response.status_code == 201, response.text
     assert response.json()["provenance_status"] == "cryptographically_verified"
     assert response.json()["validation_status"] == "unverified"
+
+
+
+def test_catalog_reader_rejects_partially_visible_schema_allowlist():
+    class PartialCursor(FakeCursor):
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            if "FROM pg_catalog.pg_namespace AS n" in query:
+                self.result = [("public",)]
+
+    class PartialConnection(FakeConnection):
+        def cursor(self):
+            return PartialCursor(self)
+
+    with pytest.raises(ContextValidationError, match="missing or not visible"):
+        PostgreSQLCatalogReader().collect(
+            lambda: PartialConnection(), ["public", "private"]
+        )
+
+
+@pytest.mark.parametrize(
+    "source_ref",
+    [
+        "postgresql-catalog://user:secret@warehouse/snapshot",
+        "postgresql-catalog://warehouse/snapshot?password=secret",
+        "postgresql-catalog://warehouse/snapshot/",
+        "https://warehouse/snapshot",
+    ],
+)
+def test_attestor_rejects_unsafe_source_locators(source_ref):
+    provider = FakeSigningProvider()
+    snapshot = {
+        "snapshot_hash": "a" * 64,
+        "discovered_at": datetime.now(UTC).isoformat(),
+    }
+    with pytest.raises(ContextValidationError, match="normalized credential-free"):
+        PostgreSQLCatalogAttestor(provider).attest(
+            tenant_id="tenant-a", source_ref=source_ref,
+            snapshot=snapshot, key_id="key-v1",
+        )
