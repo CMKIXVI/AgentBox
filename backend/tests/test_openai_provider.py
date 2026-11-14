@@ -241,6 +241,7 @@ def test_rejects_nonstandard_json_numeric_constants(monkeypatch):
     {"choices": ["not-an-object"]},
     {"choices": [{"message": []}]},
     {"choices": [{"message": {"content": "ok"}}], "usage": ["not-an-object"]},
+    {"choices": [{"message": {"content": "ok"}}], "usage": []},
 ])
 def test_rejects_malformed_response_structures(monkeypatch, document):
     monkeypatch.setattr(
