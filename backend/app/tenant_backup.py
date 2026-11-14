@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
@@ -399,6 +400,17 @@ class TenantBackupService:
                     raise BackupFormatError(f"Backup row shape is invalid for {table}")
                 if row.get("tenant_id") != tenant_id:
                     raise BackupFormatError(f"Cross-tenant row detected in {table}")
+                for value in row.values():
+                    if (
+                        value is not None
+                        and not isinstance(value, (str, int, float, bool))
+                    ):
+                        raise BackupFormatError(f"Backup row value is invalid for {table}")
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        if not -(2**63) <= value < 2**63:
+                            raise BackupFormatError(f"Backup integer is out of range for {table}")
+                    if isinstance(value, float) and not math.isfinite(value):
+                        raise BackupFormatError(f"Backup number is not finite for {table}")
         if not isinstance(tenant.get("metadata_json"), str):
             raise BackupFormatError("Backup tenant metadata is invalid")
         try:
