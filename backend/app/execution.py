@@ -23,6 +23,16 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve sqlite transaction context semantics and always release the handle."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class ExecutionError(Exception):
     """Base execution failure."""
 
@@ -107,7 +117,9 @@ class ExecutionService:
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._dsn, uri=self._uri, timeout=10)
+        connection = sqlite3.connect(
+            self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
