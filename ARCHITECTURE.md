@@ -347,3 +347,11 @@ Important limitations remain:
 - Flutter and Next.js foundations, bearer-token API transports, route inventory, OpenAPI export, and provider-configurable client OIDC flows are implemented on stacked feature branches, not yet merged to main. No identity provider is selected or deployed. Native redirect registration, real token validation against a deployed issuer/JWKS, client-to-API end-to-end tests, and production session/revocation operations remain incomplete.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.
+
+
+## CI execution policy
+
+- GitHub Actions runs automatically on pushes to `main` and on pull requests matching the workflow path filters.
+- Feature-branch pushes do not start CI automatically; use the workflow's manual `workflow_dispatch` action for consolidated validation (the working cadence is one run after each 10 implementation batches, and before merge).
+- Run the repository's local backend, Next.js, and Flutter checks during implementation batches. Record which checks were actually run; local checks do not replace the required PR CI run.
+- This policy reduces redundant per-commit CI while preserving integration-branch and pull-request validation.
