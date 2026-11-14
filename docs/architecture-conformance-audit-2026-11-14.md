@@ -202,3 +202,8 @@ A deterministic context assembly engine and authenticated endpoint are now imple
 - Requires a distinct `cognition.context.assemble` grant plus existing entity, relationship and evidence read grants; tenant identity remains principal-derived. Snapshot references are tenant-bound.
 
 Known blocker: the evidence store currently records evidence as unverified and has no authorized validation workflow. Context assembly therefore includes validated evidence only and currently cannot surface unverified records as proof. No evidence attestation, reasoning loop, retrieval-augmented generation, capability invocation, or agent execution is claimed. New regression tests were added but have not been executed; CI was not invoked.
+
+
+## Evidence governance follow-through
+
+The evidence lifecycle now has an independent reviewer path: immutable submissions, submitter/reviewer separation, one terminal decision, matching source-digest attestation for validation, append-only review records/events, tenant scoping, and validated-only evidence projection into context assembly. The source bytes are not fetched or independently attested by a trusted connector; digest confirmation is a reviewer assertion. This remains a production blocker until connector-backed provenance verification and independent end-to-end execution are implemented and tested.
