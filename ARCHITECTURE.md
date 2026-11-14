@@ -335,10 +335,10 @@ Report main-branch capability separately from open feature-branch work. Do not c
 
 ## 15. Current implementation reality (2026-11-14)
 
-The repository currently has a bounded Python/FastAPI backend and meaningful registry, evaluation, execution-record, OIDC/tenant/authorization, encrypted backup, ECE, execution-experience, and bounded candidate-generation work across the main branch and stacked feature branches.
+The repository currently has a bounded Python/FastAPI backend and meaningful registry, evaluation, execution-record, OIDC/tenant/authorization, encrypted backup, ECE, execution-experience, and bounded candidate-generation work across the main branch and stacked feature branches. The latest provider/runtime feature-branch head (`44cc604`) passes the backend, Flutter, and Next.js CI jobs; this is branch-level CI evidence, not a production deployment.
 
 Important limitations remain:
-- The current execution API registers a deterministic fake provider; no production real-model provider is established.
+- The execution API retains a deterministic fake provider for tests and includes an optional environment-configured OpenAI-compatible chat-completions adapter on the unmerged provider feature branch. Adapter and worker integration tests use mocked HTTP only; no live credentials, live model call, provider billing, pricing verification, production latency, retry semantics, or production real-model operation is established. The provider adapter rejects malformed usage metrics and only reports cost when both explicit token rates are configured.
 - The evaluation service scores submitted outputs; it does not execute benchmark workloads.
 - Execution-experience linkage is caller-asserted and remains unverified.
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
