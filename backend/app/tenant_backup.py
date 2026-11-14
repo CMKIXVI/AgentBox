@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -185,6 +186,36 @@ def _aad(envelope: dict[str, object]) -> bytes:
     })
 
 
+def _read_backup_envelope(path: Path) -> dict[str, object]:
+    """Read a bounded regular backup file without following symlinks."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise BackupError("Backup source must be an accessible regular file") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise BackupError("Backup source must be an existing regular file")
+        if metadata.st_size > 512 * 1024 * 1024:
+            raise BackupFormatError("Tenant backup exceeds the 512 MiB safety limit")
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, 512 * 1024 * 1024 + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > 512 * 1024 * 1024:
+                raise BackupFormatError("Tenant backup exceeds the 512 MiB safety limit")
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise BackupFormatError("Invalid AgentBox tenant backup envelope") from exc
+    finally:
+        os.close(descriptor)
+
+
 def _read_tenant_snapshot(database_path: str | Path, tenant_id: str) -> dict[str, object]:
     validate_tenant_id(tenant_id)
     connection = sqlite3.connect(str(database_path), timeout=10)
@@ -278,12 +309,8 @@ class TenantBackupService:
     def restore_encrypted(self, tenant_id: str, source: str | Path) -> dict[str, int | str]:
         validate_tenant_id(tenant_id)
         path = Path(source)
-        if path.is_symlink() or not path.is_file():
-            raise BackupError("Backup source must be an existing regular file, not a symbolic link")
-        if path.stat().st_size > 512 * 1024 * 1024:
-            raise BackupFormatError("Tenant backup exceeds the 512 MiB safety limit")
         try:
-            envelope = json.loads(path.read_text(encoding="utf-8"))
+            envelope = _read_backup_envelope(path)
             if not isinstance(envelope, dict):
                 raise TypeError("envelope must be an object")
             required = {"format", "version", "algorithm", "key_id", "tenant_id", "nonce", "ciphertext"}
