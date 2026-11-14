@@ -1,6 +1,6 @@
 # AgentBox cognitive runtime contracts
 
-**Status:** first contract-only implementation slice. No cognition, planning, orchestration, memory write, or agent execution runtime is claimed.
+**Status:** typed lifecycle contracts and a tenant-scoped append-only run journal are implemented. No cognition, planning, orchestration, capability invocation, evidence attestation, or memory consolidation runtime is claimed.
 
 ## Canonical lifecycle
 
@@ -43,3 +43,13 @@ The envelope carries references and bounded metadata, not executable code or aut
 - API routes and frontend surfaces.
 
 These are later vertical slices. The next runtime step is a tenant-scoped cognitive run/state service that uses existing identity and authorization authorities and persists append-only events without creating a parallel tenant or agent registry.
+
+
+## Tenant-scoped run journal
+
+Implementation: `backend/app/cognitive_runtime.py`  
+API: `POST /v1/cognitive-runs`, `GET /v1/cognitive-runs/{run_id}`, `GET /v1/cognitive-runs/{run_id}/events`, and `POST /v1/cognitive-runs/{run_id}/events`.
+
+A run is bound server-side to an existing immutable agent version and its registry content hash. The caller supplies a goal reference, not tenant identity, actor identity, agent hash, or executable prompt. Tenant and actor are taken from the authenticated principal. Creation and event append require idempotency keys bound to the request and actor. Event sequence assignment and stage advancement occur in one SQLite transaction. Event rows are protected by database triggers against update and deletion. Reads are tenant-scoped; a run belonging to another tenant is indistinguishable from a missing run.
+
+The SQLite implementation is single-instance only. The service is included in API shutdown and in-memory store lifecycle coverage. Run/event persistence is not yet coupled atomically to the authorization audit transaction, and the event hash is an integrity digest for the stored envelope rather than a signed or chained tamper-proof log.
