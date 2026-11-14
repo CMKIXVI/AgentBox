@@ -201,3 +201,34 @@ def test_rejects_usage_cost_overflow(monkeypatch):
     )
     with pytest.raises(ProviderError, match="cost bounds"):
         adapter.invoke(request(), 5)
+
+
+@pytest.mark.parametrize("content", [None, 42, {"text": "not a string"}])
+def test_rejects_non_string_message_content(monkeypatch, content):
+    monkeypatch.setattr(
+        "app.openai_provider.urlopen",
+        lambda *_args, **_kwargs: FakeHTTPResponse({
+            "choices": [{"message": {"content": content}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        }),
+    )
+    with pytest.raises(ProviderError, match="invalid message content"):
+        OpenAICompatibleProvider("secret").invoke(request(), 5)
+
+
+def test_rejects_nonstandard_json_numeric_constants(monkeypatch):
+    class NonStandardJSONResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self, _size=-1):
+            return b'{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":NaN}}'
+
+    monkeypatch.setattr(
+        "app.openai_provider.urlopen", lambda *_args, **_kwargs: NonStandardJSONResponse()
+    )
+    with pytest.raises(ProviderError, match="invalid JSON"):
+        OpenAICompatibleProvider("secret").invoke(request(), 5)
