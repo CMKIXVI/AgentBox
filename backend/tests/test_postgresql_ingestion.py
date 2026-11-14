@@ -214,7 +214,7 @@ def make_connector_attestation(snapshot, source_ref, tenant_id="test-tenant"):
         "signed_at": signed_at,
         "signature": base64.urlsafe_b64encode(private.sign(message)).decode().rstrip("="),
     }
-    return PostgreSQLProvenanceVerifier({key_id: public}), attestation
+    return base64.b64encode(public).decode("ascii"), attestation
 
 
 def test_signed_connector_snapshot_persists_verified_provenance_separately(tmp_path):
@@ -222,11 +222,17 @@ def test_signed_connector_snapshot_persists_verified_provenance_separately(tmp_p
     client = TestClient(app)
     snapshot = catalog_snapshot()
     source_ref = "postgresql-catalog://warehouse-prod/snapshot"
-    verifier, attestation = make_connector_attestation(snapshot, source_ref)
-    app.state.postgresql_provenance = verifier
+    public_key_b64, attestation = make_connector_attestation(snapshot, source_ref)
+    registered = client.post(
+        "/v1/enterprise-discovery/postgresql/connectors",
+        json={"connector_id": "warehouse-prod", "source_ref": source_ref,
+              "key_id": "warehouse-connector-v1", "public_key": public_key_b64},
+    )
+    assert registered.status_code == 201, registered.text
     response = client.post(
         "/v1/enterprise-discovery/postgresql/snapshots/ingest",
-        json={"source_ref": source_ref, "snapshot": snapshot, "attestation": attestation},
+        json={"source_ref": source_ref, "connector_id": "warehouse-prod",
+              "snapshot": snapshot, "attestation": attestation},
     )
     assert response.status_code == 201, response.text
     result = response.json()
@@ -247,21 +253,27 @@ def test_signed_connector_snapshot_rejects_tampering_and_accepts_idempotent_repl
     client = TestClient(app)
     snapshot = catalog_snapshot()
     source_ref = "postgresql-catalog://warehouse-prod/snapshot"
-    verifier, attestation = make_connector_attestation(snapshot, source_ref)
-    app.state.postgresql_provenance = verifier
+    public_key_b64, attestation = make_connector_attestation(snapshot, source_ref)
+    registered = client.post(
+        "/v1/enterprise-discovery/postgresql/connectors",
+        json={"connector_id": "warehouse-prod", "source_ref": source_ref,
+              "key_id": "warehouse-connector-v1", "public_key": public_key_b64},
+    )
+    assert registered.status_code == 201, registered.text
     tampered = dict(snapshot)
     tampered["schemas"] = ["other"]
     response = client.post(
         "/v1/enterprise-discovery/postgresql/snapshots/ingest",
-        json={"source_ref": source_ref, "snapshot": tampered, "attestation": attestation},
+        json={"source_ref": source_ref, "connector_id": "warehouse-prod",
+              "snapshot": tampered, "attestation": attestation},
     )
     assert response.status_code == 422
     assert "signature verification failed" in response.text
     replay = client.post(
         "/v1/enterprise-discovery/postgresql/snapshots/ingest",
         json={
-            "source_ref": source_ref, "snapshot": snapshot,
-            "attestation": attestation,
+            "source_ref": source_ref, "connector_id": "warehouse-prod",
+            "snapshot": snapshot, "attestation": attestation,
         },
     )
     assert replay.status_code == 201, replay.text
@@ -272,10 +284,17 @@ def test_signed_connector_snapshot_fails_closed_when_key_is_not_trusted(tmp_path
     client = TestClient(app)
     snapshot = catalog_snapshot()
     source_ref = "postgresql-catalog://warehouse-prod/snapshot"
-    _, attestation = make_connector_attestation(snapshot, source_ref)
+    public_key_b64, attestation = make_connector_attestation(snapshot, source_ref)
+    registered = client.post(
+        "/v1/enterprise-discovery/postgresql/connectors",
+        json={"connector_id": "warehouse-prod", "source_ref": source_ref,
+              "key_id": "registered-key", "public_key": public_key_b64},
+    )
+    assert registered.status_code == 201, registered.text
     response = client.post(
         "/v1/enterprise-discovery/postgresql/snapshots/ingest",
-        json={"source_ref": source_ref, "snapshot": snapshot, "attestation": attestation},
+        json={"source_ref": source_ref, "connector_id": "warehouse-prod",
+              "snapshot": snapshot, "attestation": attestation},
     )
     assert response.status_code == 422
-    assert "not trusted" in response.text
+    assert "unknown or revoked" in response.text
