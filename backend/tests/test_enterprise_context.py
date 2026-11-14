@@ -300,3 +300,60 @@ def test_evidence_cannot_self_assert_validated_status(tmp_path):
     payload["validation_status"] = "validated"
     with pytest.raises(ContextValidationError, match="must remain unverified"):
         service.create_evidence(payload, "tenant-alpha", "test-user")
+
+
+
+def test_evidence_review_requires_independent_reviewer_and_matching_source_hash(tmp_path):
+    path = tmp_path / "evidence-governance.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "submitter")
+    recorded = service.create_evidence(evidence(), "tenant-alpha", "submitter")
+    source_hash = recorded["source_hash"]
+
+    with pytest.raises(ContextValidationError, match="cannot review their own"):
+        service.review_evidence(
+            "evidence.alpha", "tenant-alpha", "submitter", "validated",
+            "Reviewed source and provenance", source_hash,
+        )
+    with pytest.raises(ContextValidationError, match="does not match"):
+        service.review_evidence(
+            "evidence.alpha", "tenant-alpha", "independent-reviewer", "validated",
+            "Reviewed source and provenance", "0" * 64,
+        )
+
+    reviewed = service.review_evidence(
+        "evidence.alpha", "tenant-alpha", "independent-reviewer", "validated",
+        "Reviewed source and provenance", source_hash,
+    )
+    assert reviewed["created"] is True
+    effective = service.get_evidence("evidence.alpha", "tenant-alpha")
+    assert effective["validation_status"] == "validated"
+    assert effective["review"]["reviewed_by"] == "independent-reviewer"
+    replay = service.review_evidence(
+        "evidence.alpha", "tenant-alpha", "independent-reviewer", "validated",
+        "Reviewed source and provenance", source_hash,
+    )
+    assert replay["created"] is False
+    with pytest.raises(ContextConflictError, match="terminal review"):
+        service.review_evidence(
+            "evidence.alpha", "tenant-alpha", "another-reviewer", "rejected",
+            "A different reviewer rejects this record",
+        )
+    events = service.query_events("tenant-alpha")
+    assert events[-1]["event_type"] == "context.evidence.validated"
+
+
+def test_rejected_evidence_is_terminal_and_never_appears_as_validated(tmp_path):
+    path = tmp_path / "evidence-rejected.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "submitter")
+    service.create_evidence(evidence(), "tenant-alpha", "submitter")
+    result = service.review_evidence(
+        "evidence.alpha", "tenant-alpha", "reviewer", "rejected",
+        "Source cannot be independently corroborated",
+    )
+    assert result["decision"] == "rejected"
+    assert service.query_evidence("app.alpha", "tenant-alpha")[0]["validation_status"] == "rejected"
+    assert service.query_evidence("app.alpha", "tenant-alpha")[0]["review"]["reviewed_by"] == "reviewer"
