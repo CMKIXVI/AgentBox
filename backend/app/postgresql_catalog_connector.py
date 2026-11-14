@@ -6,6 +6,7 @@ database password, or private signing key.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -19,6 +20,7 @@ MAX_COLUMNS = 20000
 MAX_INDEXES = 10000
 MAX_CONSTRAINTS = 10000
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
+MAX_INGEST_ENTITIES = 5000
 
 
 def _canonical(value: Any) -> bytes:
@@ -162,6 +164,7 @@ class PostgreSQLCatalogReader:
                 for r in self._rows(cursor, self.CONSTRAINTS_SQL, schemas)
             ]
             limits = (
+                (len(schemas), MAX_SCHEMAS, "schemas"),
                 (len(relations), MAX_RELATIONS, "relations"),
                 (len(columns), MAX_COLUMNS, "columns"),
                 (len(indexes), MAX_INDEXES, "indexes"),
@@ -170,6 +173,10 @@ class PostgreSQLCatalogReader:
             for actual, maximum, label in limits:
                 if actual > maximum:
                     raise ContextValidationError(f"Catalog snapshot exceeds {maximum} {label}")
+            if sum(item[0] for item in limits) > MAX_INGEST_ENTITIES:
+                raise ContextValidationError(
+                    f"Catalog snapshot exceeds the {MAX_INGEST_ENTITIES} total entity ingestion limit"
+                )
             snapshot = {
                 "contract_version": "1.0.0",
                 "source_kind": "postgresql_catalog",
@@ -248,7 +255,6 @@ class PostgreSQLCatalogAttestor:
         signature = self.signing_provider.sign(key_id, message)
         if not isinstance(signature, bytes) or len(signature) != 64:
             raise ContextValidationError("signing provider must return a 64-byte Ed25519 signature")
-        import base64
         return {
             "algorithm": "Ed25519",
             "key_id": key_id,
