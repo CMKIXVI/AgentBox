@@ -41,6 +41,7 @@ def configure_test_access(app):
         ("agent.cognition", "cognition.run.create"),
         ("agent.cognition", "cognition.run.read"),
         ("agent.cognition", "cognition.event.append"),
+        ("agent.cognition", "cognition.context.assemble"),
     ]
     created_at = datetime(2026, 11, 12, tzinfo=UTC).isoformat()
     app.state.authorization_policies = [
