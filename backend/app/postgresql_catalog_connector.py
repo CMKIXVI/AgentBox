@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any, Protocol, Sequence
 from urllib.parse import urlsplit
@@ -22,6 +23,7 @@ MAX_INDEXES = 10000
 MAX_CONSTRAINTS = 10000
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
 MAX_INGEST_ENTITIES = 5000
+SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 
 
 def _canonical(value: Any) -> bytes:
@@ -266,8 +268,17 @@ class PostgreSQLCatalogAttestor:
             raise ContextValidationError(
                 "source_ref must be a normalized credential-free PostgreSQL catalog locator"
             )
-        if not isinstance(key_id, str) or not key_id:
-            raise ContextValidationError("key_id is required for connector attestation")
+        if not isinstance(key_id, str) or not key_id or len(key_id) > 128:
+            raise ContextValidationError("key_id is required and must not exceed 128 characters")
+        if (
+            not isinstance(snapshot, dict)
+            or not isinstance(snapshot.get("snapshot_hash"), str)
+            or not SHA256_PATTERN.fullmatch(snapshot["snapshot_hash"])
+            or not isinstance(snapshot.get("discovered_at"), str)
+        ):
+            raise ContextValidationError(
+                "snapshot must include a SHA-256 digest and discovery timestamp"
+            )
         signed_at = datetime.now(UTC).isoformat()
         message = self.signing_payload(
             tenant_id=tenant_id, source_ref=source_ref, snapshot=snapshot,
