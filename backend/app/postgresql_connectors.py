@@ -241,8 +241,10 @@ class PostgreSQLConnectorRegistry:
                     "INSERT INTO pg_connector_keys VALUES (?, ?, ?, ?, ?, ?)",
                     (tenant_id, connector_id, key_id, encoded, now, actor_id),
                 )
-                self._event(db, tenant_id, connector_id, "connector.key_added",
-                            actor_id, key_id, {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()})
+                self._event(
+                    db, tenant_id, connector_id, "connector.key_added", actor_id, key_id,
+                    {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()},
+                )
         except sqlite3.IntegrityError as exc:
             raise ContextConflictError("Connector key ID already exists") from exc
         return {
@@ -273,7 +275,8 @@ class PostgreSQLConnectorRegistry:
             if revoked:
                 raise ContextConflictError("Connector key is already revoked")
             db.execute(
-                "INSERT INTO pg_connector_events VALUES (?, ?, ?, 'connector.key_revoked', ?, ?, ?, ?)",
+                """INSERT INTO pg_connector_events
+                VALUES (?, ?, ?, 'connector.key_revoked', ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), tenant_id, connector_id, key_id, actor_id, _now(),
                  json.dumps({"reason": "operator_revocation"}, separators=(",", ":"))),
             )
