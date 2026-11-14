@@ -99,11 +99,15 @@ class OpenAICompatibleProvider:
             f"{self.base_url}/chat/completions",
             data=body,
             headers={
-                "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
             method="POST",
+        )
+        # urllib deliberately omits unredirected headers when constructing a
+        # redirected request. Never forward bearer credentials to another host.
+        http_request.add_unredirected_header(
+            "Authorization", f"Bearer {self.api_key}"
         )
         try:
             with urlopen(http_request, timeout=timeout_seconds) as response:
