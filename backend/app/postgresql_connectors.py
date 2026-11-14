@@ -173,6 +173,8 @@ class PostgreSQLConnectorRegistry:
     ) -> dict[str, Any]:
         self._validate_identity(connector_id, key_id)
         encoded, _ = self._validate_public_key(public_key)
+        if not isinstance(source_ref, str) or not 1 <= len(source_ref) <= 1024:
+            raise ContextValidationError("source_ref must contain 1-1024 characters")
         try:
             locator = urlsplit(source_ref)
         except ValueError as exc:
@@ -213,6 +215,8 @@ class PostgreSQLConnectorRegistry:
     ) -> dict[str, Any]:
         self._validate_identity(connector_id, key_id)
         encoded, _ = self._validate_public_key(public_key)
+        if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
+            raise ContextValidationError("actor_id is invalid")
         now = _now()
         try:
             with self._connection() as db:
@@ -238,6 +242,8 @@ class PostgreSQLConnectorRegistry:
     def revoke_key(self, tenant_id: str, connector_id: str, key_id: str,
                    actor_id: str) -> dict[str, Any]:
         self._validate_identity(connector_id, key_id)
+        if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
+            raise ContextValidationError("actor_id is invalid")
         with self._connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
