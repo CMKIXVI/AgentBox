@@ -33,7 +33,8 @@ configured.
   policy.
 - Request timeout is inherited from the manifest behavior and bounded to
   1–3600 seconds by the adapter.
-- Response bodies are limited to 4 MiB.
+- Serialized provider request bodies are limited to 1 MiB.
+- Provider response bodies are limited to 4 MiB.
 - HTTP, transport and malformed-response errors are converted to sanitized
   provider errors; response bodies and authorization headers are not logged or
   returned to tenants.
