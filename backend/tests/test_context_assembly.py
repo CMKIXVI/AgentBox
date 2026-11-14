@@ -157,3 +157,39 @@ def test_identical_context_in_different_tenants_has_distinct_snapshot_reference(
     assert alpha["content_hash"] != beta["content_hash"]
     context.close()
     tenants.close()
+
+
+
+def test_context_assembly_includes_evidence_only_after_independent_review(tmp_path):
+    assembler, context, tenants = make_services(tmp_path)
+    context.create_entity(entity("app.alpha"), "tenant-alpha", "entity-author")
+    digest = hashlib.sha256(b"immutable source snapshot").hexdigest()
+    context.create_evidence(
+        {
+            "evidence_id": "evidence.reviewed",
+            "entity_id": "app.alpha",
+            "entity_version": 1,
+            "source_kind": "database_metadata",
+            "source_ref": "postgres://catalog/public/applications",
+            "source_hash": digest,
+            "observed_at": datetime.now(UTC).isoformat(),
+            "confidence": 1.0,
+            "metadata": {"connector": "read-only-catalog"},
+        },
+        "tenant-alpha", "evidence-submitter",
+    )
+    before = assembler.assemble(
+        "tenant-alpha", entity_ids=["app.alpha"]
+    )["packet"]
+    assert before["evidence"] == []
+    context.review_evidence(
+        "evidence.reviewed", "tenant-alpha", "independent-reviewer", "validated",
+        "Verified the recorded digest against the independent source snapshot", digest,
+    )
+    after = assembler.assemble(
+        "tenant-alpha", entity_ids=["app.alpha"]
+    )["packet"]
+    assert [item["evidence_id"] for item in after["evidence"]] == ["evidence.reviewed"]
+    assert after["evidence"][0]["validation_status"] == "validated"
+    context.close()
+    tenants.close()
