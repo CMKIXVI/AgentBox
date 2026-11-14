@@ -101,9 +101,21 @@ class EnterpriseContextService:
             "enterprise-context-evidence-v1.schema.json"
         )
         self._event_validator = _schema_validator("enterprise-context-event-v1.schema.json")
+        self._closed = False
         self._initialize()
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
         connection = sqlite3.connect(self._dsn, uri=self._memory, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
