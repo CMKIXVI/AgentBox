@@ -380,3 +380,8 @@ The append-only authorization audit store closes each short-lived SQLite connect
 ## Durable-job store shutdown lifecycle
 
 The durable execution-job service exposes an idempotent `close()` operation. It releases the shared in-memory SQLite keeper and rejects subsequent connections after shutdown; callers owning the service must invoke it during application shutdown. File-backed stores also enter the closed state, preventing accidental reuse after lifecycle termination.
+
+
+## Durable-job shutdown integration
+
+The API registers the durable execution-job store's idempotent close operation with its FastAPI shutdown event. The standalone worker also closes the store in a `finally` block after polling stops or raises. This ensures the shared in-memory SQLite keeper is released by both supported process entry points; it does not close unrelated stores or alter the single-instance deployment constraint.
