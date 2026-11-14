@@ -162,3 +162,12 @@ The job lifecycle is not production-ready until a deployed worker proves queue a
 lease ownership, bounded concurrency, cancellation, restart recovery, tenant isolation,
 audit integrity, monitoring, backup/restore and failure handling. Live sandbox tests must
 add network/filesystem isolation, resource limits, timeout cleanup and image provenance.
+
+
+## 12. First service implementation status
+
+The first SQLite service implementation is proposed in PR #47. It currently provides tenant-scoped job creation and reads, tenant-scoped idempotency, a trusted deployment-configured handler allowlist, atomic single-database claims, lease-token fencing, worker start/heartbeat/complete/fail operations, cancellation request/confirmation, conservative expired-lease recovery, bounded payload/result envelopes, and append-only transition events.
+
+This implementation is deliberately not yet wired into FastAPI routes or a worker process. The handler allowlist must be supplied by trusted server configuration; an empty allowlist denies all submissions. The current adapter is single-instance SQLite only. It does not yet provide per-tenant/global admission limits, PostgreSQL semantics, external authorization-audit transaction linkage, automatic retry after ambiguous execution, a deployed sandbox worker, or operational guarantees.
+
+CI and integration status must be read from the exact PR head commit. A green unit-test workflow would verify code paths only; it would not certify a deployed worker or production readiness.
