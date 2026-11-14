@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 from fastapi.testclient import TestClient
+from mock_oidc_provider import MockOIDCError, MockOIDCProvider
 
 from app.authentication import (
     AuthenticationError,
@@ -13,7 +14,6 @@ from app.authentication import (
     OIDCSigningKeyResolver,
 )
 from app.main import create_app
-from mock_oidc_provider import MockOIDCError, MockOIDCProvider
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def test_mock_oidc_authorization_code_pkce_nonce_and_refresh(provider):
 
 
 def test_mock_oidc_rejects_pkce_state_nonce_and_redirect_tampering(provider):
-    code, verifier, state, nonce = begin_login(provider)
+    code, verifier, state, _nonce = begin_login(provider)
     with pytest.raises(MockOIDCError, match="state"):
         provider.validate_callback_state(state, "attacker-state")
 
