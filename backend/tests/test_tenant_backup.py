@@ -452,3 +452,45 @@ def test_restore_rejects_fifo_backup_source_without_blocking(tmp_path):
         TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
             "tenant-alpha", fifo
         )
+
+
+def test_restore_rejects_boolean_backup_version(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    envelope = json.loads(backup.read_text())
+    envelope["version"] = True
+    backup.write_text(json.dumps(envelope))
+    with pytest.raises(BackupFormatError, match="envelope"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", backup
+        )
+
+
+def test_restore_rejects_boolean_payload_version(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    envelope = json.loads(backup.read_text())
+    key = StaticKeyProvider().key
+    payload = json.loads(AESGCM(key).decrypt(
+        base64.b64decode(envelope["nonce"]),
+        base64.b64decode(envelope["ciphertext"]),
+        _aad(envelope),
+    ))
+    payload["version"] = True
+    unsigned = dict(payload)
+    unsigned.pop("sha256")
+    payload["sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+    nonce = os.urandom(12)
+    envelope["nonce"] = base64.b64encode(nonce).decode()
+    envelope["ciphertext"] = base64.b64encode(
+        AESGCM(key).encrypt(nonce, _canonical(payload), _aad(envelope))
+    ).decode()
+    backup.write_text(json.dumps(envelope))
+    with pytest.raises(BackupFormatError, match="payload"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", backup
+        )
