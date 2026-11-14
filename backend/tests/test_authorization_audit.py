@@ -24,3 +24,12 @@ def test_audit_records_cannot_be_updated_or_deleted(tmp_path):
         connection.execute("UPDATE authorization_decisions SET reason='changed'")
     with pytest.raises(sqlite3.IntegrityError), store._connect() as connection:
         connection.execute("DELETE FROM authorization_decisions")
+
+def test_audit_database_connections_close_after_context(tmp_path):
+    store = AuthorizationAuditStore(tmp_path / "audit.sqlite")
+    connection = store._connect()
+    with connection:
+        connection.execute("SELECT 1")
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
