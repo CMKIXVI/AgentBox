@@ -199,7 +199,8 @@ class CognitiveRunService:
         if len(agent_content_hash) != 64 or any(ch not in "0123456789abcdefABCDEF" for ch in agent_content_hash):
             raise CognitiveRunValidationError("Agent content hash must be SHA-256 hex")
         request = {
-            "goal_ref": goal_ref, "agent_ref": agent_ref, "agent_content_hash": agent_content_hash
+            "goal_ref": goal_ref, "agent_ref": agent_ref,
+            "agent_content_hash": agent_content_hash, "actor_id": actor_id,
         }
         request_hash = _digest(request)
         now = _now()
@@ -284,7 +285,15 @@ class CognitiveRunService:
         }
         if not isinstance(event_input, dict) or set(event_input) - allowed:
             raise CognitiveRunValidationError("Cognitive event request contains unsupported fields")
-        request_hash = _digest(event_input)
+        try:
+            request_json = _canonical(event_input)
+        except (TypeError, ValueError) as exc:
+            raise CognitiveRunValidationError("Cognitive event must contain finite JSON values") from exc
+        if len(request_json.encode("utf-8")) > MAX_EVENT_BYTES:
+            raise CognitiveRunValidationError("Cognitive event request exceeds the 64 KiB limit")
+        request_hash = hashlib.sha256(
+            _canonical({"event": event_input, "actor_id": actor_id}).encode("utf-8")
+        ).hexdigest()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
