@@ -151,14 +151,14 @@ def test_configured_openai_provider_is_registered_and_execution_cost_stays_unkno
 
     manifest_path = Path(__file__).resolve().parents[2] / "examples" / "agent-manifest-v1.json"
     manifest = json.loads(manifest_path.read_text())
-    manifest["agent_id"] = "provider.integration"
+    manifest["agent_id"] = "runtime.test"
     manifest["model_binding"]["provider_id"] = "provider.openai"
     manifest["tools"] = []
     created = client.post("/v1/agents", json={"manifest": manifest})
     assert created.status_code == 201
 
     response = client.post(
-        "/v1/agents/provider.integration/versions/1.0.0/executions",
+        "/v1/agents/runtime.test/versions/1.0.0/executions",
         headers={"Idempotency-Key": "provider-integration-1"},
         json={"input": {"prompt": "test"}, "max_output_tokens": 32},
     )
