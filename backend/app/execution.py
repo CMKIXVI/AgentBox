@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -229,9 +230,19 @@ class ExecutionService:
             if not isinstance(response, ProviderResponse):
                 raise ProviderError("Provider returned an invalid response envelope")
             if (
-                (response.cost_usd is not None and response.cost_usd < 0)
+                type(response.input_tokens) is not int
+                or type(response.output_tokens) is not int
                 or response.input_tokens < 0
                 or response.output_tokens < 0
+                or (
+                    response.cost_usd is not None
+                    and (
+                        isinstance(response.cost_usd, bool)
+                        or not isinstance(response.cost_usd, (int, float))
+                        or not math.isfinite(response.cost_usd)
+                        or response.cost_usd < 0
+                    )
+                )
             ):
                 raise ProviderError("Provider returned invalid usage metrics")
             result = {
