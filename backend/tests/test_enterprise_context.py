@@ -357,3 +357,46 @@ def test_rejected_evidence_is_terminal_and_never_appears_as_validated(tmp_path):
     assert result["decision"] == "rejected"
     assert service.query_evidence("app.alpha", "tenant-alpha")[0]["validation_status"] == "rejected"
     assert service.query_evidence("app.alpha", "tenant-alpha")[0]["review"]["reviewed_by"] == "reviewer"
+
+
+
+def test_evidence_review_api_uses_authenticated_reviewer_and_returns_effective_status(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "evidence-review-api.sqlite3")))
+    client = TestClient(app)
+    app.state.enterprise_context.create_entity(entity(), "test-tenant", "ingestion-service")
+    app.state.enterprise_context.create_evidence(
+        evidence(), "test-tenant", "ingestion-service"
+    )
+    source_hash = evidence()["source_hash"]
+    response = client.post(
+        "/v1/enterprise-context/evidence/evidence.alpha/reviews",
+        json={
+            "decision": "validated",
+            "reason": "Source provenance checked against the immutable ingestion digest",
+            "confirmed_source_hash": source_hash,
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["reviewed_by"] == "test-user"
+    listed = client.get("/v1/enterprise-context/entities/app.alpha/evidence")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["validation_status"] == "validated"
+
+
+def test_evidence_review_api_denies_missing_review_capability(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "evidence-review-deny.sqlite3")))
+    client = TestClient(app)
+    app.state.enterprise_context.create_entity(entity(), "test-tenant", "ingestion-service")
+    app.state.enterprise_context.create_evidence(
+        evidence(), "test-tenant", "ingestion-service"
+    )
+    policies = app.state.authorization_policies
+    app.state.authorization_policies = [
+        policy for policy in policies
+        if policy["actions"] != ["context.evidence.review"]
+    ]
+    response = client.post(
+        "/v1/enterprise-context/evidence/evidence.alpha/reviews",
+        json={"decision": "rejected", "reason": "Insufficient corroborating source"},
+    )
+    assert response.status_code == 403
