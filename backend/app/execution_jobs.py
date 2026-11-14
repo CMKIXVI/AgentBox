@@ -214,7 +214,7 @@ class DurableExecutionJobService:
         if not -100 <= priority <= 100:
             raise ValueError("priority must be between -100 and 100")
         if not isinstance(payload, dict):
-            raise ValueError("payload must be an object")
+            raise TypeError("payload must be an object")
         payload_json = canonical_json(payload)
         if len(payload_json.encode()) > MAX_PAYLOAD_BYTES:
             raise ValueError("payload exceeds the configured size limit")
