@@ -13,7 +13,7 @@ This batch connects the read-only PostgreSQL catalog adapter contract to the nat
 5. Schema, relation, column, index and constraint objects are mapped to immutable tenant-owned ECE entity versions.
 6. Schema containment, relation-column, index, constraint and in-snapshot foreign-key dependencies become typed ECE relationships.
 7. Every discovered entity receives an evidence record containing the snapshot hash and a credential-free source locator.
-8. An optional Ed25519 connector attestation binds the tenant, source locator, snapshot hash, discovery timestamp, key ID and signing timestamp. AgentBox verifies it against a server-configured trusted public key before ingestion.
+8. An optional Ed25519 connector attestation binds the tenant, source locator, snapshot hash, discovery timestamp, key ID and signing timestamp. AgentBox verifies it against the active public key in the tenant-scoped connector registry before ingestion.
 9. Signed evidence is stored separately from legacy unsigned evidence, with the verified key ID and snapshot digest in its immutable metadata. It remains unverified for human/context acceptance; cryptographic source attestation does not itself make a fact human-validated.
 10. Repeated ingestion is idempotent for identical records. Changed entity metadata creates a new immutable entity version; relationship identity incorporates endpoint versions and edge metadata.
 
