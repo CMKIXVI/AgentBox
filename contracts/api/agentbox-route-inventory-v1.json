@@ -167,6 +167,12 @@
       "auth_required": true
     },
     {
+      "method": "POST",
+      "path": "/v1/enterprise-context/evidence/{evidence_id}/reviews",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
       "method": "GET",
       "path": "/v1/enterprise-context/entities/{entity_id}/evidence",
       "auth_required": true
