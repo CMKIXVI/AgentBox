@@ -82,3 +82,14 @@ Connector registration binds one tenant, connector ID and normalized source loca
 - Use a non-exportable Ed25519 signing key in a KMS/HSM where available. The `SigningKeyProvider` adapter must sign the supplied canonical bytes without returning private key material.
 - Register the connector public key before enabling signed ingestion; during rotation, register the next public key, switch the source-side signer, verify successful ingestion, then revoke the previous key.
 - Treat catalog metadata as sensitive operational data. Apply schema allowlists, transport encryption, short retention and tenant-scoped access controls.
+
+
+### Secret-backed, TLS-verified source connections
+
+`app.postgresql_connection` provides a source-side `PostgreSQLConnectionFactory`. It resolves an opaque secret-manager reference immediately before each connection attempt; it does not cache, persist, or log the returned DSN. Deployments inject a `DatabaseSecretProvider` backed by their chosen vault or cloud secret manager. Secret references are not database connection strings, and path traversal references are rejected.
+
+Every connection forces Psycopg's `sslmode=verify-full`, which requires certificate-chain and hostname verification. A deployment may provide an explicit CA bundle path. Connection timeout is bounded to 1–30 seconds, and the application name is bounded to PostgreSQL's 63-character limit. Psycopg 3 is imported lazily and remains an optional dependency.
+
+Driver and secret-provider exceptions are deliberately replaced with a generic connector error because their original messages may contain credentials or private host details. The caller should use deployment-side secret-manager audit logs and database telemetry for diagnosis; it must not enable DSN-bearing debug logs.
+
+The factory is dependency-injectable for deterministic tests. These tests verify runtime secret resolution, TLS policy arguments, timeout validation, path traversal rejection and exception sanitization. They do not prove a real vault integration, CA deployment, database role permissions or a live TLS handshake. Production deployment must supply and test its own secret-provider adapter and trusted CA configuration.
