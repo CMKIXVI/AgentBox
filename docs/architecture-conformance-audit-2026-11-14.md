@@ -199,6 +199,6 @@ A deterministic context assembly engine and authenticated endpoint are now imple
 - Omits raw attributes and limits snapshots to 48 KiB.
 - Validates snapshots against a dedicated versioned JSON Schema and derives a content-addressed reference.
 - Embeds the snapshot in the append-only `context.assembled` event with idempotent replay.
-- Requires a distinct `cognition.context.assemble` authorization grant; tenant identity remains principal-derived.
+- Requires a distinct `cognition.context.assemble` grant plus existing entity, relationship and evidence read grants; tenant identity remains principal-derived. Snapshot references are tenant-bound.
 
 Known blocker: the evidence store currently records evidence as unverified and has no authorized validation workflow. Context assembly therefore includes validated evidence only and currently cannot surface unverified records as proof. No evidence attestation, reasoning loop, retrieval-augmented generation, capability invocation, or agent execution is claimed. New regression tests were added but have not been executed; CI was not invoked.
