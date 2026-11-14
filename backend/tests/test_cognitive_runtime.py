@@ -190,3 +190,48 @@ def test_cognitive_store_closes_idempotently(tmp_path):
     with pytest.raises(RuntimeError, match="closed"):
         service._connect()
     tenants.close()
+
+
+def test_event_payload_rejects_nested_authority_and_executable_fields(tmp_path):
+    service, tenants = make_service(tmp_path)
+    run, _, _ = create_run(service)
+    with pytest.raises(CognitiveRunValidationError, match="forbidden"):
+        service.append_event(
+            run["run_id"],
+            {
+                "stage": "context",
+                "event_type": "context.assembled",
+                "payload": {"metadata": {"execute": "untrusted"}},
+            },
+            "tenant-alpha", "user-1", "unsafe-event",
+        )
+    assert len(service.list_events(run["run_id"], "tenant-alpha")) == 1
+    tenants.close()
+    service.close()
+
+
+def test_idempotency_keys_are_stored_only_as_hashes(tmp_path):
+    service, tenants = make_service(tmp_path)
+    run, _, _ = create_run(service, key="sensitive-client-key")
+    service.append_event(
+        run["run_id"],
+        {"stage": "context", "event_type": "context.assembled"},
+        "tenant-alpha", "user-1", "sensitive-event-key",
+    )
+    connection = service._connect()
+    try:
+        create_hash = connection.execute(
+            "SELECT create_idempotency_key_hash FROM cognitive_runs WHERE run_id=?",
+            (run["run_id"],),
+        ).fetchone()[0]
+        event_hash = connection.execute(
+            "SELECT idempotency_key_hash FROM cognitive_events WHERE run_id=? AND sequence=2",
+            (run["run_id"],),
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert create_hash != "sensitive-client-key"
+    assert event_hash != "sensitive-event-key"
+    assert len(create_hash) == len(event_hash) == 64
+    tenants.close()
+    service.close()
