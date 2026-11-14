@@ -148,7 +148,9 @@ class PostgreSQLConnectorRegistry:
     @staticmethod
     def _validate_public_key(public_key: str) -> tuple[str, bytes]:
         if not isinstance(public_key, str) or not 40 <= len(public_key) <= 64:
-            raise ContextValidationError("public_key must be base64 encoded raw Ed25519 key material")
+            raise ContextValidationError(
+                "public_key must be base64 encoded raw Ed25519 key material"
+            )
         try:
             raw = base64.b64decode(public_key, validate=True)
         except (ValueError, binascii.Error) as exc:
@@ -185,7 +187,9 @@ class PostgreSQLConnectorRegistry:
             or locator.username or locator.password or locator.query or locator.fragment
             or source_ref != source_ref.rstrip("/")
         ):
-            raise ContextValidationError("source_ref must be a normalized credential-free postgresql-catalog URI")
+            raise ContextValidationError(
+                "source_ref must be a normalized credential-free postgresql-catalog URI"
+            )
         if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
             raise ContextValidationError("actor_id is invalid")
         now = _now()
@@ -202,10 +206,14 @@ class PostgreSQLConnectorRegistry:
                 )
                 self._event(db, tenant_id, connector_id, "connector.registered",
                             actor_id, None, {"source_ref": source_ref})
-                self._event(db, tenant_id, connector_id, "connector.key_added",
-                            actor_id, key_id, {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()})
+                self._event(
+                    db, tenant_id, connector_id, "connector.key_added", actor_id, key_id,
+                    {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()},
+                )
         except sqlite3.IntegrityError as exc:
-            raise ContextConflictError("Connector identity or source_ref already exists for this tenant") from exc
+            raise ContextConflictError(
+                "Connector identity or source_ref already exists for this tenant"
+            ) from exc
         return {"connector_id": connector_id, "source_ref": source_ref,
                 "key_id": key_id, "status": "active", "created_at": now}
 
@@ -237,7 +245,10 @@ class PostgreSQLConnectorRegistry:
                             actor_id, key_id, {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()})
         except sqlite3.IntegrityError as exc:
             raise ContextConflictError("Connector key ID already exists") from exc
-        return {"connector_id": connector_id, "key_id": key_id, "status": "active", "created_at": now}
+        return {
+            "connector_id": connector_id, "key_id": key_id,
+            "status": "active", "created_at": now,
+        }
 
     def revoke_key(self, tenant_id: str, connector_id: str, key_id: str,
                    actor_id: str) -> dict[str, Any]:
@@ -281,7 +292,9 @@ class PostgreSQLConnectorRegistry:
             if connector is None:
                 raise ContextNotFoundError("PostgreSQL connector not found")
             if connector["status"] != "active" or connector["source_ref"] != source_ref:
-                raise ContextValidationError("Connector is revoked or source_ref does not match registration")
+                raise ContextValidationError(
+                    "Connector is revoked or source_ref does not match registration"
+                )
             row = db.execute(
                 """SELECT public_key_b64 FROM pg_connector_keys k
                 WHERE tenant_id=? AND connector_id=? AND key_id=?
