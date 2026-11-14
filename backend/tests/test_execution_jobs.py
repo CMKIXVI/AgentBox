@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
 
 import pytest
 
@@ -16,7 +16,10 @@ from app.execution_jobs import (
 
 @pytest.fixture
 def jobs(tmp_path):
-    return DurableExecutionJobService(tmp_path / "jobs.sqlite3")
+    return DurableExecutionJobService(
+        tmp_path / "jobs.sqlite3",
+        allowed_handlers={("provider_invocation", "provider.fake", "1.0.0")},
+    )
 
 
 def create(jobs, key="job-1", tenant="tenant-a"):
@@ -110,7 +113,7 @@ def test_worker_must_own_lease_to_confirm_running_cancellation(jobs):
 
 def test_expired_lease_before_start_is_requeued(jobs):
     record, _ = create(jobs)
-    claim = jobs.claim("worker-1", lease_seconds=1)
+    jobs.claim("worker-1", lease_seconds=1)
     with jobs._connect() as connection:
         connection.execute(
             "UPDATE execution_jobs SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE job_id=?",
