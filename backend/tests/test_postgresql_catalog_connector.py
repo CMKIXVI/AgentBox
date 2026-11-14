@@ -23,16 +23,16 @@ class FakeCursor:
 
     def execute(self, query, params=None):
         self.connection.statements.append((query, params))
-        if "pg_catalog.pg_namespace AS n" in query:
+        if "FROM pg_catalog.pg_namespace AS n" in query:
             self.result = [("public",)]
-        elif "pg_catalog.pg_class AS c" in query:
-            self.result = [("public", "customers", "table", "customer master")]
-        elif "pg_catalog.pg_attribute AS a" in query:
+        elif "FROM pg_catalog.pg_attribute AS a" in query:
             self.result = [("public", "customers", 1, "id", "bigint", True, None)]
-        elif "pg_catalog.pg_index AS x" in query:
+        elif "FROM pg_catalog.pg_index AS x" in query:
             self.result = [("public", "customers", "customers_pkey", True, True, "CREATE UNIQUE INDEX customers_pkey")]
-        elif "pg_catalog.pg_constraint AS con" in query:
+        elif "FROM pg_catalog.pg_constraint AS con" in query:
             self.result = [("public", "customers", "customers_pkey", "primary_key", "PRIMARY KEY (id)", None, None)]
+        elif "FROM pg_catalog.pg_class AS c" in query:
+            self.result = [("public", "customers", "table", "customer master")]
         else:
             self.result = []
 
