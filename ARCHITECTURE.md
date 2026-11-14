@@ -1,7 +1,7 @@
 # AgentBox Master Architecture
 
 **Document status:** Canonical architecture authority  
-**Version:** 1.4  
+**Version:** 1.5  
 **Updated:** 2026-11-14  
 **Scope:** AgentBox platform, backend, runtime, security, data, and dual frontend strategy
 
@@ -29,6 +29,38 @@ Autonomous improvement is evidence-driven and bounded. An agent or candidate mus
 6. **Immutable artifacts.** Agent versions, evaluation profiles, candidates, and evidence records preserve version identity and lineage.
 7. **Evidence before autonomy.** Caller-asserted or synthetic evidence is not production proof. Promotion requires trusted execution, reproducible workloads, independent evaluation, mandatory gates, and an auditable approval decision.
 8. **Portable deployment.** Keep the core runtime deployable on a modest Linux host first; scale-out infrastructure is introduced only when supported by workload and operational requirements.
+
+## 2.1 Five architectural pillars and lifecycle authority
+
+AgentBox implementation is governed by five connected pillars. These are architectural boundaries, not five separate products or deployable services.
+
+1. **AI Intelligence** — intent interpretation, context assembly, cognition, reasoning, planning, decision, reflection, memory and learning.
+2. **Agent Factory** — agent genomes and manifests, immutable versions, composition, mutation, lineage, evaluation, promotion and rollback.
+3. **Application Factory** — capability composition, workflow interpretation, application assembly, packaging, deployment and lifecycle governance.
+4. **Execution Engine** — bounded agent loops, orchestration, capability/tool invocation, multi-agent delegation, checkpoints, observation and recovery.
+5. **Platform Foundation** — identity, tenancy, authorization, persistence, audit, provider/secret adapters, sandboxing, observability, deployment and both frontend clients.
+
+The Platform Foundation supports and governs the other four pillars; it is not the product's primary purpose. Infrastructure work must be prioritized by the higher-level agent/intelligence flow it enables.
+
+The canonical agent lifecycle is:
+
+`Intent → Context → Cognition → Capability → Responsibility → Execution → Observation → Verification → Memory`
+
+Each transition must have a typed contract, durable state where required, explicit provenance, server-side authorization, bounded failure semantics and observable evidence. The lifecycle is an end-to-end target; the existence of a schema or isolated service does not mean its stage is operational.
+
+### Engine boundaries
+
+Keep these domains distinct while reusing shared artifact, lineage, evaluation, policy, audit and approval services:
+
+- **Cognition Engine:** reasoning, planning, decision and reflection; distinct from a provider HTTP adapter.
+- **Agent Evolution Engine (AEE):** evolves immutable agent configuration/genomes; does not mutate foundation-model weights.
+- **Retrieval Evolution Engine (REE):** evolves retrieval, ranking and query strategy against versioned corpus/query-set benchmarks.
+- **Model Genetics Engine (MGE):** tracks model genomes, ancestry and compatibility; neural-weight reproduction remains experimental until independently implemented and validated.
+- **Cognitive Evolution:** evolves bounded cognitive strategies or configurations under dedicated evaluation; it is not synonymous with manifest mutation.
+- **Knowledge Evolution:** governs evolution of knowledge representations and retrieval/curation strategies while preserving source provenance and immutable source evidence.
+- **Autonomous Improvement Controller:** coordinates the evidence loop across eligible engines; it is not an evaluator, policy authority, credential broker or promotion authority.
+
+The detailed repository conformance and implementation gaps are tracked in [the 2026-11-14 architecture audit](docs/architecture-conformance-audit-2026-11-14.md). That audit is a snapshot; this master document remains the canonical target.
 
 ## 3. Platform topology
 
@@ -302,8 +334,6 @@ The frontend strategy is introduced without displacing backend and security work
 | 1 | Canonical architecture and API contract inventory | Reviewed master architecture and endpoint/schema inventory |
 | 2 | Frontend workspace foundations | Flutter and Next.js app skeletons, independent CI, documented local run |
 | 3 | Authentication and tenant integration | OIDC login/session flows and negative tenant-isolation tests |
-
-Current progress: backend OIDC JWT validation is implemented. The Next.js client now has configurable OIDC Authorization Code + PKCE sign-in, state/nonce checks, encrypted server-side JWT session handling, refresh-token renewal, and a same-origin authenticated API proxy. Flutter now has AppAuth Authorization Code + PKCE sign-in and platform-secure token storage with refresh handling. Provider selection, native redirect registration, real issuer/JWKS validation, and deployed client-to-API end-to-end verification remain rollout prerequisites.
 | 4 | Shared client generation | Reproducible Dart/TypeScript clients from the same OpenAPI contract |
 | 5 | Next.js Agent Studio foundation | Agent list, details, version view, and authorized create/clone flow |
 | 6 | Flutter operational foundation | Login, agent inventory, execution status, and notifications |
