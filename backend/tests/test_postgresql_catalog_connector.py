@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import base64
-from datetime import UTC, datetime
-
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
@@ -14,6 +11,9 @@ from app.postgresql_catalog_connector import (
     PostgreSQLCatalogReader,
 )
 from app.postgresql_provenance import PostgreSQLProvenanceVerifier
+from app.main import create_app
+from auth_helpers import configure_test_access
+from fastapi.testclient import TestClient
 
 
 class FakeCursor:
@@ -171,3 +171,38 @@ def test_attestor_rejects_invalid_signing_provider_output():
             tenant_id="tenant-a", source_ref="postgresql-catalog://warehouse/snapshot",
             snapshot=snapshot, key_id="key-v1",
         )
+
+
+
+def test_fake_source_connector_round_trips_signed_snapshot_through_api(tmp_path):
+    provider = FakeSigningProvider()
+    connector = PostgreSQLCatalogConnector(
+        PostgreSQLCatalogReader(), PostgreSQLCatalogAttestor(provider)
+    )
+    source_ref = "postgresql-catalog://warehouse/snapshot"
+    envelope = connector.discover(
+        connection_factory=FakeConnection,
+        schema_names=["public"],
+        tenant_id="test-tenant",
+        source_ref=source_ref,
+        connector_id="warehouse-prod",
+        key_id="key-v1",
+    )
+    app = configure_test_access(create_app(str(tmp_path / "connector-e2e.sqlite3")))
+    client = TestClient(app)
+    public_key = base64.b64encode(provider.public_bytes()).decode("ascii")
+    registered = client.post(
+        "/v1/enterprise-discovery/postgresql/connectors",
+        json={
+            "connector_id": "warehouse-prod", "source_ref": source_ref,
+            "key_id": "key-v1", "public_key": public_key,
+        },
+    )
+    assert registered.status_code == 201, registered.text
+    response = client.post(
+        "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+        json=envelope,
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["provenance_status"] == "cryptographically_verified"
+    assert response.json()["validation_status"] == "unverified"
