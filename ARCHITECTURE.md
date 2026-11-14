@@ -478,3 +478,10 @@ The PostgreSQL discovery integration now has tenant-scoped connector registratio
 ## Source-side PostgreSQL catalog connector
 
 The source-side connector package provides a DB-API-agnostic catalog reader, bounded statement timeout, explicit read-only transaction, schema allowlist, metadata-only extraction, canonical snapshot hashing and an Ed25519 attestor. Signing is delegated through a `SigningKeyProvider` protocol so a deployment can bind a KMS/HSM or OS keyring without exporting private key material into AgentBox. The collector never reads application rows or performs writes. This package is not a deployed connector agent and does not include a concrete cloud KMS/HSM adapter, database secret resolver, or live PostgreSQL E2E environment; those remain deployment gates.
+
+
+## PostgreSQL source connection security boundary
+
+The source-side PostgreSQL connector now has a secret-backed connection-factory contract. A deployment injects a `DatabaseSecretProvider`; opaque secret references are resolved just in time for each connection and the DSN is never persisted in AgentBox connector records, API requests, snapshots or logs. The factory enforces TLS certificate and hostname verification (`sslmode=verify-full`), a bounded connect timeout and an optional explicit CA bundle. Psycopg 3 remains an optional, lazily loaded driver. Driver and secret-manager exception text is sanitized to prevent accidental credential disclosure.
+
+This is an adapter boundary with deterministic injected tests, not a bundled cloud-vault integration. No production secret-provider implementation, deployed CA trust configuration, live TLS handshake, source-role audit or live PostgreSQL end-to-end verification is claimed. These remain deployment acceptance gates.
