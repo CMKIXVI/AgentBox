@@ -168,3 +168,36 @@ def test_configured_openai_provider_is_registered_and_execution_cost_stays_unkno
     assert result["usage"]["input_tokens"] == 7
     assert result["usage"]["output_tokens"] == 3
     assert result["usage"]["cost_usd"] is None
+
+
+@pytest.mark.parametrize("usage", [
+    {"prompt_tokens": -1, "completion_tokens": 1},
+    {"prompt_tokens": 1.5, "completion_tokens": 1},
+    {"prompt_tokens": True, "completion_tokens": 1},
+    {"prompt_tokens": "10", "completion_tokens": 1},
+])
+def test_rejects_non_integer_or_negative_token_usage(monkeypatch, usage):
+    monkeypatch.setattr(
+        "app.openai_provider.urlopen",
+        lambda *_args, **_kwargs: FakeHTTPResponse({
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": usage,
+        }),
+    )
+    with pytest.raises(ProviderError, match="invalid token usage"):
+        OpenAICompatibleProvider("secret").invoke(request(), 5)
+
+
+def test_rejects_usage_cost_overflow(monkeypatch):
+    monkeypatch.setattr(
+        "app.openai_provider.urlopen",
+        lambda *_args, **_kwargs: FakeHTTPResponse({
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 10**1000, "completion_tokens": 1},
+        }),
+    )
+    adapter = OpenAICompatibleProvider(
+        "secret", input_cost_per_million=1.0, output_cost_per_million=1.0
+    )
+    with pytest.raises(ProviderError, match="cost bounds"):
+        adapter.invoke(request(), 5)
