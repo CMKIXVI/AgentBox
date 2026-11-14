@@ -440,3 +440,15 @@ def test_restore_rejects_symlinked_backup_source(tmp_path):
         TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
             "tenant-alpha", link
         )
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are unavailable")
+def test_restore_rejects_fifo_backup_source_without_blocking(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    fifo = tmp_path / "tenant-backup.fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(BackupError, match="regular file"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", fifo
+        )
