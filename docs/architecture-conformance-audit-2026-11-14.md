@@ -222,3 +222,10 @@ Added persisted tenant-scoped connector registration, normalized source binding,
 ## 2026-11-14 — source-side PostgreSQL catalog connector
 
 Added a driver-agnostic source-side PostgreSQL catalog reader using an explicit read-only transaction, statement timeout, strict schema allowlist, catalog-only SQL, metadata-only snapshot contract, canonical SHA-256 digest and ingestion-compatible entity/snapshot limits. Added a signing-provider protocol for KMS/HSM/keyring integration, Ed25519 attestation generation, connector request-envelope assembly, and a fake-source-to-AgentBox API round-trip regression test. Psycopg 3 is an optional DB-API dependency. The connector does not contain a concrete KMS/HSM adapter or secret resolver and has not been tested against a live PostgreSQL service. Tests were added but not executed; CI was not run. Production gates remain: concrete key-provider adapter, managed DSN/secret resolution, deployed connector agent, real PostgreSQL least-privilege test, network/TLS hardening, and end-to-end deployment validation.
+
+
+## PostgreSQL source connection hardening follow-up
+
+The source-side connector now includes a `DatabaseSecretProvider` protocol and `PostgreSQLConnectionFactory`. Secret references are opaque and resolved at connection time; the DSN is not cached or written into AgentBox. The factory forces certificate and hostname verification (`sslmode=verify-full`), bounds connection timeout, supports a deployment-provided CA bundle, lazily loads Psycopg 3, and sanitizes driver/secret-provider exception text. Tests cover runtime secret lookup, TLS policy, timeout/reference validation and error redaction.
+
+**Evidence boundary:** tests have been added but not executed in this environment. There is no concrete vault/KMS secret-provider implementation, real CA provisioning, live PostgreSQL connection, TLS handshake or least-privilege source-role verification. No API routes were added. This improves the source-side connection boundary but does not close the live integration production gate.
