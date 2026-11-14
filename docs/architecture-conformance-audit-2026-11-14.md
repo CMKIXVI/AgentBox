@@ -182,7 +182,7 @@ The branch now includes a tenant-scoped cognitive run journal and authenticated 
 - Runs bind to an existing immutable agent version and registry content hash.
 - Tenant and actor identity are server-derived from the authenticated principal.
 - Create and append operations require idempotency keys bound to actor/request.
-- Events are ordered, stage-transition validated, bounded to 64 KiB, and append-only at the SQLite trigger level.
+- Events are ordered, stage-transition validated, bounded to 64 KiB, and append-only at the SQLite trigger level. Idempotency keys are stored only as SHA-256 digests; payloads reject nested reserved authority, credential and executable-field names.
 - Verification and accepted memory events require verified evidence references.
 - Capability and responsibility events require explicit versioned capability and authorization-decision references.
 - API routes support create, append, get and paginated event reads, with tenant isolation and authorization.
