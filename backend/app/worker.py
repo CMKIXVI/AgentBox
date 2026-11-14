@@ -114,7 +114,9 @@ class ExecutionJobWorker:
                         LOGGER.warning("Could not record failure after lease loss for job %s", job_id)
         finally:
             stop_heartbeat.set()
-            heartbeat_thread.join(timeout=max(1.0, self.lease_seconds / 2))
+            # Do not let shutdown close the job store while heartbeat I/O is
+            # still in flight; SQLite may legitimately wait up to busy_timeout.
+            heartbeat_thread.join()
         return True
 
     def _maintain_lease(
