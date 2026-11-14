@@ -14,7 +14,7 @@ import subprocess
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Mapping
 
 
 class SandboxError(RuntimeError):
