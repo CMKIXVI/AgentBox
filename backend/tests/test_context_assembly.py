@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+from datetime import UTC, datetime
+
 import pytest
 
 from app.context_assembly import ContextAssemblyService, ContextAssemblyValidationError
@@ -115,5 +118,30 @@ def test_assembly_rejects_invalid_limits_duplicate_ids_and_ambiguous_selection(t
         assembler.assemble("tenant-alpha", entity_ids=["app.alpha"], search="alpha")
     with pytest.raises(ContextAssemblyValidationError, match="requested limit"):
         assembler.assemble("tenant-alpha", entity_ids=["app.alpha", "app.beta"], limit=1)
+    context.close()
+    tenants.close()
+
+
+def test_unverified_evidence_is_never_promoted_into_context_proof(tmp_path):
+    assembler, context, tenants = make_services(tmp_path)
+    context.create_entity(entity("app.alpha"), "tenant-alpha", "user-1")
+    recorded = context.create_evidence(
+        {
+            "evidence_id": "evidence.alpha",
+            "entity_id": "app.alpha",
+            "entity_version": 1,
+            "source_kind": "database_metadata",
+            "source_ref": "postgres://catalog/public/applications",
+            "source_hash": hashlib.sha256(b"catalog snapshot").hexdigest(),
+            "observed_at": datetime.now(UTC).isoformat(),
+            "confidence": 1.0,
+            "metadata": {"connector": "read-only-catalog"},
+        },
+        "tenant-alpha", "user-1",
+    )
+    packet = assembler.assemble("tenant-alpha", entity_ids=["app.alpha"])["packet"]
+    assert recorded["validation_status"] == "unverified"
+    assert packet["evidence"] == []
+    assert packet["policy"]["evidence_status"] == "validated_only"
     context.close()
     tenants.close()
