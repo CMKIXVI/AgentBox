@@ -171,3 +171,15 @@ The first SQLite service implementation is proposed in PR #47. It currently prov
 This implementation is deliberately not yet wired into FastAPI routes or a worker process. The handler allowlist must be supplied by trusted server configuration; an empty allowlist denies all submissions. The current adapter is single-instance SQLite only. It does not yet provide per-tenant/global admission limits, PostgreSQL semantics, external authorization-audit transaction linkage, automatic retry after ambiguous execution, a deployed sandbox worker, or operational guarantees.
 
 CI and integration status must be read from the exact PR head commit. A green unit-test workflow would verify code paths only; it would not certify a deployed worker or production readiness.
+
+
+## 13. API integration status
+
+The durable-job API is proposed in PR #47 and remains an unmerged feature-branch capability:
+
+- Tenant-authenticated callers can submit jobs only for a registered agent version and a provider handler explicitly allowlisted by server configuration.
+- Job status and cancellation are tenant-scoped and pass the existing capability authorization policy.
+- Internal worker claim/start/heartbeat/complete/fail/cancel-confirm endpoints require a dedicated bearer secret configured outside source control. If the secret is absent, worker access fails closed.
+- Authorization decisions for these API operations are appended to the existing authorization audit store.
+
+These endpoints do not constitute a deployed worker. They do not invoke model providers or sandbox workloads. The synchronous execution API is unchanged. The authorization decision and job transition records currently use separate persistence operations; atomic cross-ledger correlation remains a release gate.
