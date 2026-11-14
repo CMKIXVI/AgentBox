@@ -123,10 +123,16 @@ def test_environment_configuration_loads_provider_without_printing_secret(monkey
     assert adapter.api_key == "env-secret"
 
 
-def test_rejects_timeout_outside_supported_bounds():
+@pytest.mark.parametrize("timeout", [0, 3601, True, 1.5, "5"])
+def test_rejects_timeout_outside_supported_bounds(timeout):
     adapter = OpenAICompatibleProvider("secret")
     with pytest.raises(ProviderError, match="timeout"):
-        adapter.invoke(request(), 0)
+        adapter.invoke(request(), timeout)
+
+
+def test_rejects_boolean_token_pricing_rate():
+    with pytest.raises(ValueError, match="token rates"):
+        OpenAICompatibleProvider("secret", input_cost_per_million=True)
 
 
 
