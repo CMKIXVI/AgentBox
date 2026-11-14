@@ -130,14 +130,14 @@ def test_worker_executes_openai_provider_job_through_mocked_http(tmp_path, monke
 
     root = Path(__file__).resolve().parents[2]
     manifest = json.loads((root / "examples" / "agent-manifest-v1.json").read_text())
-    manifest["agent_id"] = "runtime.openai-worker"
+    manifest["agent_id"] = "runtime.test"
     manifest["model_binding"]["provider_id"] = "provider.openai"
     manifest["tools"] = []
     created = client.post("/v1/agents", json={"manifest": manifest})
     assert created.status_code == 201
 
     submitted = client.post(
-        "/v1/agents/runtime.openai-worker/versions/1.0.0/jobs",
+        "/v1/agents/runtime.test/versions/1.0.0/jobs",
         headers={"Idempotency-Key": "openai-worker-integration"},
         json={"input": {"prompt": "hello from durable worker"}, "max_output_tokens": 48},
     )
