@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 from auth_helpers import configure_test_access
@@ -30,6 +31,14 @@ def create_agent(client):
     response = client.post("/v1/agents", json={"manifest": manifest()})
     assert response.status_code == 201
     return "runtime.test", "1.0.0"
+
+
+def test_execution_database_connections_close_after_context(client):
+    connection = client.app.state.executions._connect()
+    with connection:
+        connection.execute("SELECT 1")
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
 
 
 def test_execute_persists_output_and_usage(client):
