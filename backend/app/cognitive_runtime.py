@@ -6,6 +6,7 @@ capabilities, execute agents, attest evidence, or consolidate memory.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import sqlite3
 import uuid
@@ -183,7 +184,11 @@ class CognitiveRunService:
 
     @staticmethod
     def _event_record(row: sqlite3.Row) -> dict[str, Any]:
-        return json.loads(row["event_json"])
+        serialized = row["event_json"]
+        digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        if not hmac.compare_digest(digest, row["event_hash"]):
+            raise CognitiveRunError("Cognitive event integrity check failed")
+        return json.loads(serialized)
 
     def create_run(
         self,
