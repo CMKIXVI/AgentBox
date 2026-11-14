@@ -62,7 +62,11 @@ class FlutterAppAuthOidcClient implements AgentBoxOidcClient {
         scopes: _scopes,
       ),
     );
-    return _mapResponse(response);
+    return _mapResponse(
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      expiresAt: response.accessTokenExpirationDateTime,
+    );
   }
 
   @override
@@ -82,14 +86,16 @@ class FlutterAppAuthOidcClient implements AgentBoxOidcClient {
     return _mapResponse(response);
   }
 
-  AgentBoxOidcTokenResponse? _mapResponse(AuthorizationTokenResponse? response) {
-    if (response == null) return null;
-    return AgentBoxOidcTokenResponse(
-      accessToken: response.accessToken,
-      refreshToken: response.refreshToken,
-      expiresAt: response.accessTokenExpirationDateTime,
-    );
-  }
+  AgentBoxOidcTokenResponse _mapResponse({
+    required String? accessToken,
+    required String? refreshToken,
+    required DateTime? expiresAt,
+  }) =>
+      AgentBoxOidcTokenResponse(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        expiresAt: expiresAt,
+      );
 }
 
 abstract interface class AgentBoxSecureTokenStore {
