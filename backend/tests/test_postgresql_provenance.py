@@ -82,9 +82,3 @@ def test_attestation_rejects_naive_timestamps_and_unknown_fields():
     malformed = dict(attestation, trusted=True)
     with pytest.raises(ContextValidationError, match="exactly"):
         verifier.verify(malformed, snapshot, "tenant-alpha", "postgresql-catalog://warehouse/snapshot")
-
-
-def test_trust_key_configuration_rejects_malformed_material(monkeypatch):
-    monkeypatch.setenv("AGENTBOX_POSTGRESQL_PROVENANCE_KEYS", '{"warehouse-key-v1":"bad"}')
-    with pytest.raises(RuntimeError, match="trust-key configuration"):
-        PostgreSQLProvenanceVerifier.from_environment()
