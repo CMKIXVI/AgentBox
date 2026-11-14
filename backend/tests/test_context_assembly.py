@@ -111,5 +111,9 @@ def test_assembly_rejects_invalid_limits_duplicate_ids_and_ambiguous_selection(t
         assembler.assemble("tenant-alpha", limit=13)
     with pytest.raises(ContextAssemblyValidationError, match="duplicates"):
         assembler.assemble("tenant-alpha", entity_ids=["app.alpha", "app.alpha"])
+    with pytest.raises(ContextAssemblyValidationError, match="not both"):
+        assembler.assemble("tenant-alpha", entity_ids=["app.alpha"], search="alpha")
+    with pytest.raises(ContextAssemblyValidationError, match="requested limit"):
+        assembler.assemble("tenant-alpha", entity_ids=["app.alpha", "app.beta"], limit=1)
     context.close()
     tenants.close()
