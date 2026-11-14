@@ -55,3 +55,35 @@ def test_operator_cli_backup_fails_closed_without_key(tmp_path, monkeypatch, cap
         "--output", str(tmp_path / "no-key.agb")
     ) == 2
     assert "backup key" in capsys.readouterr().err.lower()
+
+
+def test_operator_cli_closes_registry_after_success_and_failure(tmp_path, monkeypatch, capsys):
+    from app import tenant_admin
+    from app.tenant_registry import TenantRegistry as RealTenantRegistry
+
+    created = []
+
+    def tracking_registry(database_path):
+        registry = RealTenantRegistry(database_path)
+        created.append(registry)
+        return registry
+
+    monkeypatch.setattr(tenant_admin, "TenantRegistry", tracking_registry)
+    database = tmp_path / "cli-lifecycle.sqlite3"
+    create_app(str(database))
+    assert main([
+        "--database", str(database), "create", "--tenant-id", "tenant-cli-close",
+        "--display-name", "CLI Close",
+    ]) == 0
+    capsys.readouterr()
+    assert len(created) == 1
+    assert created[0]._closed is True
+
+    monkeypatch.delenv("AGENTBOX_BACKUP_KEY_ID", raising=False)
+    assert main([
+        "--database", str(database), "backup", "--tenant-id", "tenant-cli-close",
+        "--output", str(tmp_path / "missing-key.agb"),
+    ]) == 2
+    capsys.readouterr()
+    assert len(created) == 2
+    assert created[1]._closed is True
