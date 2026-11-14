@@ -9,15 +9,11 @@ import logging
 import os
 import signal
 import threading
-import time
 import uuid
 from typing import Any
 
 from .execution import ExecutionService
-from .execution_jobs import (
-    DurableExecutionJobService,
-    JobLeaseError,
-)
+from .execution_jobs import DurableExecutionJobService, JobLeaseError
 from .registry import AgentRegistry
 
 LOGGER = logging.getLogger("agentbox.worker")
@@ -65,7 +61,8 @@ class ExecutionJobWorker:
             "lease_token": lease_token,
         }
         try:
-            self.jobs.start(job_id, tenant_id, self.worker_id, lease_token)
+            started = self.jobs.start(job_id, tenant_id, self.worker_id, lease_token)
+            claim["attempt"] = started["attempt"]
         except JobLeaseError:
             LOGGER.warning("Worker lost lease before start for job %s", job_id)
             return True
@@ -83,7 +80,10 @@ class ExecutionJobWorker:
         try:
             result = self._dispatch(claim)
             if lease_lost.is_set():
-                LOGGER.warning("Lease lost during execution for job %s; leaving outcome for recovery", job_id)
+                LOGGER.warning(
+                    "Lease lost during execution for job %s; leaving outcome for recovery",
+                    job_id,
+                )
                 return True
             if cancel_requested.is_set():
                 self.jobs.confirm_cancel(
@@ -143,11 +143,12 @@ class ExecutionJobWorker:
     def _dispatch(self, job: dict[str, Any]) -> dict[str, Any]:
         if job["workload_kind"] != "provider_invocation":
             raise ValueError("worker does not support this workload kind")
-        if (job["handler_id"], job["handler_version"]) not in {
+        allowed = {
             (provider_id, version)
             for kind, provider_id, version in self.jobs.allowed_handlers
             if kind == "provider_invocation"
-        }:
+        }
+        if (job["handler_id"], job["handler_version"]) not in allowed:
             raise ValueError("provider handler is not in the trusted allowlist")
 
         agent_id, separator, version = job["workload_ref"].rpartition("@")
@@ -179,7 +180,7 @@ class ExecutionJobWorker:
         }
 
     def run_forever(self, stop_event: threading.Event | None = None) -> None:
-        """Poll until the supplied event is set; in-flight work is allowed to finish."""
+        """Poll until stopped; in-flight work is allowed to finish."""
         stop = stop_event or threading.Event()
         while not stop.is_set():
             if not self.run_once():
@@ -188,6 +189,8 @@ class ExecutionJobWorker:
 
 def main() -> None:
     """Start the standalone worker using the same configured SQLite database as the API."""
+    import logging
+
     logging.basicConfig(
         level=os.getenv("AGENTBOX_WORKER_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
