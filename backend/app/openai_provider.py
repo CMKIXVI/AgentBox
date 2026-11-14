@@ -15,6 +15,7 @@ class OpenAICompatibleProvider:
     """Bounded HTTP adapter for providers exposing the OpenAI chat-completions API."""
 
     provider_id = "provider.openai"
+    MAX_REQUEST_BYTES = 1024 * 1024
     MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
     def __init__(
@@ -70,11 +71,16 @@ class OpenAICompatibleProvider:
     def invoke(self, request: ProviderRequest, timeout_seconds: int) -> ProviderResponse:
         if not 1 <= timeout_seconds <= 3600:
             raise ProviderError("Provider timeout is outside the supported range")
-        user_content = (
-            request.user_input
-            if isinstance(request.user_input, str)
-            else json.dumps(request.user_input, ensure_ascii=False, separators=(",", ":"))
-        )
+        try:
+            user_content = (
+                request.user_input
+                if isinstance(request.user_input, str)
+                else json.dumps(
+                    request.user_input, ensure_ascii=False, separators=(",", ":")
+                )
+            )
+        except (TypeError, ValueError, RecursionError):
+            raise ProviderError("Provider input could not be serialized") from None
         payload = {
             "model": request.model_id,
             "messages": [
@@ -84,6 +90,8 @@ class OpenAICompatibleProvider:
             "max_tokens": request.max_output_tokens,
         }
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if len(body) > self.MAX_REQUEST_BYTES:
+            raise ProviderError("Provider request exceeded the configured size limit")
         http_request = Request(
             f"{self.base_url}/chat/completions",
             data=body,
