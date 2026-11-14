@@ -6,7 +6,7 @@ import pytest
 from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
-from app.execution import DeterministicFakeProvider
+from app.execution import DeterministicFakeProvider, ProviderError, ProviderResponse
 from app.main import create_app
 
 
@@ -104,3 +104,35 @@ def test_execution_limits_validated(client):
 
 def test_execution_not_found(client):
     assert client.get("/v1/executions/not-real").status_code == 404
+
+
+@pytest.mark.parametrize("metrics", [
+    {"input_tokens": True, "output_tokens": 1, "cost_usd": 0.0},
+    {"input_tokens": 1.5, "output_tokens": 1, "cost_usd": 0.0},
+    {"input_tokens": 1, "output_tokens": -1, "cost_usd": 0.0},
+    {"input_tokens": 1, "output_tokens": 1, "cost_usd": float("nan")},
+    {"input_tokens": 1, "output_tokens": 1, "cost_usd": float("inf")},
+    {"input_tokens": 1, "output_tokens": 1, "cost_usd": True},
+])
+def test_execution_rejects_malformed_provider_usage_and_marks_failed(client, metrics):
+    class InvalidMetricsProvider:
+        provider_id = "provider.fake"
+
+        def invoke(self, request, timeout_seconds):
+            del request, timeout_seconds
+            return ProviderResponse(output="unsafe metrics", **metrics)
+
+    create_agent(client)
+    client.app.state.executions.providers["provider.fake"] = InvalidMetricsProvider()
+    with pytest.raises(ProviderError, match="invalid usage metrics"):
+        client.app.state.executions.execute(
+            "runtime.test", "1.0.0", "test", "invalid-metrics", tenant_id="test-tenant"
+        )
+
+    with client.app.state.executions._connect() as connection:
+        row = connection.execute(
+            "SELECT status, error_code FROM executions WHERE tenant_id=?",
+            ("test-tenant",),
+        ).fetchone()
+    assert row["status"] == "failed"
+    assert row["error_code"] == "provider_error"
