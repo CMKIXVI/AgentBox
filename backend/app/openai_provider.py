@@ -127,10 +127,15 @@ class OpenAICompatibleProvider:
 
         cost_usd: float | None = None
         if self.input_cost_per_million is not None and self.output_cost_per_million is not None:
-            cost_usd = (
-                input_tokens * self.input_cost_per_million
-                + output_tokens * self.output_cost_per_million
-            ) / 1_000_000
+            try:
+                cost_usd = (
+                    input_tokens * self.input_cost_per_million
+                    + output_tokens * self.output_cost_per_million
+                ) / 1_000_000
+            except OverflowError:
+                raise ProviderError(
+                    "Provider returned usage that exceeds supported cost bounds"
+                ) from None
             if not math.isfinite(cost_usd):
                 raise ProviderError("Provider returned usage that exceeds supported cost bounds")
         return ProviderResponse(
