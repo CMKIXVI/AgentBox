@@ -473,3 +473,8 @@ The catalog ingestion path optionally verifies Ed25519 attestations against the 
 ## PostgreSQL connector key lifecycle
 
 The PostgreSQL discovery integration now has tenant-scoped connector registration, source-locator binding, immutable Ed25519 public-key records, overlap rotation, explicit revocation events and append-only lifecycle audit. All management operations require separate server-side authorization grants; tenant and actor identity come from the authenticated principal. A signed ingestion must identify a registered connector and use an active key for that tenant and exact source locator. Key revocation takes effect immediately for subsequent ingestions. This is public-key trust management, not private-key storage or connector secret management. The registry uses the existing SQLite persistence boundary and does not yet provide distributed key propagation, hardware-backed private key custody or live source connection verification.
+
+
+## Source-side PostgreSQL catalog connector
+
+The source-side connector package provides a DB-API-agnostic catalog reader, bounded statement timeout, explicit read-only transaction, schema allowlist, metadata-only extraction, canonical snapshot hashing and an Ed25519 attestor. Signing is delegated through a `SigningKeyProvider` protocol so a deployment can bind a KMS/HSM or OS keyring without exporting private key material into AgentBox. The collector never reads application rows or performs writes. This package is not a deployed connector agent and does not include a concrete cloud KMS/HSM adapter, database secret resolver, or live PostgreSQL E2E environment; those remain deployment gates.
