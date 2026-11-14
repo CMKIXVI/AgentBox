@@ -1121,6 +1121,15 @@ def create_app(database_path: str | None = None) -> FastAPI:
             enforce_authorization(
                 app, principal, "agent.cognition", "cognition.context.assemble", run["agent_id"]
             )
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.entity.read", "tenant-context"
+            )
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.relationship.read", "tenant-context"
+            )
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.evidence.read", "tenant-context"
+            )
             if request.entity_ids is not None and request.search is not None:
                 raise HTTPException(status_code=422, detail="Specify entity_ids or search, not both")
             assembled = app.state.context_assembly.assemble(
