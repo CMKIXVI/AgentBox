@@ -131,6 +131,11 @@ class WorkerClaimRequest(BaseModel):
     lease_seconds: int = Field(default=30, ge=1, le=3600)
 
 
+class WorkerRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    supervisor_id: str = Field(default="recovery", min_length=1, max_length=128)
+
+
 class WorkerLeaseRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tenant_id: str = Field(min_length=2, max_length=128)
@@ -622,6 +627,19 @@ def create_app(database_path: str | None = None) -> FastAPI:
         enforce_authorization(app, principal, "agent.execution", "execution.read", agent_id)
         return record
 
+    @app.get("/v1/execution-jobs/{job_id}/events")
+    def list_execution_job_events(
+        job_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            record = app.state.execution_jobs.get(job_id, principal.tenant_id)
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        agent_id = record["workload_ref"].split("@", 1)[0]
+        enforce_authorization(app, principal, "agent.execution", "execution.read", agent_id)
+        return {"items": app.state.execution_jobs.list_events(job_id, principal.tenant_id)}
+
     @app.post("/v1/execution-jobs/{job_id}/cancel")
     def cancel_execution_job(
         job_id: str,
@@ -647,6 +665,14 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         require_job_worker(authorization)
         return {"job": app.state.execution_jobs.claim(request.worker_id, request.lease_seconds)}
+
+    @app.post("/internal/v1/execution-jobs/recover")
+    def recover_execution_jobs(
+        request: WorkerRecoveryRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, int]:
+        require_job_worker(authorization)
+        return app.state.execution_jobs.recover_expired_leases(request.supervisor_id)
 
     @app.post("/internal/v1/execution-jobs/{job_id}/start")
     def start_execution_job(
