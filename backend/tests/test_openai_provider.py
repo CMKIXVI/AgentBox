@@ -119,3 +119,57 @@ def test_rejects_timeout_outside_supported_bounds():
     adapter = OpenAICompatibleProvider("secret")
     with pytest.raises(ProviderError, match="timeout"):
         adapter.invoke(request(), 0)
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from auth_helpers import configure_test_access
+from fastapi.testclient import TestClient
+
+from app.main import create_app
+
+
+def test_configured_openai_provider_is_registered_and_execution_cost_stays_unknown(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("AGENTBOX_OPENAI_API_KEY", "test-only-secret")
+    monkeypatch.delenv("AGENTBOX_OPENAI_INPUT_USD_PER_MILLION", raising=False)
+    monkeypatch.delenv("AGENTBOX_OPENAI_OUTPUT_USD_PER_MILLION", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return None
+        def read(self, _size=-1):
+            return json.dumps({
+                "choices": [{"message": {"content": "provider result"}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 3},
+            }).encode()
+
+    monkeypatch.setattr("app.openai_provider.urlopen", lambda *_args, **_kwargs: Response())
+    app = configure_test_access(create_app(str(tmp_path / "provider.sqlite3")))
+    client = TestClient(app)
+
+    manifest_path = Path(__file__).resolve().parents[2] / "examples" / "agent-manifest-v1.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["agent_id"] = "provider.integration"
+    manifest["model_binding"]["provider_id"] = "provider.openai"
+    manifest["tools"] = []
+    created = client.post("/v1/agents", json={"manifest": manifest})
+    assert created.status_code == 201
+
+    response = client.post(
+        "/v1/agents/provider.integration/versions/1.0.0/executions",
+        headers={"Idempotency-Key": "provider-integration-1"},
+        json={"input": {"prompt": "test"}, "max_output_tokens": 32},
+    )
+    assert response.status_code == 201
+    result = response.json()["result"]
+    assert result["output"] == "provider result"
+    assert result["usage"]["input_tokens"] == 7
+    assert result["usage"]["output_tokens"] == 3
+    assert result["usage"]["cost_usd"] is None
