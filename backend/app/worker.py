@@ -217,8 +217,11 @@ def main() -> None:
     signal.signal(signal.SIGINT, request_shutdown)
     signal.signal(signal.SIGTERM, request_shutdown)
     LOGGER.info("Starting worker %s", worker.worker_id)
-    worker.run_forever(stop)
-    LOGGER.info("Worker %s stopped", worker.worker_id)
+    try:
+        worker.run_forever(stop)
+    finally:
+        app.state.execution_jobs.close()
+        LOGGER.info("Worker %s stopped", worker.worker_id)
 
 
 if __name__ == "__main__":
