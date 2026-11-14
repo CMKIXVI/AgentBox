@@ -396,7 +396,6 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.execution_jobs = DurableExecutionJobService(
         db_path, allowed_handlers=app.state.job_handler_allowlist
     )
-    app.add_event_handler("shutdown", app.state.execution_jobs.close)
     app.state.tenants = TenantRegistry(db_path)
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
@@ -411,6 +410,23 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.candidate_generation = CandidateGenerationService(app.state.registry)
     app.state.enterprise_context = EnterpriseContextService(db_path)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
+
+    def close_stores() -> None:
+        """Close every API-owned SQLite store during process shutdown."""
+        for store in (
+            app.state.execution_jobs,
+            app.state.executions,
+            app.state.experiences,
+            app.state.enterprise_context,
+            app.state.evaluations,
+            app.state.registry,
+            app.state.tenants,
+            app.state.authorization_audit,
+        ):
+            store.close()
+
+    app.state.close_stores = close_stores
+    app.add_event_handler("shutdown", close_stores)
 
     @app.get("/health")
     def health() -> dict[str, str]:
