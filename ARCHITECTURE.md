@@ -64,9 +64,9 @@ The detailed repository conformance and implementation gaps are tracked in [the 
 
 ## 2.2 Cognitive runtime contract baseline
 
-The first contract-only slice defines the nine lifecycle stages and a typed, tenant-scoped event envelope in `schemas/cognitive-event-v1.schema.json`, with deterministic validation in `backend/app/cognitive_contract.py`. It validates stage/event compatibility, verified-evidence requirements for verification and accepted memory, capability references, authorization-decision references, and non-skipping forward lifecycle transitions.
+The cognitive runtime now has a typed lifecycle event envelope (`schemas/cognitive-event-v1.schema.json`), deterministic validator (`backend/app/cognitive_contract.py`), and a tenant-scoped SQLite run journal (`backend/app/cognitive_runtime.py`). Authenticated APIs create runs bound to an existing immutable agent version, append ordered events, and read tenant-scoped run/event history. Events are append-only, idempotent, bounded, stage-validated, and tied to server-derived tenant/actor identity. Verification and accepted memory require verified evidence references; capability selection and responsibility decisions require explicit references.
 
-This is not a cognitive runtime. It adds no durable event store, planner, memory engine, capability invocation, orchestration, evidence attestation, or API route. Existing identity, tenant, registry, authorization, execution, experience, enterprise-context and audit services remain the only authorities. See [Cognitive Runtime Contracts](docs/runtime/cognitive-runtime-contracts.md).
+This remains a state/journal foundation, not a cognitive engine. It does not reason, plan, invoke capabilities, execute agents, attest evidence, consolidate memory, or provide distributed persistence. Existing identity, tenant, registry, authorization, execution, experience, enterprise-context and audit services remain the authorities. See [Cognitive Runtime Contracts](docs/runtime/cognitive-runtime-contracts.md).
 
 ## 3. Platform topology
 
