@@ -114,9 +114,21 @@ class ExecutionService:
             self._uri = False
             self._keeper = None
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        self._closed = False
         self._initialize()
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
         connection = sqlite3.connect(
             self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
         )
