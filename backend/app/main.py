@@ -60,6 +60,7 @@ from .experience import (
 )
 from .openai_provider import OpenAICompatibleProvider
 from .postgresql_ingestion import PostgreSQLSnapshotIngestion
+from .postgresql_provenance import PostgreSQLProvenanceVerifier
 from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .tenant_registry import TenantNotFoundError, TenantRegistry
@@ -228,10 +229,19 @@ class CognitiveContextRequest(BaseModel):
     limit: int = Field(default=8, ge=1, le=12)
 
 
+class PostgreSQLConnectorAttestationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    algorithm: Literal["Ed25519"]
+    key_id: str = Field(min_length=1, max_length=128)
+    signed_at: str = Field(min_length=20, max_length=40)
+    signature: str = Field(min_length=80, max_length=128)
+
+
 class PostgreSQLSnapshotIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_ref: str = Field(min_length=1, max_length=1024)
     snapshot: dict[str, Any]
+    attestation: PostgreSQLConnectorAttestationRequest | None = None
 
 
 class ContextEntityRequest(BaseModel):
@@ -455,6 +465,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.enterprise_context = EnterpriseContextService(db_path)
     app.state.context_assembly = ContextAssemblyService(app.state.enterprise_context)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
+    app.state.postgresql_provenance = PostgreSQLProvenanceVerifier.from_environment()
 
     def close_stores() -> None:
         """Close every API-owned SQLite store during process shutdown."""
@@ -1218,8 +1229,17 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app, principal, "enterprise.discovery", "discovery.snapshot.ingest", "tenant-context"
         )
         try:
+            provenance = None
+            if request.attestation is not None:
+                provenance = app.state.postgresql_provenance.verify(
+                    request.attestation.model_dump(),
+                    request.snapshot,
+                    principal.tenant_id,
+                    request.source_ref,
+                )
             return app.state.postgresql_ingestion.ingest(
-                request.snapshot, principal.tenant_id, principal.subject_id, request.source_ref
+                request.snapshot, principal.tenant_id, principal.subject_id,
+                request.source_ref, provenance,
             )
         except ContextNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
