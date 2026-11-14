@@ -17,7 +17,7 @@ import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 
-class MockOIDCError(Exception):
+class MockOIDCError(ValueError):
     """The simulated OIDC protocol rejected a request."""
 
 
