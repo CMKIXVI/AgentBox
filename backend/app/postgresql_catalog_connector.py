@@ -254,7 +254,9 @@ class PostgreSQLCatalogAttestor:
         try:
             locator = urlsplit(source_ref)
         except (TypeError, ValueError) as exc:
-            raise ContextValidationError("source_ref must be a valid PostgreSQL catalog locator") from exc
+            raise ContextValidationError(
+                "source_ref must be a valid PostgreSQL catalog locator"
+            ) from exc
         if (
             not isinstance(source_ref, str) or not 1 <= len(source_ref) <= 1024
             or locator.scheme != "postgresql-catalog" or not locator.netloc
