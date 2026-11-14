@@ -85,7 +85,8 @@ class ExecutionJobWorker:
                     job_id,
                 )
                 return True
-            if cancel_requested.is_set():
+            current = self.jobs.get(job_id, tenant_id)
+            if cancel_requested.is_set() or current["state"] == "cancel_requested":
                 self.jobs.confirm_cancel(
                     job_id, tenant_id, self.worker_id, self.worker_id, lease_token
                 )
