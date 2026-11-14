@@ -9,6 +9,16 @@ from pathlib import Path
 from typing import Any
 
 
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve transaction semantics and close short-lived audit connections."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class AuthorizationAuditStore:
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
@@ -47,7 +57,9 @@ class AuthorizationAuditStore:
             """)
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._dsn, uri=self._uri, timeout=10)
+        connection = sqlite3.connect(
+            self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         return connection
 
