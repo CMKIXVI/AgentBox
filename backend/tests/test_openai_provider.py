@@ -40,6 +40,8 @@ def test_invokes_chat_completions_and_reports_usage_and_configured_cost(monkeypa
     def fake_urlopen(http_request, timeout):
         captured["url"] = http_request.full_url
         captured["headers"] = dict(http_request.header_items())
+        captured["ordinary_headers"] = dict(http_request.headers)
+        captured["unredirected_headers"] = dict(http_request.unredirected_hdrs)
         captured["timeout"] = timeout
         captured["body"] = json.loads(http_request.data)
         return FakeHTTPResponse({
@@ -56,6 +58,8 @@ def test_invokes_chat_completions_and_reports_usage_and_configured_cost(monkeypa
     assert captured["url"] == "https://api.openai.com/v1/chat/completions"
     assert captured["timeout"] == 12
     assert captured["headers"]["Authorization"] == "Bearer secret-token"
+    assert "Authorization" not in captured["ordinary_headers"]
+    assert captured["unredirected_headers"]["Authorization"] == "Bearer secret-token"
     assert captured["body"]["model"] == "example-model"
     assert captured["body"]["messages"][0]["content"] == "Answer accurately"
     assert captured["body"]["messages"][1]["content"] == '{"question":"hello"}'
