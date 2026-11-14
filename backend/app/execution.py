@@ -56,7 +56,7 @@ class ProviderResponse:
     output: Any
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: float | None = None
 
 
 class ProviderAdapter(Protocol):
@@ -228,7 +228,11 @@ class ExecutionService:
             response = provider.invoke(request, timeout)
             if not isinstance(response, ProviderResponse):
                 raise ProviderError("Provider returned an invalid response envelope")
-            if response.cost_usd < 0 or response.input_tokens < 0 or response.output_tokens < 0:
+            if (
+                (response.cost_usd is not None and response.cost_usd < 0)
+                or response.input_tokens < 0
+                or response.output_tokens < 0
+            ):
                 raise ProviderError("Provider returned invalid usage metrics")
             result = {
                 "output": response.output,
