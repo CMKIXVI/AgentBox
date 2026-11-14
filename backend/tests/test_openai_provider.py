@@ -6,12 +6,12 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 
 import pytest
-
-from app.execution import ProviderError, ProviderRequest
-from app.openai_provider import OpenAICompatibleProvider
-from app.main import create_app
 from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
+
+from app.execution import ProviderError, ProviderRequest
+from app.main import create_app
+from app.openai_provider import OpenAICompatibleProvider
 
 
 def request():
