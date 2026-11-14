@@ -320,10 +320,21 @@ class TenantBackupService:
             required = {"format", "version", "algorithm", "key_id", "tenant_id", "nonce", "ciphertext"}
             if set(envelope) != required:
                 raise ValueError("unexpected envelope fields")
-            if envelope["format"] != BACKUP_FORMAT or envelope["version"] != BACKUP_VERSION:
+            if (
+                envelope["format"] != BACKUP_FORMAT
+                or type(envelope["version"]) is not int
+                or envelope["version"] != BACKUP_VERSION
+            ):
                 raise ValueError("unsupported backup format or version")
             if envelope["algorithm"] != ALGORITHM:
                 raise ValueError("unsupported backup encryption algorithm")
+            if (
+                not isinstance(envelope["key_id"], str)
+                or not KEY_ID_PATTERN.fullmatch(envelope["key_id"])
+                or not isinstance(envelope["nonce"], str)
+                or not isinstance(envelope["ciphertext"], str)
+            ):
+                raise ValueError("invalid backup key identifier or encoded fields")
             validate_tenant_id(envelope["tenant_id"])
             if envelope["tenant_id"] != tenant_id:
                 raise ValueError("backup tenant does not match requested tenant")
@@ -347,8 +358,19 @@ class TenantBackupService:
     def _validate_payload(payload: object, tenant_id: str) -> None:
         if not isinstance(payload, dict):
             raise BackupFormatError("Backup payload must be an object")
-        if payload.get("format") != BACKUP_FORMAT or payload.get("version") != BACKUP_VERSION:
+        expected_payload_fields = {
+            "format", "version", "tenant_id", "exported_at", "tenant", "tables", "sha256"
+        }
+        if set(payload) != expected_payload_fields:
+            raise BackupFormatError("Backup payload fields are invalid")
+        if (
+            payload.get("format") != BACKUP_FORMAT
+            or type(payload.get("version")) is not int
+            or payload.get("version") != BACKUP_VERSION
+        ):
             raise BackupFormatError("Unsupported AgentBox backup payload")
+        if not isinstance(payload.get("exported_at"), str):
+            raise BackupFormatError("Backup export timestamp is invalid")
         if payload.get("tenant_id") != tenant_id:
             raise BackupFormatError("Backup payload tenant mismatch")
         digest = payload.get("sha256")
