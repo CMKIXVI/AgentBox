@@ -35,6 +35,7 @@ configured.
   1–3600 seconds by the adapter.
 - Serialized provider request bodies are limited to 1 MiB.
 - Provider response bodies are limited to 4 MiB.
+- Bearer credentials are marked as unredirected headers so urllib does not forward them to a redirect target.
 - HTTP, transport and malformed-response errors are converted to sanitized
   provider errors; response bodies and authorization headers are not logged or
   returned to tenants.
