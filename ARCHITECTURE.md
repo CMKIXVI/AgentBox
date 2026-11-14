@@ -355,3 +355,8 @@ This status must be refreshed against the exact repository commit and CI evidenc
 - Feature-branch pushes do not start CI automatically; use the workflow's manual `workflow_dispatch` action for consolidated validation (the working cadence is one run after each 10 implementation batches, and before merge).
 - Run the repository's local backend, Next.js, and Flutter checks during implementation batches. Record which checks were actually run; local checks do not replace the required PR CI run.
 - This policy reduces redundant per-commit CI while preserving integration-branch and pull-request validation.
+
+
+## Synchronous execution crash recovery
+
+The SQLite synchronous execution service now fences leftover `running` records as `interrupted` on exclusive process startup, using error code `execution_interrupted_ambiguous_outcome`. Same-key replay returns that terminal ambiguous record and never silently invokes a provider again. This avoids duplicate external calls/charges after a crash, but requires operator reconciliation and a new idempotency key for a deliberate retry. The recovery assumes one API process owns this SQLite store; multi-instance execution requires a database-backed lease/ownership design first.
