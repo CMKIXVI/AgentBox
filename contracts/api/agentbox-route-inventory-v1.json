@@ -265,6 +265,12 @@
       "path": "/v1/cognitive-runs/{run_id}/events",
       "auth_required": true,
       "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/cognitive-runs/{run_id}/context",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
     }
   ]
 }
