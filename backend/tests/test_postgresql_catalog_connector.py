@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+import base64
+from datetime import UTC, datetime
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+from app.enterprise_context import ContextValidationError
+from app.postgresql_catalog_connector import (
+    PostgreSQLCatalogAttestor,
+    PostgreSQLCatalogConnector,
+    PostgreSQLCatalogReader,
+)
+from app.postgresql_provenance import PostgreSQLProvenanceVerifier
+
+
+class FakeCursor:
+    def __init__(self, connection):
+        self.connection = connection
+        self.result = []
+
+    def execute(self, query, params=None):
+        self.connection.statements.append((query, params))
+        if "pg_catalog.pg_namespace AS n" in query:
+            self.result = [("public",)]
+        elif "pg_catalog.pg_class AS c" in query:
+            self.result = [("public", "customers", "table", "customer master")]
+        elif "pg_catalog.pg_attribute AS a" in query:
+            self.result = [("public", "customers", 1, "id", "bigint", True, None)]
+        elif "pg_catalog.pg_index AS x" in query:
+            self.result = [("public", "customers", "customers_pkey", True, True, "CREATE UNIQUE INDEX customers_pkey")]
+        elif "pg_catalog.pg_constraint AS con" in query:
+            self.result = [("public", "customers", "customers_pkey", "primary_key", "PRIMARY KEY (id)", None, None)]
+        else:
+            self.result = []
+
+    def fetchall(self):
+        return self.result
+
+    def close(self):
+        self.connection.cursor_closed = True
+
+
+class FakeConnection:
+    def __init__(self):
+        self.statements = []
+        self.cursor_closed = False
+        self.rolled_back = False
+        self.closed = False
+
+    def cursor(self):
+        return FakeCursor(self)
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = True
+
+
+class FakeSigningProvider:
+    def __init__(self):
+        self.private = Ed25519PrivateKey.generate()
+        self.messages = []
+
+    def sign(self, key_id, message):
+        self.messages.append((key_id, message))
+        return self.private.sign(message)
+
+    def public_bytes(self):
+        return self.private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
+def test_catalog_reader_collects_metadata_in_read_only_transaction_and_closes_connection():
+    connection = FakeConnection()
+    snapshot = PostgreSQLCatalogReader().collect(lambda: connection, ["public"])
+    assert snapshot["source_kind"] == "postgresql_catalog"
+    assert snapshot["schemas"] == ["public"]
+    assert snapshot["relations"][0]["relation_name"] == "customers"
+    assert snapshot["columns"][0]["column_name"] == "id"
+    assert snapshot["indexes"][0]["is_primary"] is True
+    assert snapshot["constraints"][0]["constraint_kind"] == "primary_key"
+    assert snapshot["data_rows_read"] == 0
+    assert snapshot["writes_performed"] == 0
+    assert len(snapshot["snapshot_hash"]) == 64
+    sql = [statement for statement, _ in connection.statements]
+    assert sql[0] == "BEGIN TRANSACTION READ ONLY"
+    assert "set_config" in sql[1]
+    assert all("SELECT" in statement or "BEGIN TRANSACTION READ ONLY" in statement for statement in sql)
+    assert all("INSERT " not in statement and "UPDATE " not in statement and "DELETE " not in statement for statement in sql)
+    assert connection.cursor_closed and connection.rolled_back and connection.closed
+
+
+def test_connector_attestation_matches_agentbox_verifier_contract():
+    provider = FakeSigningProvider()
+    reader = PostgreSQLCatalogReader()
+    connector = PostgreSQLCatalogConnector(reader, PostgreSQLCatalogAttestor(provider))
+    connection = FakeConnection()
+    result = connector.discover(
+        connection_factory=lambda: connection,
+        schema_names=["public"],
+        tenant_id="tenant-a",
+        source_ref="postgresql-catalog://warehouse/snapshot",
+        connector_id="warehouse-prod",
+        key_id="key-v1",
+    )
+    assert result["connector_id"] == "warehouse-prod"
+    assert result["attestation"]["algorithm"] == "Ed25519"
+    verifier = PostgreSQLProvenanceVerifier({"key-v1": provider.public_bytes()})
+    verified = verifier.verify(
+        result["attestation"], result["snapshot"], "tenant-a",
+        "postgresql-catalog://warehouse/snapshot",
+    )
+    assert verified["verified_snapshot_hash"] == result["snapshot"]["snapshot_hash"]
+    assert provider.messages[0][0] == "key-v1"
+
+
+@pytest.mark.parametrize("schemas", [[], ["public", "public"], ["x" * 64], [""]])
+def test_catalog_reader_rejects_invalid_schema_allowlists(schemas):
+    with pytest.raises(ContextValidationError, match="schema_names"):
+        PostgreSQLCatalogReader().collect(lambda: FakeConnection(), schemas)
+
+
+def test_catalog_reader_fails_closed_when_no_requested_schema_is_visible():
+    class EmptyCursor(FakeCursor):
+        def execute(self, query, params=None):
+            self.connection.statements.append((query, params))
+            self.result = []
+
+    class EmptyConnection(FakeConnection):
+        def cursor(self):
+            return EmptyCursor(self)
+
+    connection = EmptyConnection()
+    with pytest.raises(ContextValidationError, match="No requested"):
+        PostgreSQLCatalogReader().collect(lambda: connection, ["private"])
+    assert connection.rolled_back and connection.closed
+
+
+def test_catalog_reader_closes_connection_after_database_error():
+    class FailingCursor(FakeCursor):
+        def execute(self, query, params=None):
+            self.connection.statements.append((query, params))
+            if query == "BEGIN TRANSACTION READ ONLY":
+                raise RuntimeError("connection rejected transaction")
+            self.result = []
+
+    class FailingConnection(FakeConnection):
+        def cursor(self):
+            return FailingCursor(self)
+
+    connection = FailingConnection()
+    with pytest.raises(ContextValidationError, match="collection failed"):
+        PostgreSQLCatalogReader().collect(lambda: connection, ["public"])
+    assert connection.cursor_closed and connection.rolled_back and connection.closed
+
+
+def test_attestor_rejects_invalid_signing_provider_output():
+    class InvalidProvider:
+        def sign(self, key_id, message):
+            return b"not-a-signature"
+
+    snapshot = {
+        "snapshot_hash": "a" * 64,
+        "discovered_at": datetime.now(UTC).isoformat(),
+    }
+    with pytest.raises(ContextValidationError, match="64-byte"):
+        PostgreSQLCatalogAttestor(InvalidProvider()).attest(
+            tenant_id="tenant-a", source_ref="postgresql-catalog://warehouse/snapshot",
+            snapshot=snapshot, key_id="key-v1",
+        )
