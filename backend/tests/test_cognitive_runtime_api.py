@@ -52,7 +52,7 @@ def test_cognitive_run_api_requires_immutable_existing_agent_version(tmp_path):
     _, client, _ = make_client(tmp_path)
     invalid = create_run(client, "runtime.test")
     assert invalid.status_code == 422
-    missing = create_run(client, "missing.agent@1.0.0", "missing-run")
+    missing = create_run(client, "runtime.test@9.9.9", "missing-run")
     assert missing.status_code == 404
 
 
