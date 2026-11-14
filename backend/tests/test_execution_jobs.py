@@ -32,6 +32,14 @@ def create(jobs, key="job-1", tenant="tenant-a"):
     )
 
 
+def test_job_database_connections_close_after_context(jobs):
+    connection = jobs._connect()
+    with connection:
+        connection.execute("SELECT 1")
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
+
 def test_unregistered_handler_is_denied(jobs):
     with pytest.raises(JobConflictError):
         jobs.create(
