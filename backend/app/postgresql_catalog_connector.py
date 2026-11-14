@@ -134,7 +134,10 @@ class PostgreSQLCatalogReader:
                 raise ContextValidationError("connection_factory did not return a DB-API connection")
             cursor = connection.cursor()
             cursor.execute("BEGIN TRANSACTION READ ONLY")
-            cursor.execute("SET LOCAL statement_timeout = %s", (self.statement_timeout_ms,))
+            cursor.execute(
+                "SELECT pg_catalog.set_config('statement_timeout', %s, true)",
+                (f"{self.statement_timeout_ms}ms",),
+            )
             schemas = [row[0] for row in self._rows(cursor, self.SCHEMAS_SQL, schema_names)]
             if not schemas:
                 raise ContextValidationError("No requested PostgreSQL schemas are visible to this connector")
@@ -263,15 +266,17 @@ class PostgreSQLCatalogConnector:
 
     def discover(
         self, *, connection_factory, schema_names: Sequence[str], tenant_id: str,
-        source_ref: str, key_id: str,
+        source_ref: str, connector_id: str, key_id: str,
     ) -> dict[str, Any]:
         snapshot = self.reader.collect(connection_factory, schema_names)
+        if not isinstance(connector_id, str) or not connector_id:
+            raise ContextValidationError("connector_id is required")
         attestation = self.attestor.attest(
             tenant_id=tenant_id, source_ref=source_ref,
             snapshot=snapshot, key_id=key_id,
         )
         return {
-            "connector_id": None,
+            "connector_id": connector_id,
             "source_ref": source_ref,
             "snapshot": snapshot,
             "attestation": attestation,
