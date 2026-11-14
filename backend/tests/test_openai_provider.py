@@ -249,3 +249,19 @@ def test_rejects_malformed_response_structures(monkeypatch, document):
     )
     with pytest.raises(ProviderError, match="chat-completions contract"):
         OpenAICompatibleProvider("secret").invoke(request(), 5)
+
+
+def test_rejects_oversized_serialized_provider_request(monkeypatch):
+    def unexpected_request(*_args, **_kwargs):
+        pytest.fail("oversized request must not reach the network adapter")
+
+    monkeypatch.setattr("app.openai_provider.urlopen", unexpected_request)
+    oversized = ProviderRequest(
+        provider_id="provider.openai",
+        model_id="example-model",
+        objective="Answer accurately",
+        user_input="x" * (OpenAICompatibleProvider.MAX_REQUEST_BYTES + 1),
+        max_output_tokens=64,
+    )
+    with pytest.raises(ProviderError, match="request exceeded"):
+        OpenAICompatibleProvider("secret").invoke(oversized, 5)
