@@ -8,7 +8,6 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -41,26 +40,6 @@ class PostgreSQLProvenanceVerifier:
             ):
                 raise ValueError("Trusted provenance keys require key IDs and 32-byte Ed25519 public keys")
             self._keys[key_id] = Ed25519PublicKey.from_public_bytes(raw_key)
-
-    @classmethod
-    def from_environment(cls) -> "PostgreSQLProvenanceVerifier":
-        raw = os.getenv("AGENTBOX_POSTGRESQL_PROVENANCE_KEYS", "")
-        if not raw:
-            return cls()
-        try:
-            configured = json.loads(raw)
-            if not isinstance(configured, dict) or len(configured) > 100:
-                raise ValueError
-            keys = {
-                key_id: base64.b64decode(value, validate=True)
-                for key_id, value in configured.items()
-                if isinstance(value, str)
-            }
-            if len(keys) != len(configured):
-                raise ValueError
-            return cls(keys)
-        except (ValueError, TypeError, binascii.Error) as exc:
-            raise RuntimeError("Invalid PostgreSQL provenance trust-key configuration") from exc
 
     @staticmethod
     def signing_payload(
