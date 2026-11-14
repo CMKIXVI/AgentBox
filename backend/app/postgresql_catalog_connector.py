@@ -11,6 +11,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from typing import Any, Protocol, Sequence
+from urllib.parse import urlsplit
 
 from .enterprise_context import ContextValidationError
 
@@ -127,13 +128,17 @@ class PostgreSQLCatalogReader:
             or any(not isinstance(name, str) or not name or len(name) > 63 for name in schema_names)
             or len(set(schema_names)) != len(schema_names)
         ):
-            raise ContextValidationError("schema_names must contain 1-100 unique PostgreSQL schema identifiers")
+            raise ContextValidationError(
+                "schema_names must contain 1-100 unique PostgreSQL schema identifiers"
+            )
         connection = None
         cursor = None
         try:
             connection = connection_factory()
             if connection is None or not callable(getattr(connection, "cursor", None)):
-                raise ContextValidationError("connection_factory did not return a DB-API connection")
+                raise ContextValidationError(
+                    "connection_factory did not return a DB-API connection"
+                )
             cursor = connection.cursor()
             cursor.execute("BEGIN TRANSACTION READ ONLY")
             cursor.execute(
@@ -141,8 +146,10 @@ class PostgreSQLCatalogReader:
                 (f"{self.statement_timeout_ms}ms",),
             )
             schemas = [row[0] for row in self._rows(cursor, self.SCHEMAS_SQL, schema_names)]
-            if not schemas:
-                raise ContextValidationError("No requested PostgreSQL schemas are visible to this connector")
+            if set(schemas) != set(schema_names):
+                raise ContextValidationError(
+                    "One or more requested PostgreSQL schemas are missing or not visible"
+                )
             relations = [
                 {"schema_name": r[0], "relation_name": r[1], "relation_kind": r[2], "comment": r[3]}
                 for r in self._rows(cursor, self.RELATIONS_SQL, schemas)
@@ -175,7 +182,8 @@ class PostgreSQLCatalogReader:
                     raise ContextValidationError(f"Catalog snapshot exceeds {maximum} {label}")
             if sum(item[0] for item in limits) > MAX_INGEST_ENTITIES:
                 raise ContextValidationError(
-                    f"Catalog snapshot exceeds the {MAX_INGEST_ENTITIES} total entity ingestion limit"
+                    "Catalog snapshot exceeds the "
+                    f"{MAX_INGEST_ENTITIES} total entity ingestion limit"
                 )
             snapshot = {
                 "contract_version": "1.0.0",
@@ -243,8 +251,19 @@ class PostgreSQLCatalogAttestor:
     ) -> dict[str, str]:
         if not isinstance(tenant_id, str) or not tenant_id:
             raise ContextValidationError("tenant_id is required for connector attestation")
-        if not isinstance(source_ref, str) or not source_ref.startswith("postgresql-catalog://"):
-            raise ContextValidationError("source_ref must be a PostgreSQL catalog locator")
+        try:
+            locator = urlsplit(source_ref)
+        except (TypeError, ValueError) as exc:
+            raise ContextValidationError("source_ref must be a valid PostgreSQL catalog locator") from exc
+        if (
+            not isinstance(source_ref, str) or not 1 <= len(source_ref) <= 1024
+            or locator.scheme != "postgresql-catalog" or not locator.netloc
+            or locator.username or locator.password or locator.query or locator.fragment
+            or source_ref != source_ref.rstrip("/")
+        ):
+            raise ContextValidationError(
+                "source_ref must be a normalized credential-free PostgreSQL catalog locator"
+            )
         if not isinstance(key_id, str) or not key_id:
             raise ContextValidationError("key_id is required for connector attestation")
         signed_at = datetime.now(UTC).isoformat()
