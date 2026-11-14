@@ -89,7 +89,10 @@ class OpenAICompatibleProvider:
             ],
             "max_tokens": request.max_output_tokens,
         }
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        try:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        except (TypeError, ValueError, UnicodeEncodeError, RecursionError):
+            raise ProviderError("Provider request could not be encoded") from None
         if len(body) > self.MAX_REQUEST_BYTES:
             raise ProviderError("Provider request exceeded the configured size limit")
         http_request = Request(
