@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -73,6 +73,12 @@ class ContextAssemblyService:
             raise ContextAssemblyValidationError(f"limit must be 1-{MAX_ENTITIES}")
         if type(include_inferences) is not bool:
             raise ContextAssemblyValidationError("include_inferences must be boolean")
+        if entity_ids is not None and search is not None:
+            raise ContextAssemblyValidationError("Specify entity_ids or search, not both")
+        if search is not None and (
+            not isinstance(search, str) or not search.strip() or len(search) > 128
+        ):
+            raise ContextAssemblyValidationError("search must contain 1-128 non-whitespace characters")
         if entity_ids is not None:
             if not isinstance(entity_ids, list) or not 1 <= len(entity_ids) <= MAX_ENTITIES:
                 raise ContextAssemblyValidationError(
@@ -82,6 +88,8 @@ class ContextAssemblyService:
                 raise ContextAssemblyValidationError("entity_ids contains an invalid identifier")
             if len(set(entity_ids)) != len(entity_ids):
                 raise ContextAssemblyValidationError("entity_ids must not contain duplicates")
+            if len(entity_ids) > limit:
+                raise ContextAssemblyValidationError("entity_ids cannot exceed the requested limit")
             entities = [
                 self.enterprise_context.get_entity(entity_id, tenant_id)
                 for entity_id in entity_ids
