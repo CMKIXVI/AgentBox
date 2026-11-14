@@ -1,7 +1,7 @@
 # AgentBox Master Architecture
 
 **Document status:** Canonical architecture authority  
-**Version:** 1.3  
+**Version:** 1.4  
 **Updated:** 2026-11-14  
 **Scope:** AgentBox platform, backend, runtime, security, data, and dual frontend strategy
 
@@ -196,6 +196,23 @@ Mandatory safeguards:
 
 Candidate generation alone is not autonomous evolution. Evaluation of caller-submitted outputs alone is not trusted benchmark execution.
 
+### 8.1 Isolated execution adapter (implementation in progress)
+
+A provider-neutral sandbox boundary is being added as a separate backend service. The
+first adapter uses Docker with the gVisor `runsc` runtime and requires exact,
+SHA-256-digest-pinned image allowlisting. It applies no-network/no-IPC isolation,
+read-only root filesystem, bounded tmpfs, non-root execution, dropped Linux
+capabilities, no-new-privileges, and CPU/memory/process/time/input/output limits.
+It passes argv directly without shell interpolation and does not mount host paths.
+
+The Docker daemon, host, gVisor installation, and approved image supply chain remain
+trusted infrastructure. This adapter is not VM-grade isolation and is not a claim
+that hostile multi-tenant execution is production-ready. It is not yet connected to
+the public execution API, candidate evaluator, or autonomous controller. A live
+worker deployment and end-to-end isolation tests remain mandatory gates. See
+[the sandbox runtime foundation](docs/security/sandbox-runtime-foundation.md).
+
+
 ## 9. Data, persistence, and operations
 
 The current SQLite persistence layer remains the initial implementation. Its limitations must be acknowledged: it is suitable for the bounded single-instance stage, not assumed to be the final high-concurrency enterprise storage architecture.
@@ -325,7 +342,7 @@ Important limitations remain:
 - The evaluation service scores submitted outputs; it does not execute benchmark workloads.
 - Execution-experience linkage is caller-asserted and remains unverified.
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
-- A genuine code-execution sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
+- A gVisor-backed sandbox adapter and policy tests now exist on an unmerged feature branch, but it is not wired into execution or deployed on a live worker. The integrated production sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
 - Flutter and Next.js foundations, bearer-token API transports, route inventory, OpenAPI export, and provider-configurable client OIDC flows are implemented on stacked feature branches, not yet merged to main. No identity provider is selected or deployed. Native redirect registration, real token validation against a deployed issuer/JWKS, client-to-API end-to-end tests, and production session/revocation operations remain incomplete.
 
