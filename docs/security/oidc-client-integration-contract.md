@@ -117,3 +117,10 @@ Do not assume that the default OIDC sub claim is a tenant identifier. Do not ass
 7. Enable production login only after security review, monitoring, key-rotation and recovery procedures are approved.
 
 Current feature-branch implementation includes Next.js Auth.js OIDC sign-in with PKCE/state/nonce, an encrypted HttpOnly session cookie, server-side refresh logic and a same-origin API proxy, plus Flutter AppAuth and secure-storage token refresh. Native redirect registration, real provider/JWKS validation, cookie/session lifecycle review, and deployed client-to-API end-to-end tests remain mandatory. A green unit-test workflow is not proof of provider integration or production authentication readiness.
+
+
+## 7. Automated mock-provider coverage
+
+The repository includes an in-memory OIDC protocol test provider and FastAPI integration tests. It exercises signed-token verification, expiry, tenant derivation, authorization policy boundaries, simulated authorization-code/PKCE/state/nonce behavior, refresh-token rotation, and logout-style revocation. See [mock OIDC integration testing](mock-oidc-integration-testing.md).
+
+This is backend integration evidence only. It does not replace browser/device tests against the actual Auth.js and AppAuth clients or a selected real OIDC provider.
