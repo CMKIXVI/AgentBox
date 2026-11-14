@@ -396,6 +396,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.execution_jobs = DurableExecutionJobService(
         db_path, allowed_handlers=app.state.job_handler_allowlist
     )
+    app.add_event_handler("shutdown", app.state.execution_jobs.close)
     app.state.tenants = TenantRegistry(db_path)
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
