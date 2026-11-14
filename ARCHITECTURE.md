@@ -404,3 +404,6 @@ Tenant backup restore opens the source with no-follow semantics where supported,
 
 
 The offline tenant administration CLI closes its `TenantRegistry` in a `finally` block after every command, including command failures. This releases its shared in-memory keeper and prevents repeated in-process CLI invocations from retaining SQLite resources.
+
+
+Tenant CLI database preflight uses an explicit `try/finally` close for its read-only SQLite connection; connection context managers alone do not close SQLite handles. A regression test verifies cleanup even when the database is rejected as uninitialized.
