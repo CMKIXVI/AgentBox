@@ -1159,6 +1159,8 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except ContextNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except CognitiveRunNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except CognitiveRunConflictError as exc:
