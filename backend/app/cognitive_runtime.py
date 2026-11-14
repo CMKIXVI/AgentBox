@@ -18,6 +18,12 @@ from typing import Any
 from .cognitive_contract import validate_cognitive_event, validate_stage_transition
 
 MAX_EVENT_BYTES = 64 * 1024
+FORBIDDEN_PAYLOAD_KEYS = {
+    "access_token", "refresh_token", "authorization", "credential", "credentials",
+    "password", "secret", "private_key", "tenant_id", "principal", "permissions",
+    "execute", "executable", "code", "script", "command", "shell", "tool_arguments",
+    "raw_prompt", "prompt", "raw_input", "raw_output",
+}
 TERMINAL_MEMORY_EVENTS = {"memory.accepted", "memory.rejected"}
 
 
@@ -113,13 +119,13 @@ class CognitiveRunService:
                     )),
                     next_sequence INTEGER NOT NULL CHECK(next_sequence >= 2),
                     status TEXT NOT NULL CHECK(status IN ('active','completed')),
-                    create_idempotency_key TEXT NOT NULL,
+                    create_idempotency_key_hash TEXT NOT NULL,
                     create_request_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     created_by TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (tenant_id, run_id),
-                    UNIQUE (tenant_id, create_idempotency_key),
+                    UNIQUE (tenant_id, create_idempotency_key_hash),
                     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
                 );
                 CREATE INDEX IF NOT EXISTS idx_cognitive_runs_tenant_created
@@ -131,14 +137,14 @@ class CognitiveRunService:
                     event_id TEXT NOT NULL,
                     stage TEXT NOT NULL,
                     event_type TEXT NOT NULL,
-                    idempotency_key TEXT NOT NULL,
+                    idempotency_key_hash TEXT NOT NULL,
                     request_hash TEXT NOT NULL,
                     event_json TEXT NOT NULL,
                     event_hash TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (tenant_id, run_id, sequence),
                     UNIQUE (tenant_id, event_id),
-                    UNIQUE (tenant_id, run_id, idempotency_key),
+                    UNIQUE (tenant_id, run_id, idempotency_key_hash),
                     FOREIGN KEY (tenant_id, run_id)
                         REFERENCES cognitive_runs(tenant_id, run_id)
                 );
@@ -203,6 +209,7 @@ class CognitiveRunService:
             "agent_content_hash": agent_content_hash, "actor_id": actor_id,
         }
         request_hash = _digest(request)
+        idempotency_key_hash = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
         now = _now()
         run_id = str(uuid.uuid4())
         trace_id = str(uuid.uuid4())
@@ -222,7 +229,6 @@ class CognitiveRunService:
             "evidence_status": "not_applicable",
             "input_refs": [goal_ref],
             "payload": {"goal_ref": goal_ref},
-            "idempotency_key": idempotency_key,
         }
         errors = validate_cognitive_event(event)
         if errors:
@@ -233,8 +239,8 @@ class CognitiveRunService:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM cognitive_runs WHERE tenant_id=? AND create_idempotency_key=?",
-                (tenant_id, idempotency_key),
+                "SELECT * FROM cognitive_runs WHERE tenant_id=? AND create_idempotency_key_hash=?",
+                (tenant_id, idempotency_key_hash),
             ).fetchone()
             if existing is not None:
                 if existing["create_request_hash"] != request_hash:
@@ -248,11 +254,11 @@ class CognitiveRunService:
             connection.execute(
                 """INSERT INTO cognitive_runs (
                     tenant_id,run_id,trace_id,goal_ref,agent_ref,agent_id,agent_version,
-                    agent_content_hash,current_stage,next_sequence,status,create_idempotency_key,
+                    agent_content_hash,current_stage,next_sequence,status,create_idempotency_key_hash,
                     create_request_hash,created_at,created_by,updated_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (tenant_id,run_id,trace_id,goal_ref,agent_ref,agent_id,agent_version,
-                 agent_content_hash,"intent",2,"active",idempotency_key,request_hash,
+                 agent_content_hash,"intent",2,"active",idempotency_key_hash,request_hash,
                  now,actor_id,now),
             )
             connection.execute(
@@ -261,7 +267,7 @@ class CognitiveRunService:
                     request_hash,event_json,event_hash,created_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (tenant_id,run_id,1,event["event_id"],"intent","intent.accepted",
-                 idempotency_key,request_hash,event_json,event_hash,now),
+                 idempotency_key_hash,request_hash,event_json,event_hash,now),
             )
             row = connection.execute(
                 "SELECT * FROM cognitive_runs WHERE tenant_id=? AND run_id=?",
@@ -294,12 +300,18 @@ class CognitiveRunService:
         request_hash = hashlib.sha256(
             _canonical({"event": event_input, "actor_id": actor_id}).encode("utf-8")
         ).hexdigest()
+        idempotency_key_hash = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+        payload = event_input.get("payload", {})
+        if self._contains_forbidden_payload_key(payload):
+            raise CognitiveRunValidationError(
+                "Cognitive event payload contains a forbidden authority or executable field"
+            )
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 """SELECT * FROM cognitive_events
-                   WHERE tenant_id=? AND run_id=? AND idempotency_key=?""",
-                (tenant_id,run_id,idempotency_key),
+                   WHERE tenant_id=? AND run_id=? AND idempotency_key_hash=?""",
+                (tenant_id,run_id,idempotency_key_hash),
             ).fetchone()
             if existing is not None:
                 if existing["request_hash"] != request_hash:
@@ -335,7 +347,6 @@ class CognitiveRunService:
                 "occurred_at": now,
                 "evidence_status": event_input.get("evidence_status", "unverified"),
                 "payload": event_input.get("payload", {}),
-                "idempotency_key": idempotency_key,
             }
             for field in (
                 "input_refs","output_refs","evidence_refs","error_code",
@@ -353,11 +364,11 @@ class CognitiveRunService:
             sequence = run["next_sequence"]
             connection.execute(
                 """INSERT INTO cognitive_events (
-                    tenant_id,run_id,sequence,event_id,stage,event_type,idempotency_key,
+                    tenant_id,run_id,sequence,event_id,stage,event_type,idempotency_key_hash,
                     request_hash,event_json,event_hash,created_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (tenant_id,run_id,sequence,event["event_id"],stage,event["event_type"],
-                 idempotency_key,request_hash,event_json,event_hash,now),
+                 idempotency_key_hash,request_hash,event_json,event_hash,now),
             )
             status = (
                 "completed"
@@ -370,6 +381,18 @@ class CognitiveRunService:
                 (stage,sequence+1,status,now,tenant_id,run_id),
             )
         return event, True
+
+    @classmethod
+    def _contains_forbidden_payload_key(cls, value: Any) -> bool:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                if isinstance(key, str) and key.lower() in FORBIDDEN_PAYLOAD_KEYS:
+                    return True
+                if cls._contains_forbidden_payload_key(nested):
+                    return True
+        elif isinstance(value, list):
+            return any(cls._contains_forbidden_payload_key(item) for item in value)
+        return False
 
     def get_run(self, run_id: str, tenant_id: str) -> dict[str, Any]:
         with self._connection() as connection:
