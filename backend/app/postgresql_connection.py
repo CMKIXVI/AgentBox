@@ -35,7 +35,8 @@ class PostgreSQLConnectionConfig:
         if (
             not isinstance(self.secret_ref, str)
             or not _SECRET_REF.fullmatch(self.secret_ref)
-            or "://" in self.secret_ref
+            or self.secret_ref.lower().startswith(("postgres://", "postgresql://"))
+            or any(part in (".", "..") for part in self.secret_ref.split("/"))
         ):
             raise ValueError("secret_ref must be a valid secret-manager reference")
         if (
