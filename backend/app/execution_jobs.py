@@ -353,7 +353,7 @@ class DurableExecutionJobService:
             raise ValueError("lease_seconds must be between 1 and 3600")
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = self._leased_row(
+            self._leased_row(
                 connection, job_id, tenant_id, worker_id, lease_token, ("leased", "running", "cancel_requested")
             )
             now = _now()
