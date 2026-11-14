@@ -23,7 +23,15 @@ Unsigned ingestion remains supported for compatibility and does not prove which 
 
 Cryptographic attestation proves possession of a trusted connector key and integrity of the signed snapshot; it does not prove that the connector's database role was correctly provisioned or that the source database itself was truthful. Imported entities and relationships therefore remain `inferred`; all evidence remains `unverified` until the separate review process accepts it.
 
-The endpoint accepts no DSN, password, token or private key and makes no external database connection. The source locator must use the `postgresql-catalog://` scheme and cannot contain credentials, query parameters or fragments.
+The AgentBox API accepts no DSN, password, token or private key and makes no external database connection. The source locator must use the `postgresql-catalog://` scheme and cannot contain credentials, query parameters or fragments.
+
+### Source-side catalog connector
+
+`app.postgresql_catalog_connector` supplies a source-side collector that can run inside the database network. It uses an injected DB-API connection factory, starts an explicit read-only transaction, applies a bounded statement timeout, and reads only PostgreSQL system catalogs for an explicit schema allowlist. It never selects application table rows and always rolls back/closes the connection. The resulting snapshot uses the same canonical hash and metadata-only contract as the ingestion API.
+
+The connector's signing boundary is the `SigningKeyProvider` protocol. A deployment supplies an implementation backed by its KMS, HSM or OS keyring; AgentBox's connector package never exports or persists private key material. `PostgreSQLCatalogAttestor` creates the exact Ed25519 attestation accepted by the API. `PostgreSQLCatalogConnector.discover()` returns the request envelope containing connector ID, source locator, snapshot and attestation. The external connector must use the tenant ID and source locator bound during registration, then POST that envelope to the snapshot-ingestion endpoint.
+
+The optional `postgresql` dependency group installs Psycopg 3 for deployments that choose it as their DB-API driver. The collector itself remains driver-agnostic and can be tested with a DB-API-compatible adapter. No production KMS/HSM provider, DSN/secret resolver, deployment agent, or live PostgreSQL service is bundled yet.
 
 ## Limits
 
@@ -51,7 +59,7 @@ The response reports created/reused entity, relationship and evidence counts. Th
 
 ## Not yet production end-to-end
 
-The current adapter uses an injected DB-API connection factory; AgentBox does not yet register a live connector or resolve secrets. This batch does not include operator connector provisioning, secret-provider integration, live PostgreSQL connection tests, source identity attestation, durable discovery scheduling or source-system event ingestion. Do not expose a live connection until those controls are implemented.
+The source-side read-only collector and signing-provider interface are implemented, but AgentBox does not yet provision a deployment agent, resolve database secrets, or ship a concrete KMS/HSM provider. No live PostgreSQL service or deployed end-to-end test has been run. Source identity attestation, durable discovery scheduling and source-system event ingestion remain out of scope.
 
 
 ## Connector trust configuration
@@ -64,3 +72,13 @@ The optional request field `attestation` has exactly four fields: `algorithm: "E
 ### Connector lifecycle and key rotation
 
 Connector registration binds one tenant, connector ID and normalized source locator. Each connector may have multiple immutable signing-key IDs to support overlapping rotation. Revoke the old key only after the connector has switched to the new key. A revoked key ID cannot be reactivated or reused; register a new key ID. Key revocation takes effect immediately for subsequent signed ingestions. Connector key and event rows have database triggers preventing updates/deletes. The connector public key registry is not a secret store: only public Ed25519 keys are accepted. Private signing keys must remain in the connector's protected environment. The registry and its audit events share the AgentBox SQLite persistence boundary and therefore inherit the current single-instance/backup limitations.
+
+
+### Connector-side operating rules
+
+- Run the collector inside the network boundary that can reach the database; do not expose the database to the AgentBox API.
+- Give the DB role only catalog visibility required for the selected schemas. Do not grant application-table SELECT, DML, DDL or role-management privileges.
+- Resolve DSNs/passwords from the deployment's secret manager at runtime. Do not place them in connector registration, source locators, logs, snapshots or API payloads.
+- Use a non-exportable Ed25519 signing key in a KMS/HSM where available. The `SigningKeyProvider` adapter must sign the supplied canonical bytes without returning private key material.
+- Register the connector public key before enabling signed ingestion; during rotation, register the next public key, switch the source-side signer, verify successful ingestion, then revoke the previous key.
+- Treat catalog metadata as sensitive operational data. Apply schema allowlists, transport encryption, short retention and tenant-scoped access controls.
