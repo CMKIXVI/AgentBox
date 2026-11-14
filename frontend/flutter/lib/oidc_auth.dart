@@ -83,7 +83,11 @@ class FlutterAppAuthOidcClient implements AgentBoxOidcClient {
         scopes: _scopes,
       ),
     );
-    return _mapResponse(response);
+    return _mapResponse(
+      accessToken: response.accessToken,
+      refreshToken: response.refreshToken,
+      expiresAt: response.accessTokenExpirationDateTime,
+    );
   }
 
   AgentBoxOidcTokenResponse _mapResponse({
