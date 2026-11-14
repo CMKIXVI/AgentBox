@@ -48,7 +48,7 @@ class OpenAICompatibleProvider:
         if value is None:
             return None
         if isinstance(value, bool):
-            raise ValueError("Provider token rates must be finite non-negative numbers")
+            raise TypeError("Provider token rates must be numeric, not boolean")
         rate = float(value)
         if not math.isfinite(rate) or rate < 0:
             raise ValueError("Provider token rates must be finite non-negative numbers")
