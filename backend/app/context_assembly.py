@@ -149,7 +149,6 @@ class ContextAssemblyService:
         packet = {
             "schema_version": "1.0.0",
             "tenant_id": tenant_id,
-            "assembled_at": now.isoformat(),
             "policy": {
                 "assertion_classes": sorted(allowed),
                 "evidence_status": "validated_only",
