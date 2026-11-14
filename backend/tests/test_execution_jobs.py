@@ -134,6 +134,12 @@ def test_expired_lease_before_start_is_requeued(jobs):
         "requeued_leased": 1, "failed_ambiguous_running": 0,
     }
     assert jobs.get(record["job_id"], "tenant-a")["state"] == "queued"
+    reclaimed = jobs.claim("worker-2")
+    assert reclaimed is not None
+    assert reclaimed["job_id"] == record["job_id"]
+    assert jobs.start(
+        record["job_id"], "tenant-a", "worker-2", reclaimed["lease_token"]
+    )["attempt"] == 1
 
 
 def test_expired_running_job_fails_closed_without_replay(jobs):
