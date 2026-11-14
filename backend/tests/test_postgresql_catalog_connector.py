@@ -262,3 +262,15 @@ def test_attestor_rejects_unsafe_source_locators(source_ref):
             tenant_id="tenant-a", source_ref=source_ref,
             snapshot=snapshot, key_id="key-v1",
         )
+
+
+
+def test_attestor_rejects_snapshot_without_valid_digest():
+    provider = FakeSigningProvider()
+    with pytest.raises(ContextValidationError, match="SHA-256 digest"):
+        PostgreSQLCatalogAttestor(provider).attest(
+            tenant_id="tenant-a",
+            source_ref="postgresql-catalog://warehouse/snapshot",
+            snapshot={"snapshot_hash": "not-a-digest", "discovered_at": "now"},
+            key_id="key-v1",
+        )
