@@ -174,3 +174,17 @@ This audit is a repository inspection, not a test or production-readiness claim.
 The branch now contains `schemas/cognitive-event-v1.schema.json`, `backend/app/cognitive_contract.py`, and `backend/tests/test_cognitive_contract.py`. The contract fixes the lifecycle vocabulary and enforces stage/event matching, evidence requirements, explicit authorization-decision and capability references, and forward-only non-skipping transitions. See `docs/runtime/cognitive-runtime-contracts.md`.
 
 This remains contract code only. No tests were executed in this batch; no API, durable state store, cognitive engine, planner, memory engine, or capability runtime is claimed.
+
+
+## 10. P1 cognitive runtime implementation update
+
+The branch now includes a tenant-scoped cognitive run journal and authenticated API:
+- Runs bind to an existing immutable agent version and registry content hash.
+- Tenant and actor identity are server-derived from the authenticated principal.
+- Create and append operations require idempotency keys bound to actor/request.
+- Events are ordered, stage-transition validated, bounded to 64 KiB, and append-only at the SQLite trigger level.
+- Verification and accepted memory events require verified evidence references.
+- Capability and responsibility events require explicit versioned capability and authorization-decision references.
+- API routes support create, append, get and paginated event reads, with tenant isolation and authorization.
+
+This is a stateful lifecycle journal only. It does not implement cognition, planning, capability invocation, trusted evidence, or memory consolidation. SQLite remains single-instance. The new tests were added but not executed; no CI or live integration evidence is claimed.
