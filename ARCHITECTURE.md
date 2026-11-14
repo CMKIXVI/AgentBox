@@ -351,8 +351,8 @@ This status must be refreshed against the exact repository commit and CI evidenc
 
 ## CI execution policy
 
-- GitHub Actions runs automatically on pushes to `main` and on pull requests matching the workflow path filters.
-- Feature-branch pushes do not start CI automatically; use the workflow's manual `workflow_dispatch` action for consolidated validation (the working cadence is one run after each 10 implementation batches, and before merge).
+- GitHub Actions runs automatically on pushes to `main` and when a pull request is opened, reopened, or marked ready for review (subject to workflow path filters). It does not run on every PR synchronize/push event.
+- Feature-branch pushes do not start CI automatically; use the workflow's manual `workflow_dispatch` action for consolidated latest-head validation (the working cadence is one run after each 10 implementation batches, and before merge).
 - Run the repository's local backend, Next.js, and Flutter checks during implementation batches. Record which checks were actually run; local checks do not replace the required PR CI run.
 - This policy reduces redundant per-commit CI while preserving integration-branch and pull-request validation.
 
