@@ -437,6 +437,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app.state.execution_jobs,
             app.state.executions,
             app.state.experiences,
+            app.state.cognitive_runs,
             app.state.enterprise_context,
             app.state.evaluations,
             app.state.registry,
