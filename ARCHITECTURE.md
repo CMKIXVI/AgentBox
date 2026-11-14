@@ -360,3 +360,8 @@ This status must be refreshed against the exact repository commit and CI evidenc
 ## Synchronous execution crash recovery
 
 The SQLite synchronous execution service now fences leftover `running` records as `interrupted` on exclusive process startup, using error code `execution_interrupted_ambiguous_outcome`. Same-key replay returns that terminal ambiguous record and never silently invokes a provider again. This avoids duplicate external calls/charges after a crash, but requires operator reconciliation and a new idempotency key for a deliberate retry. The recovery assumes one API process owns this SQLite store; multi-instance execution requires a database-backed lease/ownership design first.
+
+
+## SQLite connection lifecycle
+
+The synchronous execution store now uses a connection subclass that retains SQLite transaction commit/rollback behavior while closing each short-lived connection on context exit. The shared in-memory database keeper remains intentionally open for the service lifetime. This change reduces descriptor/connection leakage under repeated API calls; it does not alter the documented single-instance SQLite deployment boundary.
