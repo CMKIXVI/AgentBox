@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 
 import pytest
 
 from app.execution import ProviderError, ProviderRequest
 from app.openai_provider import OpenAICompatibleProvider
+from app.main import create_app
+from auth_helpers import configure_test_access
+from fastapi.testclient import TestClient
 
 
 def request():
@@ -120,15 +124,6 @@ def test_rejects_timeout_outside_supported_bounds():
     with pytest.raises(ProviderError, match="timeout"):
         adapter.invoke(request(), 0)
 
-from __future__ import annotations
-
-import json
-from pathlib import Path
-
-from auth_helpers import configure_test_access
-from fastapi.testclient import TestClient
-
-from app.main import create_app
 
 
 def test_configured_openai_provider_is_registered_and_execution_cost_stays_unknown(
