@@ -401,3 +401,6 @@ The lifecycle regression suite also constructs each store against a shared-cache
 
 
 Tenant backup restore opens the source with no-follow semantics where supported, verifies the opened descriptor is a regular file without blocking on special files, and enforces the 512 MiB limit while reading. This avoids the prior check-then-open symlink race and bounds the bytes parsed as an envelope.
+
+
+The offline tenant administration CLI closes its `TenantRegistry` in a `finally` block after every command, including command failures. This releases its shared in-memory keeper and prevents repeated in-process CLI invocations from retaining SQLite resources.
