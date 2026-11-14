@@ -222,7 +222,7 @@ def main() -> None:
     try:
         worker.run_forever(stop)
     finally:
-        app.state.execution_jobs.close()
+        app.state.close_stores()
         LOGGER.info("Worker %s stopped", worker.worker_id)
 
 
