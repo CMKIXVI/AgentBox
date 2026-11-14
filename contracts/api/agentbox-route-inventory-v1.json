@@ -277,6 +277,30 @@
       "path": "/v1/cognitive-runs/{run_id}/context",
       "auth_required": true,
       "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/connectors",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-discovery/postgresql/connectors",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys/{key_id}/revoke",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
     }
   ]
 }
