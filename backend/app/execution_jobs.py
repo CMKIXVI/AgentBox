@@ -300,7 +300,7 @@ class DurableExecutionJobService:
                 return None
             token = str(uuid.uuid4())
             connection.execute(
-                """UPDATE execution_jobs SET state='leased', attempt=attempt+1,
+                """UPDATE execution_jobs SET state='leased',
                 worker_id=?, lease_token=?, lease_expires_at=?, heartbeat_at=?,
                 updated_at=? WHERE job_id=? AND state='queued'""",
                 (worker_id, token, expiry, now_text, now_text, row["job_id"]),
@@ -337,7 +337,7 @@ class DurableExecutionJobService:
             row = self._leased_row(connection, job_id, tenant_id, worker_id, lease_token, ("leased",))
             now = _timestamp()
             connection.execute(
-                """UPDATE execution_jobs SET state='running', started_at=COALESCE(started_at, ?),
+                """UPDATE execution_jobs SET state='running', attempt=attempt+1, started_at=COALESCE(started_at, ?),
                 heartbeat_at=?, updated_at=? WHERE job_id=?""",
                 (now, now, now, job_id),
             )
