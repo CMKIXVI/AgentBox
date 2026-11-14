@@ -13,11 +13,15 @@ This batch connects the read-only PostgreSQL catalog adapter contract to the nat
 5. Schema, relation, column, index and constraint objects are mapped to immutable tenant-owned ECE entity versions.
 6. Schema containment, relation-column, index, constraint and in-snapshot foreign-key dependencies become typed ECE relationships.
 7. Every discovered entity receives an evidence record containing the snapshot hash and a credential-free source locator.
-8. Repeated ingestion is idempotent for identical records. Changed entity metadata creates a new immutable entity version; relationship identity incorporates endpoint versions and edge metadata.
+8. An optional Ed25519 connector attestation binds the tenant, source locator, snapshot hash, discovery timestamp, key ID and signing timestamp. AgentBox verifies it against a server-configured trusted public key before ingestion.
+9. Signed evidence is stored separately from legacy unsigned evidence, with the verified key ID and snapshot digest in its immutable metadata. It remains unverified for human/context acceptance; cryptographic source attestation does not itself make a fact human-validated.
+10. Repeated ingestion is idempotent for identical records. Changed entity metadata creates a new immutable entity version; relationship identity incorporates endpoint versions and edge metadata.
 
 ## Epistemic and provenance boundary
 
-The HTTP ingestion endpoint receives a caller-supplied snapshot; it does not independently prove which PostgreSQL server produced it. Therefore imported entities and relationships are marked `inferred`, not `human_validated` or verified observed facts. Evidence remains `unverified`. A SHA-256 digest detects content alteration relative to the supplied digest; it is not a signature or proof of source authenticity.
+Unsigned ingestion remains supported for compatibility and does not prove which PostgreSQL server produced a snapshot. With an attestation, AgentBox verifies an Ed25519 signature using a public key provisioned in `AGENTBOX_POSTGRESQL_PROVENANCE_KEYS`; the signed message binds the authenticated tenant, exact credential-free source locator, snapshot hash, discovery timestamp, key ID and signed_at. Unknown keys, malformed signatures, tampering, tenant/source replay and stale signatures fail closed. Attestations expire after 15 minutes (with 60 seconds of future clock skew). The private signing key stays in the connector environment.
+
+Cryptographic attestation proves possession of a trusted connector key and integrity of the signed snapshot; it does not prove that the connector's database role was correctly provisioned or that the source database itself was truthful. Imported entities and relationships therefore remain `inferred`; all evidence remains `unverified` until the separate review process accepts it.
 
 The endpoint accepts no DSN, password, token or private key and makes no external database connection. The source locator must use the `postgresql-catalog://` scheme and cannot contain credentials, query parameters or fragments.
 
@@ -48,3 +52,10 @@ The response reports created/reused entity, relationship and evidence counts. Th
 ## Not yet production end-to-end
 
 The current adapter uses an injected DB-API connection factory; AgentBox does not yet register a live connector or resolve secrets. This batch does not include operator connector provisioning, secret-provider integration, live PostgreSQL connection tests, source identity attestation, durable discovery scheduling or source-system event ingestion. Do not expose a live connection until those controls are implemented.
+
+
+## Connector trust configuration
+
+Set `AGENTBOX_POSTGRESQL_PROVENANCE_KEYS` to a JSON object mapping stable key IDs to base64-encoded raw 32-byte Ed25519 public keys. Provision and rotate this configuration out-of-band. Never submit trust keys in the API request and never store connector private keys in AgentBox. The current trust store is process configuration; operational key rotation/revocation workflow, hardware-backed key storage, connector registration, live source connection provisioning and deployed PostgreSQL E2E tests remain outstanding.
+
+The optional request field `attestation` has exactly four fields: `algorithm: "Ed25519"`, `key_id`, timezone-aware `signed_at`, and base64url `signature`. Sign the canonical UTF-8 JSON payload returned by `PostgreSQLProvenanceVerifier.signing_payload` in the AgentBox implementation. It includes the contract identifier, authenticated tenant, source_ref, snapshot_hash, discovered_at, key_id and signed_at. The server derives tenant identity from the OIDC principal; a caller cannot choose it in the request.
