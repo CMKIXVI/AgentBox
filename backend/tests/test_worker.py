@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+from threading import Event
 
 import pytest
 from auth_helpers import configure_test_access
@@ -158,3 +160,26 @@ def test_worker_executes_openai_provider_job_through_mocked_http(tmp_path, monke
     assert execution["usage"]["input_tokens"] == 11
     assert execution["usage"]["output_tokens"] == 4
     assert execution["usage"]["cost_usd"] is None
+
+def test_worker_waits_for_heartbeat_thread_before_returning(client):
+    create_agent(client)
+    submitted = submit(client, "worker-heartbeat-shutdown")
+    worker = make_worker(client)
+    heartbeat_started = Event()
+    release_heartbeat = Event()
+
+    def blocked_heartbeat(_lease, _stop, _cancel_requested, _lease_lost):
+        heartbeat_started.set()
+        release_heartbeat.wait(timeout=5)
+
+    worker._maintain_lease = blocked_heartbeat
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result = executor.submit(worker.run_once)
+        assert heartbeat_started.wait(timeout=2)
+        assert result.done() is False
+        release_heartbeat.set()
+        assert result.result(timeout=3) is True
+
+    job = client.get(f"/v1/execution-jobs/{submitted.json()['job_id']}").json()
+    assert job["state"] == "succeeded"
+
