@@ -636,16 +636,22 @@ class EnterpriseContextService:
             raise ContextNotFoundError(evidence_id)
         item = self._record_evidence(row)
         item["validation_status"] = item.pop("effective_status")
-        item["review"] = (
-            {
-                "review_id": item.pop("review_id"),
+        review_id = item.pop("review_id")
+        if review_id:
+            item["review"] = {
+                "review_id": review_id,
                 "decision": item["validation_status"],
                 "reason": item.pop("review_reason"),
                 "reviewed_at": item.pop("reviewed_at"),
                 "reviewed_by": item.pop("reviewed_by"),
                 "confirmed_source_hash": item.pop("confirmed_source_hash"),
-            } if item.get("review_id") else None
-        )
+            }
+        else:
+            item.pop("review_reason")
+            item.pop("reviewed_at")
+            item.pop("reviewed_by")
+            item.pop("confirmed_source_hash")
+            item["review"] = None
         return item
 
     def review_evidence(
