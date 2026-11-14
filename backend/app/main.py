@@ -142,6 +142,14 @@ class WorkerCompleteRequest(WorkerLeaseRequest):
     result: dict[str, Any]
 
 
+class WorkerCancelConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(min_length=2, max_length=128)
+    actor_id: str = Field(min_length=1, max_length=128)
+    worker_id: str | None = Field(default=None, min_length=1, max_length=128)
+    lease_token: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class WorkerFailRequest(WorkerLeaseRequest):
     error_code: str = Field(min_length=1, max_length=128)
 
@@ -671,6 +679,25 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except JobNotFoundError as exc:
             raise HTTPException(status_code=404, detail="Execution job not found") from exc
         except JobLeaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/internal/v1/execution-jobs/{job_id}/cancelled")
+    def confirm_execution_job_cancel(
+        job_id: str,
+        request: WorkerCancelConfirmRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        try:
+            return app.state.execution_jobs.confirm_cancel(
+                job_id, request.tenant_id, request.actor_id,
+                request.worker_id, request.lease_token,
+            )
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        except JobLeaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except JobConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/internal/v1/execution-jobs/{job_id}/complete")
