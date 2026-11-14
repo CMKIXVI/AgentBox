@@ -167,3 +167,10 @@ Start with **P1: Cognitive Runtime Contracts**, not another backup/SQLite harden
 ## 8. Verification boundary
 
 This audit is a repository inspection, not a test or production-readiness claim. The findings are based on source and documentation present on the audited branch. Tests were not run; CI was not invoked; no live provider, identity provider, sandbox host, frontend deployment or production database was exercised.
+
+
+## 9. First P1 implementation slice — cognitive lifecycle contracts
+
+The branch now contains `schemas/cognitive-event-v1.schema.json`, `backend/app/cognitive_contract.py`, and `backend/tests/test_cognitive_contract.py`. The contract fixes the lifecycle vocabulary and enforces stage/event matching, evidence requirements, explicit authorization-decision and capability references, and forward-only non-skipping transitions. See `docs/runtime/cognitive-runtime-contracts.md`.
+
+This remains contract code only. No tests were executed in this batch; no API, durable state store, cognitive engine, planner, memory engine, or capability runtime is claimed.
