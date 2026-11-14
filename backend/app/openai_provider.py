@@ -113,11 +113,16 @@ class OpenAICompatibleProvider:
             message = choices[0]["message"]
             output = message["content"]
             usage = document.get("usage") or {}
-            input_tokens = int(usage.get("prompt_tokens", 0))
-            output_tokens = int(usage.get("completion_tokens", 0))
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
         except (KeyError, IndexError, TypeError, ValueError):
             raise ProviderError("Provider response did not match the chat-completions contract") from None
-        if input_tokens < 0 or output_tokens < 0:
+        if (
+            type(input_tokens) is not int
+            or type(output_tokens) is not int
+            or input_tokens < 0
+            or output_tokens < 0
+        ):
             raise ProviderError("Provider returned invalid token usage")
 
         cost_usd: float | None = None
@@ -126,6 +131,8 @@ class OpenAICompatibleProvider:
                 input_tokens * self.input_cost_per_million
                 + output_tokens * self.output_cost_per_million
             ) / 1_000_000
+            if not math.isfinite(cost_usd):
+                raise ProviderError("Provider returned usage that exceeds supported cost bounds")
         return ProviderResponse(
             output=output,
             input_tokens=input_tokens,
