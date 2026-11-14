@@ -124,17 +124,17 @@ class ContextAssemblyService:
                     previous = relationships.get(relation["relationship_id"])
                     if previous is None or relation["version"] > previous["version"]:
                         relationships[relation["relationship_id"]] = {
-                        "relationship_id": relation["relationship_id"],
-                        "version": relation["version"],
-                        "relationship_type": relation["relationship_type"],
-                        "source_entity_id": relation["source_entity_id"],
-                        "source_version": relation["source_version"],
-                        "target_entity_id": relation["target_entity_id"],
-                        "target_version": relation["target_version"],
-                        "assertion_class": relation["assertion_class"],
-                        "confidence": relation["confidence"],
-                        "content_hash": relation["content_hash"],
-                    }
+                            "relationship_id": relation["relationship_id"],
+                            "version": relation["version"],
+                            "relationship_type": relation["relationship_type"],
+                            "source_entity_id": relation["source_entity_id"],
+                            "source_version": relation["source_version"],
+                            "target_entity_id": relation["target_entity_id"],
+                            "target_version": relation["target_version"],
+                            "assertion_class": relation["assertion_class"],
+                            "confidence": relation["confidence"],
+                            "content_hash": relation["content_hash"],
+                        }
             for item in self.enterprise_context.query_evidence(
                 entity_id, tenant_id, limit=MAX_EVIDENCE
             ):
