@@ -263,7 +263,7 @@ class CognitiveRunService:
             )
             connection.execute(
                 """INSERT INTO cognitive_events (
-                    tenant_id,run_id,sequence,event_id,stage,event_type,idempotency_key,
+                    tenant_id,run_id,sequence,event_id,stage,event_type,idempotency_key_hash,
                     request_hash,event_json,event_hash,created_at
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (tenant_id,run_id,1,event["event_id"],"intent","intent.accepted",
