@@ -96,3 +96,26 @@ def test_context_assembly_api_requires_authorization_and_idempotency_key(tmp_pat
     app.state.authorization_policies = original_policies
     missing_key = client.post(f"/v1/cognitive-runs/{run_id}/context", json={})
     assert missing_key.status_code == 422
+
+
+def test_context_assembly_api_requires_existing_context_read_grants(tmp_path):
+    app, client, run_id = make_client(tmp_path)
+    original_policies = app.state.authorization_policies
+    app.state.authorization_policies = [
+        policy for policy in original_policies
+        if not (
+            policy["capability_id"] == "enterprise.context"
+            and policy["actions"][0] in {
+                "context.entity.read",
+                "context.relationship.read",
+                "context.evidence.read",
+            }
+        )
+    ]
+    response = client.post(
+        f"/v1/cognitive-runs/{run_id}/context",
+        headers={"Idempotency-Key": "missing-context-read-grants"},
+        json={},
+    )
+    assert response.status_code == 403
+    app.state.authorization_policies = original_policies
