@@ -160,15 +160,25 @@ def test_supervised_recovery_requires_worker_secret(client):
     assert response.json()["requeued_leased"] == 1
     assert client.get(f"/v1/execution-jobs/{job['job_id']}").json()["state"] == "queued"
 
-def test_api_shutdown_closes_durable_job_store(tmp_path, monkeypatch):
+def test_api_shutdown_closes_all_sqlite_stores(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENTBOX_JOB_ALLOWED_HANDLERS", "[]")
     app = create_app(str(tmp_path / "shutdown.sqlite3"))
-    jobs = app.state.execution_jobs
+    stores = (
+        app.state.execution_jobs,
+        app.state.executions,
+        app.state.experiences,
+        app.state.enterprise_context,
+        app.state.evaluations,
+        app.state.registry,
+        app.state.tenants,
+        app.state.authorization_audit,
+    )
 
     with TestClient(app):
-        assert jobs._closed is False
+        assert all(store._closed is False for store in stores)
 
-    assert jobs._closed is True
-    with pytest.raises(RuntimeError, match="service is closed"):
-        jobs._connect()
+    assert all(store._closed is True for store in stores)
+    for store in stores:
+        with pytest.raises(RuntimeError, match="closed"):
+            store._connect()
 
