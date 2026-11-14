@@ -395,3 +395,6 @@ A worker now waits for its heartbeat thread to exit before returning from a clai
 ## API-owned SQLite store shutdown
 
 The API shutdown callback now closes all owned SQLite stores: durable jobs, synchronous executions, experience, enterprise context, evaluation, agent registry, tenant registry, and authorization audit. Each store exposes an idempotent close operation, releases its shared in-memory keeper when present, and rejects new connections after closure. The standalone worker invokes the same aggregate cleanup after its polling loop exits. This is process-resource cleanup, not a multi-process database ownership or coordination mechanism.
+
+
+The lifecycle regression suite also constructs each store against a shared-cache in-memory SQLite database, verifies that repeated shutdown closes the keeper exactly once, and confirms that post-shutdown connection attempts fail closed.
