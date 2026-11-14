@@ -282,3 +282,20 @@ def test_rejects_invalid_unicode_before_network_call(monkeypatch):
     )
     with pytest.raises(ProviderError, match="request could not be encoded"):
         OpenAICompatibleProvider("secret").invoke(invalid_unicode, 5)
+
+
+@pytest.mark.parametrize("invalid_value", [float("nan"), float("inf"), float("-inf")])
+def test_rejects_non_finite_json_request_values(monkeypatch, invalid_value):
+    def unexpected_request(*_args, **_kwargs):
+        pytest.fail("non-finite JSON values must not reach the network adapter")
+
+    monkeypatch.setattr("app.openai_provider.urlopen", unexpected_request)
+    invalid_request = ProviderRequest(
+        provider_id="provider.openai",
+        model_id="example-model",
+        objective="Answer accurately",
+        user_input={"measurement": invalid_value},
+        max_output_tokens=64,
+    )
+    with pytest.raises(ProviderError, match="could not be serialized"):
+        OpenAICompatibleProvider("secret").invoke(invalid_request, 5)
