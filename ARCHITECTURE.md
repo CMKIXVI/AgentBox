@@ -398,3 +398,6 @@ The API shutdown callback now closes all owned SQLite stores: durable jobs, sync
 
 
 The lifecycle regression suite also constructs each store against a shared-cache in-memory SQLite database, verifies that repeated shutdown closes the keeper exactly once, and confirms that post-shutdown connection attempts fail closed.
+
+
+Tenant backup restore opens the source with no-follow semantics where supported, verifies the opened descriptor is a regular file, and enforces the 512 MiB limit while reading. This avoids the prior check-then-open symlink race and bounds the bytes parsed as an envelope.
