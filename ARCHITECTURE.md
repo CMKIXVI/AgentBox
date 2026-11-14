@@ -390,3 +390,8 @@ The API registers the durable execution-job store's idempotent close operation w
 ## Worker heartbeat shutdown ordering
 
 A worker now waits for its heartbeat thread to exit before returning from a claimed job. This prevents the process shutdown path from closing the durable-job store while a heartbeat database operation is still in flight. The wait is intentionally bounded by the heartbeat operation's own SQLite busy timeout rather than a shorter arbitrary thread-join timeout.
+
+
+## API-owned SQLite store shutdown
+
+The API shutdown callback now closes all owned SQLite stores: durable jobs, synchronous executions, experience, enterprise context, evaluation, agent registry, tenant registry, and authorization audit. Each store exposes an idempotent close operation, releases its shared in-memory keeper when present, and rejects new connections after closure. The standalone worker invokes the same aggregate cleanup after its polling loop exits. This is process-resource cleanup, not a multi-process database ownership or coordination mechanism.
