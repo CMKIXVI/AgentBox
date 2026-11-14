@@ -140,6 +140,18 @@ class ExecutionService:
                 "CREATE INDEX IF NOT EXISTS idx_executions_tenant_agent "
                 "ON executions(tenant_id, agent_id, agent_version, created_at)"
             )
+            # A synchronous provider call may be interrupted by process termination.
+            # Never replay it automatically: the provider may already have completed
+            # the request and charged for it. The SQLite runtime is single-instance;
+            # on exclusive process startup, fence leftover running records as ambiguous.
+            connection.execute(
+                """UPDATE executions
+                SET status='interrupted',
+                    error_code='execution_interrupted_ambiguous_outcome',
+                    completed_at=?
+                WHERE status='running'""",
+                (utc_now(),),
+            )
 
     def _record(self, row: sqlite3.Row) -> dict[str, Any]:
         return {
