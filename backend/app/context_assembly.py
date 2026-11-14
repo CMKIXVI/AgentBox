@@ -8,7 +8,6 @@ from typing import Any
 
 from .enterprise_context import (
     ContextNotFoundError,
-    ContextValidationError,
     EnterpriseContextService,
 )
 
@@ -92,6 +91,7 @@ class ContextAssemblyService:
             )
 
         entity_ids_selected = {item["entity_id"] for item in selected}
+        entity_versions = {item["entity_id"]: item["version"] for item in selected}
         entities_out = [
             {
                 "entity_id": item["entity_id"],
@@ -107,7 +107,7 @@ class ContextAssemblyService:
             }
             for item in selected
         ]
-        relationships: dict[tuple[str, int], dict[str, Any]] = {}
+        relationships: dict[str, dict[str, Any]] = {}
         evidence: dict[str, dict[str, Any]] = {}
         for entity_id in sorted(entity_ids_selected):
             for relation in self.enterprise_context.query_relationships(
@@ -116,10 +116,14 @@ class ContextAssemblyService:
                 if (
                     relation["source_entity_id"] in entity_ids_selected
                     and relation["target_entity_id"] in entity_ids_selected
+                    and relation["source_version"] == entity_versions[relation["source_entity_id"]]
+                    and relation["target_version"] == entity_versions[relation["target_entity_id"]]
                     and relation["assertion_class"] in allowed
                     and self._currently_valid(relation, now)
                 ):
-                    relationships[(relation["relationship_id"], relation["version"])] = {
+                    previous = relationships.get(relation["relationship_id"])
+                    if previous is None or relation["version"] > previous["version"]:
+                        relationships[relation["relationship_id"]] = {
                         "relationship_id": relation["relationship_id"],
                         "version": relation["version"],
                         "relationship_type": relation["relationship_type"],
@@ -134,7 +138,10 @@ class ContextAssemblyService:
             for item in self.enterprise_context.query_evidence(
                 entity_id, tenant_id, limit=MAX_EVIDENCE
             ):
-                if item["validation_status"] == "validated":
+                if (
+                    item["entity_version"] == entity_versions[entity_id]
+                    and item["validation_status"] == "validated"
+                ):
                     evidence[item["evidence_id"]] = {
                         "evidence_id": item["evidence_id"],
                         "entity_id": item["entity_id"],
@@ -156,7 +163,7 @@ class ContextAssemblyService:
             },
             "entities": sorted(entities_out, key=lambda item: (item["entity_type"], item["entity_id"])),
             "relationships": sorted(
-                relationships.values(), key=lambda item: (item["relationship_id"], item["version"])
+                relationships.values(), key=lambda item: item["relationship_id"]
             )[:MAX_RELATIONSHIPS],
             "evidence": sorted(evidence.values(), key=lambda item: item["evidence_id"])[:MAX_EVIDENCE],
         }
