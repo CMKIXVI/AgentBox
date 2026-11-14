@@ -61,6 +61,7 @@ from .experience import (
 from .openai_provider import OpenAICompatibleProvider
 from .postgresql_ingestion import PostgreSQLSnapshotIngestion
 from .postgresql_provenance import PostgreSQLProvenanceVerifier
+from .postgresql_connectors import PostgreSQLConnectorRegistry
 from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .tenant_registry import TenantNotFoundError, TenantRegistry
@@ -229,6 +230,20 @@ class CognitiveContextRequest(BaseModel):
     limit: int = Field(default=8, ge=1, le=12)
 
 
+class PostgreSQLConnectorRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connector_id: str = Field(min_length=2, max_length=128)
+    source_ref: str = Field(min_length=1, max_length=1024)
+    key_id: str = Field(min_length=2, max_length=128)
+    public_key: str = Field(min_length=40, max_length=64)
+
+
+class PostgreSQLConnectorKeyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key_id: str = Field(min_length=2, max_length=128)
+    public_key: str = Field(min_length=40, max_length=64)
+
+
 class PostgreSQLConnectorAttestationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     algorithm: Literal["Ed25519"]
@@ -241,6 +256,7 @@ class PostgreSQLSnapshotIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_ref: str = Field(min_length=1, max_length=1024)
     snapshot: dict[str, Any]
+    connector_id: str | None = Field(default=None, min_length=2, max_length=128)
     attestation: PostgreSQLConnectorAttestationRequest | None = None
 
 
@@ -466,6 +482,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.context_assembly = ContextAssemblyService(app.state.enterprise_context)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
     app.state.postgresql_provenance = PostgreSQLProvenanceVerifier.from_environment()
+    app.state.postgresql_connectors = PostgreSQLConnectorRegistry(db_path)
 
     def close_stores() -> None:
         """Close every API-owned SQLite store during process shutdown."""
@@ -479,6 +496,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app.state.registry,
             app.state.tenants,
             app.state.authorization_audit,
+            app.state.postgresql_connectors,
         ):
             store.close()
 
@@ -1220,6 +1238,83 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except ExperienceValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.post(
+        "/v1/enterprise-discovery/postgresql/connectors",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def register_postgresql_connector(
+        request: PostgreSQLConnectorRegistrationRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.register",
+            request.connector_id,
+        )
+        try:
+            return app.state.postgresql_connectors.register(
+                principal.tenant_id, request.connector_id, request.source_ref,
+                request.key_id, request.public_key, principal.subject_id,
+            )
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/enterprise-discovery/postgresql/connectors")
+    def list_postgresql_connectors(
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.read", "tenant-connectors"
+        )
+        return {"items": app.state.postgresql_connectors.list_connectors(principal.tenant_id)}
+
+    @app.post(
+        "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def rotate_postgresql_connector_key(
+        connector_id: str,
+        request: PostgreSQLConnectorKeyRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.rotate_key", connector_id
+        )
+        try:
+            return app.state.postgresql_connectors.add_key(
+                principal.tenant_id, connector_id, request.key_id,
+                request.public_key, principal.subject_id,
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys/{key_id}/revoke",
+    )
+    def revoke_postgresql_connector_key(
+        connector_id: str,
+        key_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.revoke_key", connector_id
+        )
+        try:
+            return app.state.postgresql_connectors.revoke_key(
+                principal.tenant_id, connector_id, key_id, principal.subject_id
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/v1/enterprise-discovery/postgresql/snapshots/ingest", status_code=status.HTTP_201_CREATED)
     def ingest_postgresql_snapshot(
         request: PostgreSQLSnapshotIngestRequest,
@@ -1234,12 +1329,22 @@ def create_app(database_path: str | None = None) -> FastAPI:
             )
             provenance = None
             if request.attestation is not None:
-                provenance = app.state.postgresql_provenance.verify(
-                    request.attestation.model_dump(),
-                    request.snapshot,
-                    principal.tenant_id,
-                    normalized_source_ref,
+                if request.connector_id is None:
+                    raise ContextValidationError(
+                        "connector_id is required for signed connector snapshots"
+                    )
+                key = app.state.postgresql_connectors.get_active_key(
+                    principal.tenant_id, request.connector_id,
+                    request.attestation.key_id, normalized_source_ref,
                 )
+                verifier = PostgreSQLProvenanceVerifier(
+                    {request.attestation.key_id: key}
+                )
+                provenance = verifier.verify(
+                    request.attestation.model_dump(), request.snapshot,
+                    principal.tenant_id, normalized_source_ref,
+                )
+                provenance["connector_id"] = request.connector_id
             return app.state.postgresql_ingestion.ingest(
                 request.snapshot, principal.tenant_id, principal.subject_id,
                 normalized_source_ref, provenance,
