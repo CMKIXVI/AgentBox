@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
+from .authorization_audit import AuthorizationAuditStore
 from .authorization_policy import validate_authorization_policy
 from .candidate_generation import (
     CandidateConflictError,
@@ -31,7 +32,6 @@ from .evaluation import (
     EvaluationRunNotFoundError,
     EvaluationService,
 )
-from .authorization_audit import AuthorizationAuditStore
 from .execution_jobs import (
     DurableExecutionJobService,
     JobConflictError,
