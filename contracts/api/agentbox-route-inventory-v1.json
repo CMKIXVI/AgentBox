@@ -13,7 +13,12 @@
       "GET /health",
       "POST /v1/agents/validate",
       "POST /v1/evaluation-profiles/validate"
-    ]
+    ],
+    "internal_worker": {
+      "scheme": "Bearer",
+      "authority": "Dedicated AGENTBOX_JOB_WORKER_TOKEN configured only in the trusted worker environment",
+      "note": "Internal execution-job endpoints are not public OIDC client routes. They fail closed when the worker secret is absent."
+    }
   },
   "routes": [
     {
@@ -170,6 +175,72 @@
       "method": "GET",
       "path": "/v1/enterprise-context/events",
       "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/versions/{version}/jobs",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/execution-jobs/{job_id}",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/execution-jobs/{job_id}/events",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/execution-jobs/{job_id}/cancel",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/claim",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/recover",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/start",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/heartbeat",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/cancelled",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/complete",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/fail",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
     }
   ]
 }
