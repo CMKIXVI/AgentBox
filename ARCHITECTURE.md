@@ -333,7 +333,7 @@ Report main-branch capability separately from open feature-branch work. Do not c
 - Preserve source provenance for recovered concepts and code; normalize all shipped product, package, API, CLI, configuration, and internal identities to AgentBox.
 - Do not remove useful existing functionality or rename established interfaces without explicit compatibility planning.
 
-## 15. Current implementation reality (2026-11-13)
+## 15. Current implementation reality (2026-11-14)
 
 The repository currently has a bounded Python/FastAPI backend and meaningful registry, evaluation, execution-record, OIDC/tenant/authorization, encrypted backup, ECE, execution-experience, and bounded candidate-generation work across the main branch and stacked feature branches.
 
@@ -342,7 +342,7 @@ Important limitations remain:
 - The evaluation service scores submitted outputs; it does not execute benchmark workloads.
 - Execution-experience linkage is caller-asserted and remains unverified.
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
-- A gVisor-backed sandbox adapter and policy tests now exist on an unmerged feature branch, but it is not wired into execution or deployed on a live worker. The integrated production sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
+- A gVisor-backed sandbox adapter and policy tests exist on an unmerged feature branch, but it is not wired into execution or deployed on a live worker. A first SQLite-backed durable job service (tenant-scoped admission/idempotency, trusted handler allowlist, atomic claims, lease fencing, cancellation request/confirmation, conservative lease recovery, and append-only transition events) is also under review on an unmerged feature branch. It is not connected to public API routes, a worker process, external authorization-audit linkage, or the sandbox. Per-tenant/global concurrency limits, PostgreSQL storage, production queue operations, and live recovery/security tests remain incomplete. The integrated production sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
 - Flutter and Next.js foundations, bearer-token API transports, route inventory, OpenAPI export, and provider-configurable client OIDC flows are implemented on stacked feature branches, not yet merged to main. No identity provider is selected or deployed. Native redirect registration, real token validation against a deployed issuer/JWKS, client-to-API end-to-end tests, and production session/revocation operations remain incomplete.
 
