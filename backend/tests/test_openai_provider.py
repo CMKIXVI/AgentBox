@@ -131,7 +131,7 @@ def test_rejects_timeout_outside_supported_bounds(timeout):
 
 
 def test_rejects_boolean_token_pricing_rate():
-    with pytest.raises(ValueError, match="token rates"):
+    with pytest.raises(TypeError, match="not boolean"):
         OpenAICompatibleProvider("secret", input_cost_per_million=True)
 
 
