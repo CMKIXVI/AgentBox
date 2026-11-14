@@ -32,9 +32,15 @@ class FakeCursor:
         elif "FROM pg_catalog.pg_attribute AS a" in query:
             self.result = [("public", "customers", 1, "id", "bigint", True, None)]
         elif "FROM pg_catalog.pg_index AS x" in query:
-            self.result = [("public", "customers", "customers_pkey", True, True, "CREATE UNIQUE INDEX customers_pkey")]
+            self.result = [
+                ("public", "customers", "customers_pkey", True, True,
+                 "CREATE UNIQUE INDEX customers_pkey")
+            ]
         elif "FROM pg_catalog.pg_constraint AS con" in query:
-            self.result = [("public", "customers", "customers_pkey", "primary_key", "PRIMARY KEY (id)", None, None)]
+            self.result = [
+                ("public", "customers", "customers_pkey", "primary_key",
+                 "PRIMARY KEY (id)", None, None)
+            ]
         elif "FROM pg_catalog.pg_class AS c" in query:
             self.result = [("public", "customers", "table", "customer master")]
         else:
@@ -92,8 +98,14 @@ def test_catalog_reader_collects_metadata_in_read_only_transaction_and_closes_co
     sql = [statement for statement, _ in connection.statements]
     assert sql[0] == "BEGIN TRANSACTION READ ONLY"
     assert "set_config" in sql[1]
-    assert all("SELECT" in statement or "BEGIN TRANSACTION READ ONLY" in statement for statement in sql)
-    assert all("INSERT " not in statement and "UPDATE " not in statement and "DELETE " not in statement for statement in sql)
+    assert all(
+        "SELECT" in statement or "BEGIN TRANSACTION READ ONLY" in statement
+        for statement in sql
+    )
+    assert all(
+        not any(keyword in statement for keyword in ("INSERT ", "UPDATE ", "DELETE "))
+        for statement in sql
+    )
     assert connection.cursor_closed and connection.rolled_back and connection.closed
 
 
