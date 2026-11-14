@@ -105,7 +105,7 @@ class PostgreSQLProvenanceVerifier:
             if discovered.tzinfo is None:
                 raise ValueError
             discovered = discovered.astimezone(UTC)
-        except (KeyError, TypeError, ValueError) as exc:
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise ContextValidationError("attestation and snapshot timestamps must be timezone-aware ISO timestamps") from exc
         now = datetime.now(UTC)
         if signed_time < now - MAX_ATTESTATION_AGE or signed_time > now + MAX_FUTURE_SKEW:
