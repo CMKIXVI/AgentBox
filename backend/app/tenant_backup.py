@@ -188,7 +188,11 @@ def _aad(envelope: dict[str, object]) -> bytes:
 
 def _read_backup_envelope(path: Path) -> dict[str, object]:
     """Read a bounded regular backup file without following symlinks."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:
