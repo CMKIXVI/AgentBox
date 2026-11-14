@@ -195,7 +195,9 @@ class ContextAssemblyService:
         canonical = self._canonical(packet)
         if len(canonical.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
             raise ContextAssemblyValidationError("Assembled context exceeds the 48 KiB limit")
-        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(
+            self._canonical({"tenant_id": tenant_id, "packet": packet}).encode("utf-8")
+        ).hexdigest()
         return {
             "snapshot_ref": f"context-snapshot:{digest}",
             "content_hash": digest,
