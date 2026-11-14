@@ -145,3 +145,15 @@ def test_unverified_evidence_is_never_promoted_into_context_proof(tmp_path):
     assert packet["policy"]["evidence_status"] == "validated_only"
     context.close()
     tenants.close()
+
+
+def test_identical_context_in_different_tenants_has_distinct_snapshot_reference(tmp_path):
+    assembler, context, tenants = make_services(tmp_path)
+    context.create_entity(entity("app.alpha"), "tenant-alpha", "user-1")
+    context.create_entity(entity("app.alpha"), "tenant-beta", "user-2")
+    alpha = assembler.assemble("tenant-alpha", entity_ids=["app.alpha"])
+    beta = assembler.assemble("tenant-beta", entity_ids=["app.alpha"])
+    assert alpha["packet"] == beta["packet"]
+    assert alpha["content_hash"] != beta["content_hash"]
+    context.close()
+    tenants.close()
