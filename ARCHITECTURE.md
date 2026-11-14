@@ -467,7 +467,7 @@ This adds context packaging, not reasoning or retrieval-augmented generation. It
 
 ## PostgreSQL connector provenance attestation
 
-The catalog ingestion path optionally verifies Ed25519 attestations against `AGENTBOX_POSTGRESQL_PROVENANCE_KEYS`, a server-owned mapping of key IDs to base64 raw public keys. The signature binds tenant identity from the authenticated principal, source locator, snapshot hash, discovery timestamp, key ID and signing time. Unknown keys, malformed signatures, altered snapshots, tenant/source mismatch and signatures older than 15 minutes fail closed. Private keys remain with the connector. This cryptographic layer is separate from human evidence review and does not assert source database correctness or replace source-role verification. See [PostgreSQL snapshot ingestion](docs/postgresql-discovery-context-ingestion.md).
+The catalog ingestion path optionally verifies Ed25519 attestations against the tenant-scoped connector registry, which stores immutable public-key records. The signature binds tenant identity from the authenticated principal, source locator, snapshot hash, discovery timestamp, key ID and signing time. Unknown keys, malformed signatures, altered snapshots, tenant/source mismatch and signatures older than 15 minutes fail closed. Private keys remain with the connector. This cryptographic layer is separate from human evidence review and does not assert source database correctness or replace source-role verification. See [PostgreSQL snapshot ingestion](docs/postgresql-discovery-context-ingestion.md).
 
 
 ## PostgreSQL connector key lifecycle
