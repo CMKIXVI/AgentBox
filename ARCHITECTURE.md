@@ -365,3 +365,8 @@ The SQLite synchronous execution service now fences leftover `running` records a
 ## SQLite connection lifecycle
 
 The synchronous execution store now uses a connection subclass that retains SQLite transaction commit/rollback behavior while closing each short-lived connection on context exit. The shared in-memory database keeper remains intentionally open for the service lifetime. This change reduces descriptor/connection leakage under repeated API calls; it does not alter the documented single-instance SQLite deployment boundary.
+
+
+## Durable-job SQLite connection lifecycle
+
+The durable execution-job store now closes each short-lived SQLite connection after its transaction context exits, while preserving commit/rollback semantics. Its shared in-memory database keeper remains open for the service lifetime. This is connection-resource hardening only; the durable queue remains single-instance SQLite and is not a distributed worker backend.
