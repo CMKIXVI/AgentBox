@@ -39,6 +39,7 @@ from .execution import (
     ExecutionPolicyError,
     ExecutionService,
 )
+from .openai_provider import OpenAICompatibleProvider
 from .execution_jobs import (
     DurableExecutionJobService,
     JobConflictError,
@@ -398,8 +399,12 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.tenants = TenantRegistry(db_path)
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
+    configured_providers = [DeterministicFakeProvider()]
+    openai_provider = OpenAICompatibleProvider.from_environment()
+    if openai_provider is not None:
+        configured_providers.append(openai_provider)
     app.state.executions = ExecutionService(
-        db_path, app.state.registry, providers=[DeterministicFakeProvider()]
+        db_path, app.state.registry, providers=configured_providers
     )
     app.state.experiences = ExecutionExperienceService(db_path)
     app.state.candidate_generation = CandidateGenerationService(app.state.registry)
