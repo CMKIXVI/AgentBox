@@ -370,3 +370,8 @@ The synchronous execution store now uses a connection subclass that retains SQLi
 ## Durable-job SQLite connection lifecycle
 
 The durable execution-job store now closes each short-lived SQLite connection after its transaction context exits, while preserving commit/rollback semantics. Its shared in-memory database keeper remains open for the service lifetime. This is connection-resource hardening only; the durable queue remains single-instance SQLite and is not a distributed worker backend.
+
+
+## Authorization-audit SQLite connection lifecycle
+
+The append-only authorization audit store closes each short-lived SQLite connection after its transaction context exits, retaining commit/rollback semantics. Its shared in-memory keeper remains open for the store lifetime. Audit immutability and persistence semantics are unchanged; this hardening does not provide atomic coupling with other service transactions.
