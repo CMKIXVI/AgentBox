@@ -141,11 +141,11 @@ def test_job_event_history_is_tenant_scoped(client):
 def test_supervised_recovery_requires_worker_secret(client):
     create_agent(client)
     job = submit_job(client).json()
-    claim = client.post(
+    client.post(
         "/internal/v1/execution-jobs/claim",
         headers=worker_headers(),
         json={"worker_id": "worker-recovery", "lease_seconds": 60},
-    ).json()["job"]
+    )
     with client.app.state.execution_jobs._connect() as connection:
         connection.execute(
             "UPDATE execution_jobs SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE job_id=?",
