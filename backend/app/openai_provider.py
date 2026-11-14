@@ -113,15 +113,20 @@ class OpenAICompatibleProvider:
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
             raise ProviderError("Provider returned invalid JSON") from None
 
-        try:
-            choices = document["choices"]
-            message = choices[0]["message"]
-            output = message["content"]
-            usage = document.get("usage") or {}
-            input_tokens = usage.get("prompt_tokens", 0)
-            output_tokens = usage.get("completion_tokens", 0)
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise ProviderError("Provider response did not match the chat-completions contract") from None
+        if not isinstance(document, dict):
+            raise ProviderError("Provider response did not match the chat-completions contract")
+        choices = document.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise ProviderError("Provider response did not match the chat-completions contract")
+        message = choices[0].get("message")
+        if not isinstance(message, dict):
+            raise ProviderError("Provider response did not match the chat-completions contract")
+        output = message.get("content")
+        usage = document.get("usage") or {}
+        if not isinstance(usage, dict):
+            raise ProviderError("Provider response did not match the chat-completions contract")
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
         if not isinstance(output, str):
             raise ProviderError("Provider returned invalid message content")
         if (
