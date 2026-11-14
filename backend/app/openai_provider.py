@@ -76,7 +76,7 @@ class OpenAICompatibleProvider:
                 request.user_input
                 if isinstance(request.user_input, str)
                 else json.dumps(
-                    request.user_input, ensure_ascii=False, separators=(",", ":")
+                    request.user_input, ensure_ascii=False, allow_nan=False, separators=(",", ":")
                 )
             )
         except (TypeError, ValueError, RecursionError):
@@ -90,7 +90,7 @@ class OpenAICompatibleProvider:
             "max_tokens": request.max_output_tokens,
         }
         try:
-            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
         except (TypeError, ValueError, UnicodeEncodeError, RecursionError):
             raise ProviderError("Provider request could not be encoded") from None
         if len(body) > self.MAX_REQUEST_BYTES:
