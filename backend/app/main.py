@@ -15,6 +15,7 @@ from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_audit import AuthorizationAuditStore
 from .authorization_policy import validate_authorization_policy
+from .context_assembly import ContextAssemblyService, ContextAssemblyValidationError
 from .cognitive_runtime import (
     CognitiveRunConflictError,
     CognitiveRunNotFoundError,
@@ -217,6 +218,14 @@ class CognitiveEventRequest(BaseModel):
     error_code: str | None = Field(default=None, min_length=2, max_length=128)
     causation_event_id: str | None = None
     correlation_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class CognitiveContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_ids: list[str] | None = Field(default=None, min_length=1, max_length=12)
+    search: str | None = Field(default=None, min_length=1, max_length=128)
+    include_inferences: bool = False
+    limit: int = Field(default=8, ge=1, le=12)
 
 
 class PostgreSQLSnapshotIngestRequest(BaseModel):
@@ -433,8 +442,10 @@ def create_app(database_path: str | None = None) -> FastAPI:
         db_path, app.state.registry, providers=configured_providers
     )
     app.state.experiences = ExecutionExperienceService(db_path)
+    app.state.cognitive_runs = CognitiveRunService(db_path)
     app.state.candidate_generation = CandidateGenerationService(app.state.registry)
     app.state.enterprise_context = EnterpriseContextService(db_path)
+    app.state.context_assembly = ContextAssemblyService(app.state.enterprise_context)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
 
     def close_stores() -> None:
@@ -1091,6 +1102,63 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 principal.subject_id, idempotency_key,
             )
             return {"event": event, "created": created}
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/cognitive-runs/{run_id}/context", status_code=status.HTTP_201_CREATED)
+    def assemble_cognitive_context(
+        run_id: str,
+        request: CognitiveContextRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=256),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.context.assemble", run["agent_id"]
+            )
+            if request.entity_ids is not None and request.search is not None:
+                raise HTTPException(status_code=422, detail="Specify entity_ids or search, not both")
+            assembled = app.state.context_assembly.assemble(
+                principal.tenant_id,
+                entity_ids=request.entity_ids,
+                search=request.search,
+                include_inferences=request.include_inferences,
+                limit=request.limit,
+            )
+            packet = assembled["packet"]
+            event_input = {
+                "stage": "context",
+                "event_type": "context.assembled",
+                "evidence_status": "unverified",
+                "input_refs": [item["entity_id"] for item in packet["entities"]],
+                "output_refs": [assembled["snapshot_ref"]],
+                "evidence_refs": [item["evidence_id"] for item in packet["evidence"]],
+                "payload": {
+                    "context_snapshot_ref": assembled["snapshot_ref"],
+                    "context_content_hash": assembled["content_hash"],
+                    "context_snapshot": packet,
+                },
+            }
+            event, created = app.state.cognitive_runs.append_event(
+                run_id, event_input, principal.tenant_id, principal.subject_id, idempotency_key
+            )
+            return {
+                "snapshot_ref": assembled["snapshot_ref"],
+                "content_hash": assembled["content_hash"],
+                "byte_length": assembled["byte_length"],
+                "snapshot": packet,
+                "event": event,
+                "created": created,
+            }
+        except ContextAssemblyValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except CognitiveRunNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except CognitiveRunConflictError as exc:
