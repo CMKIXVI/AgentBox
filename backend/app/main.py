@@ -342,7 +342,7 @@ def load_job_handler_allowlist() -> set[tuple[str, str, str]]:
     return allowed
 
 
-def require_job_worker(request: Request, authorization: str | None) -> None:
+def require_job_worker(authorization: str | None) -> None:
     """Authenticate internal worker endpoints with a dedicated server secret."""
     expected = os.getenv("AGENTBOX_JOB_WORKER_TOKEN")
     if not expected:
@@ -637,7 +637,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         request: WorkerClaimRequest,
         authorization: str | None = Header(default=None, alias="Authorization"),
     ) -> dict[str, Any]:
-        require_job_worker(app, authorization)
+        require_job_worker(authorization)
         return {"job": app.state.execution_jobs.claim(request.worker_id, request.lease_seconds)}
 
     @app.post("/internal/v1/execution-jobs/{job_id}/start")
