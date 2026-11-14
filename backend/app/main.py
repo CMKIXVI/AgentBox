@@ -481,7 +481,6 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.enterprise_context = EnterpriseContextService(db_path)
     app.state.context_assembly = ContextAssemblyService(app.state.enterprise_context)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
-    app.state.postgresql_provenance = PostgreSQLProvenanceVerifier.from_environment()
     app.state.postgresql_connectors = PostgreSQLConnectorRegistry(db_path)
 
     def close_stores() -> None:
