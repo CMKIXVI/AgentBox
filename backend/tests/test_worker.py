@@ -31,7 +31,7 @@ def client(tmp_path, monkeypatch):
 def create_agent(client):
     root = Path(__file__).resolve().parents[2]
     manifest = json.loads((root / "examples" / "agent-manifest-v1.json").read_text())
-    manifest["agent_id"] = "worker.test"
+    manifest["agent_id"] = "runtime.test"
     manifest["model_binding"]["provider_id"] = "provider.fake"
     manifest["tools"] = []
     response = client.post("/v1/agents", json={"manifest": manifest})
@@ -40,7 +40,7 @@ def create_agent(client):
 
 def submit(client, key="worker-test-job"):
     return client.post(
-        "/v1/agents/worker.test/versions/1.0.0/jobs",
+        "/v1/agents/runtime.test/versions/1.0.0/jobs",
         headers={"Idempotency-Key": key},
         json={"input": {"prompt": "hello"}, "max_output_tokens": 64},
     )
