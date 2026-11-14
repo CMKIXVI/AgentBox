@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from .enterprise_context import ContextConflictError, ContextNotFoundError, ContextValidationError
 
@@ -172,8 +173,17 @@ class PostgreSQLConnectorRegistry:
     ) -> dict[str, Any]:
         self._validate_identity(connector_id, key_id)
         encoded, _ = self._validate_public_key(public_key)
-        if not isinstance(source_ref, str) or not source_ref.startswith("postgresql-catalog://") or len(source_ref) > 1024:
-            raise ContextValidationError("source_ref must be a credential-free postgresql-catalog URI")
+        try:
+            locator = urlsplit(source_ref)
+        except ValueError as exc:
+            raise ContextValidationError("source_ref is not a valid URI") from exc
+        if (
+            not isinstance(source_ref, str) or not 1 <= len(source_ref) <= 1024
+            or locator.scheme != "postgresql-catalog" or not locator.netloc
+            or locator.username or locator.password or locator.query or locator.fragment
+            or source_ref != source_ref.rstrip("/")
+        ):
+            raise ContextValidationError("source_ref must be a normalized credential-free postgresql-catalog URI")
         if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
             raise ContextValidationError("actor_id is invalid")
         now = _now()
@@ -216,11 +226,11 @@ class PostgreSQLConnectorRegistry:
                 if connector["status"] != "active":
                     raise ContextConflictError("Cannot rotate keys on a revoked connector")
                 db.execute(
-                    "INSERT INTO pg_connector_keys VALUES (?, ?, ?, ?, 'active', ?, ?)",
+                    "INSERT INTO pg_connector_keys VALUES (?, ?, ?, ?, ?, ?)",
                     (tenant_id, connector_id, key_id, encoded, now, actor_id),
                 )
                 self._event(db, tenant_id, connector_id, "connector.key_added",
-                            actor_id, key_id, {"public_key_sha256": __import__("hashlib").sha256(encoded.encode()).hexdigest()})
+                            actor_id, key_id, {"public_key_sha256": hashlib.sha256(encoded.encode()).hexdigest()})
         except sqlite3.IntegrityError as exc:
             raise ContextConflictError("Connector key ID already exists") from exc
         return {"connector_id": connector_id, "key_id": key_id, "status": "active", "created_at": now}
@@ -231,13 +241,19 @@ class PostgreSQLConnectorRegistry:
         with self._connection() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
-                """SELECT status FROM pg_connector_keys
+                """SELECT 1 FROM pg_connector_keys
                 WHERE tenant_id=? AND connector_id=? AND key_id=?""",
                 (tenant_id, connector_id, key_id),
             ).fetchone()
             if row is None:
                 raise ContextNotFoundError("PostgreSQL connector key not found")
-            if row["status"] == "revoked":
+            revoked = db.execute(
+                """SELECT 1 FROM pg_connector_events
+                WHERE tenant_id=? AND connector_id=? AND key_id=?
+                AND event_type='connector.key_revoked'""",
+                (tenant_id, connector_id, key_id),
+            ).fetchone()
+            if revoked:
                 raise ContextConflictError("Connector key is already revoked")
             db.execute(
                 "INSERT INTO pg_connector_events VALUES (?, ?, ?, 'connector.key_revoked', ?, ?, ?, ?)",
