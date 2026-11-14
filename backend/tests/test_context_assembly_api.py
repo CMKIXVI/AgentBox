@@ -85,6 +85,7 @@ def test_context_assembly_api_rejects_unknown_entities_and_ambiguous_selection(t
 
 def test_context_assembly_api_requires_authorization_and_idempotency_key(tmp_path):
     app, client, run_id = make_client(tmp_path)
+    original_policies = app.state.authorization_policies
     app.state.authorization_policies = []
     denied = client.post(
         f"/v1/cognitive-runs/{run_id}/context",
@@ -92,6 +93,6 @@ def test_context_assembly_api_requires_authorization_and_idempotency_key(tmp_pat
         json={},
     )
     assert denied.status_code == 403
-    app.state.authorization_policies = configure_test_access(app).state.authorization_policies
+    app.state.authorization_policies = original_policies
     missing_key = client.post(f"/v1/cognitive-runs/{run_id}/context", json={})
     assert missing_key.status_code == 422
