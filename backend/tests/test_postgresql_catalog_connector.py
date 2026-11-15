@@ -274,3 +274,46 @@ def test_attestor_rejects_snapshot_without_valid_digest():
             snapshot={"snapshot_hash": "not-a-digest", "discovered_at": "now"},
             key_id="key-v1",
         )
+
+
+def test_catalog_reader_bounds_rows_at_database_query_and_fails_on_overflow(monkeypatch):
+    import app.postgresql_catalog_connector as connector_module
+
+    monkeypatch.setattr(connector_module, "MAX_RELATIONS", 1)
+
+    class OverflowCursor(FakeCursor):
+        def execute(self, query, params=None):
+            super().execute(query, params)
+            if "FROM pg_catalog.pg_class AS c" in query:
+                self.result = [
+                    ("public", "customers", "table", None),
+                    ("public", "orders", "table", None),
+                ]
+
+    class OverflowConnection(FakeConnection):
+        def cursor(self):
+            return OverflowCursor(self)
+
+    connection = OverflowConnection()
+    with pytest.raises(ContextValidationError, match="exceeds 1 relations"):
+        PostgreSQLCatalogReader().collect(lambda: connection, ["public"])
+
+    relation_queries = [
+        statement for statement, _ in connection.statements
+        if "FROM pg_catalog.pg_class AS c" in statement
+    ]
+    assert len(relation_queries) == 1
+    assert relation_queries[0].rstrip().endswith("LIMIT 2")
+    assert connection.cursor_closed and connection.rolled_back and connection.closed
+
+
+def test_catalog_reader_adds_server_side_limit_to_each_catalog_query():
+    connection = FakeConnection()
+    PostgreSQLCatalogReader().collect(lambda: connection, ["public"])
+
+    catalog_queries = [
+        statement for statement, _ in connection.statements
+        if "FROM pg_catalog." in statement
+    ]
+    assert len(catalog_queries) == 5
+    assert all("LIMIT " in statement for statement in catalog_queries)
