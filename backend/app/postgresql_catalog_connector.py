@@ -113,9 +113,20 @@ class PostgreSQLCatalogReader:
         self.statement_timeout_ms = statement_timeout_ms
 
     @staticmethod
-    def _rows(cursor, query: str, schemas: Sequence[str]) -> list[tuple[Any, ...]]:
-        cursor.execute(query, (list(schemas),))
-        return list(cursor.fetchall())
+    def _rows(
+        cursor,
+        query: str,
+        schemas: Sequence[str],
+        *,
+        maximum: int,
+        label: str,
+    ) -> list[tuple[Any, ...]]:
+        # Fetch at most maximum + 1 rows; the extra row is an overflow sentinel.
+        cursor.execute(f"{query.rstrip()} LIMIT {maximum + 1}", (list(schemas),))
+        rows = list(cursor.fetchall())
+        if len(rows) > maximum:
+            raise ContextValidationError(f"Catalog snapshot exceeds {maximum} {label}")
+        return rows
 
     def collect(
         self,
@@ -147,30 +158,47 @@ class PostgreSQLCatalogReader:
                 "SELECT pg_catalog.set_config('statement_timeout', %s, true)",
                 (f"{self.statement_timeout_ms}ms",),
             )
-            schemas = [row[0] for row in self._rows(cursor, self.SCHEMAS_SQL, schema_names)]
+            schemas = [
+                row[0] for row in self._rows(
+                    cursor, self.SCHEMAS_SQL, schema_names,
+                    maximum=MAX_SCHEMAS, label="schemas",
+                )
+            ]
             if set(schemas) != set(schema_names):
                 raise ContextValidationError(
                     "One or more requested PostgreSQL schemas are missing or not visible"
                 )
             relations = [
                 {"schema_name": r[0], "relation_name": r[1], "relation_kind": r[2], "comment": r[3]}
-                for r in self._rows(cursor, self.RELATIONS_SQL, schemas)
+                for r in self._rows(
+                    cursor, self.RELATIONS_SQL, schemas,
+                    maximum=MAX_RELATIONS, label="relations",
+                )
             ]
             columns = [
                 {"schema_name": r[0], "relation_name": r[1], "ordinal_position": r[2],
                  "column_name": r[3], "data_type": r[4], "is_nullable": r[5], "comment": r[6]}
-                for r in self._rows(cursor, self.COLUMNS_SQL, schemas)
+                for r in self._rows(
+                    cursor, self.COLUMNS_SQL, schemas,
+                    maximum=MAX_COLUMNS, label="columns",
+                )
             ]
             indexes = [
                 {"schema_name": r[0], "relation_name": r[1], "index_name": r[2],
                  "is_primary": r[3], "is_unique": r[4], "definition": r[5]}
-                for r in self._rows(cursor, self.INDEXES_SQL, schemas)
+                for r in self._rows(
+                    cursor, self.INDEXES_SQL, schemas,
+                    maximum=MAX_INDEXES, label="indexes",
+                )
             ]
             constraints = [
                 {"schema_name": r[0], "relation_name": r[1], "constraint_name": r[2],
                  "constraint_kind": r[3], "definition": r[4],
                  "referenced_schema": r[5], "referenced_relation": r[6]}
-                for r in self._rows(cursor, self.CONSTRAINTS_SQL, schemas)
+                for r in self._rows(
+                    cursor, self.CONSTRAINTS_SQL, schemas,
+                    maximum=MAX_CONSTRAINTS, label="constraints",
+                )
             ]
             limits = (
                 (len(schemas), MAX_SCHEMAS, "schemas"),
