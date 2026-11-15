@@ -119,3 +119,8 @@ snapshot = PostgreSQLCatalogReader().collect(
 ```
 
 The `deployment_secret_provider` symbol above is intentionally supplied by the deployment; AgentBox does not invent or embed a vault credential implementation.
+
+
+### Bounded catalog result extraction
+
+Each catalog query now includes a server-side `LIMIT maximum + 1`. The extra row is an overflow sentinel: the connector rejects the snapshot immediately instead of accepting a truncated catalogue. This bounds result materialization for schemas, relations, columns, indexes and constraints before Python builds the snapshot. The configured limits remain strict and are not silently paginated. The aggregate ingestion-entity limit and final 8 MiB serialized snapshot limit are also enforced. A rejected collection rolls back and closes the source connection.
