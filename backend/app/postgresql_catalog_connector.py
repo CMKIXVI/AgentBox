@@ -108,7 +108,7 @@ class PostgreSQLCatalogReader:
     """
 
     def __init__(self, *, statement_timeout_ms: int = 15000):
-        if not isinstance(statement_timeout_ms, int) or not 100 <= statement_timeout_ms <= 120000:
+        if type(statement_timeout_ms) is not int or not 100 <= statement_timeout_ms <= 120000:
             raise ValueError("statement_timeout_ms must be between 100 and 120000")
         self.statement_timeout_ms = statement_timeout_ms
 
