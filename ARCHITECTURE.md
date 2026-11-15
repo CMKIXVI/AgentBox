@@ -485,3 +485,8 @@ The source-side connector package provides a DB-API-agnostic catalog reader, bou
 The source-side PostgreSQL connector now has a secret-backed connection-factory contract. A deployment injects a `DatabaseSecretProvider`; opaque secret references are resolved just in time for each connection and the DSN is never persisted in AgentBox connector records, API requests, snapshots or logs. The factory enforces TLS certificate and hostname verification (`sslmode=verify-full`), a bounded connect timeout and an optional explicit CA bundle. Psycopg 3 remains an optional, lazily loaded driver. Driver and secret-manager exception text is sanitized to prevent accidental credential disclosure.
 
 This is an adapter boundary with deterministic injected tests, not a bundled cloud-vault integration. No production secret-provider implementation, deployed CA trust configuration, live TLS handshake, source-role audit or live PostgreSQL end-to-end verification is claimed. These remain deployment acceptance gates.
+
+
+## PostgreSQL catalog extraction bounds
+
+The source-side reader applies server-side `LIMIT maximum + 1` to every catalog query. The additional row acts as an overflow sentinel and causes a fail-closed error; the collector never silently returns a partial catalogue. This bounds rows materialized for schema, relation, column, index and constraint metadata before snapshot assembly. Per-category, aggregate entity and serialized snapshot limits remain enforced, and overflow/error paths roll back and close the connection. This is a resource-safety boundary, not a substitute for database statement timeout, network limits or operational monitoring.
