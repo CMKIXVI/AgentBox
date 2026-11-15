@@ -317,3 +317,9 @@ def test_catalog_reader_adds_server_side_limit_to_each_catalog_query():
     ]
     assert len(catalog_queries) == 5
     assert all("LIMIT " in statement for statement in catalog_queries)
+
+
+@pytest.mark.parametrize("timeout", [True, False, 99, 120001, 1.5, "15000"])
+def test_catalog_reader_rejects_invalid_statement_timeout(timeout):
+    with pytest.raises(ValueError, match="statement_timeout_ms"):
+        PostgreSQLCatalogReader(statement_timeout_ms=timeout)
