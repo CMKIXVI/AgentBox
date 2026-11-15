@@ -229,3 +229,10 @@ Added a driver-agnostic source-side PostgreSQL catalog reader using an explicit 
 The source-side connector now includes a `DatabaseSecretProvider` protocol and `PostgreSQLConnectionFactory`. Secret references are opaque and resolved at connection time; the DSN is not cached or written into AgentBox. The factory forces certificate and hostname verification (`sslmode=verify-full`), bounds connection timeout, supports a deployment-provided CA bundle, lazily loads Psycopg 3, and sanitizes driver/secret-provider exception text. Tests cover runtime secret lookup, TLS policy, timeout/reference validation and error redaction.
 
 **Evidence boundary:** tests have been added but not executed in this environment. There is no concrete vault/KMS secret-provider implementation, real CA provisioning, live PostgreSQL connection, TLS handshake or least-privilege source-role verification. No API routes were added. This improves the source-side connection boundary but does not close the live integration production gate.
+
+
+## PostgreSQL catalog resource-boundary follow-up
+
+Catalog extraction now places a server-side `LIMIT maximum + 1` on each schema, relation, column, index and constraint query. The extra row is an overflow sentinel, so oversized catalogues fail closed rather than being silently truncated. This bounds result materialization before snapshot construction. The reader also rejects boolean statement-timeout values instead of accepting Python's boolean-as-integer coercion. New tests cover query limits, overflow cleanup and strict timeout validation.
+
+**Evidence boundary:** tests were added but have not been executed here. No live PostgreSQL database, load test, or source-side deployment has been exercised. The connector still requires a deployment-owned secret provider and concrete KMS/HSM signer.
