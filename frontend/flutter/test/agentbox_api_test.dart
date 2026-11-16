@@ -234,4 +234,82 @@ void main() {
     client.close();
   });
 
+  test('experience learning and fitness transports use tenant API contracts', () async {
+    final seen = <String>[];
+    final client = AgentBoxApiClient(
+      baseUrl: 'https://api.example.test',
+      accessTokenProvider: () async => 'short-lived-access-token',
+      httpClient: MockClient((request) async {
+        seen.add('${request.method} ${request.url.path}');
+        expect(request.headers['authorization'], 'Bearer short-lived-access-token');
+        if (request.url.path == '/v1/agent-experiences') {
+          expect(jsonDecode(request.body), {
+            'execution_id': 'exec-1',
+            'evaluation_run_id': 'eval-1',
+            'workload_ref': 'benchmark://support/v1',
+            'workload_hash': 'a' * 64,
+          });
+          return http.Response(jsonEncode({'experience_id': 'exp-1', 'evidence_status': 'unverified'}), 201);
+        }
+        if (request.url.path == '/v1/agents/demo-agent/experiences') {
+          return http.Response(jsonEncode({'items': [{'experience_id': 'exp-1'}]}), 200);
+        }
+        if (request.url.path == '/v1/agent-experiences/exp-1/lessons' && request.method == 'POST') {
+          expect(jsonDecode(request.body), {
+            'lesson_type': 'response.quality',
+            'statement': 'Clarify missing input.',
+            'evidence_refs': ['exp-1'],
+            'source_kind': 'human_review',
+            'extractor_version': 'agentbox-learning-ui/1.0.0',
+            'confidence': 1.0,
+          });
+          return http.Response(jsonEncode({'lesson_id': 'lesson-1', 'status': 'proposed'}), 201);
+        }
+        if (request.url.path == '/v1/agent-experiences/exp-1/lessons') {
+          return http.Response(jsonEncode({'items': [{'lesson_id': 'lesson-1'}]}), 200);
+        }
+        expect(request.url.queryParameters, {
+          'profile_id': 'support-quality',
+          'profile_version': '1.0.0',
+          'min_samples': '3',
+        });
+        return http.Response(jsonEncode({'items': [{'agent_id': 'demo-agent', 'sample_count': 3}]}), 200);
+      }),
+    );
+
+    final experience = await client.createExperience(
+      executionId: 'exec-1',
+      evaluationRunId: 'eval-1',
+      workloadRef: 'benchmark://support/v1',
+      workloadHash: 'a' * 64,
+    );
+    expect(experience['evidence_status'], 'unverified');
+    expect((await client.listExperiences('demo-agent'))['items'], hasLength(1));
+    final lesson = await client.createLearningLesson(
+      experienceId: 'exp-1',
+      lesson: {
+        'lesson_type': 'response.quality',
+        'statement': 'Clarify missing input.',
+        'evidence_refs': ['exp-1'],
+        'source_kind': 'human_review',
+        'extractor_version': 'agentbox-learning-ui/1.0.0',
+        'confidence': 1.0,
+      },
+    );
+    expect(lesson['status'], 'proposed');
+    expect((await client.listLearningLessons('exp-1'))['items'], hasLength(1));
+    expect((await client.selectFitness(
+      profileId: 'support-quality',
+      profileVersion: '1.0.0',
+    ))['items'], hasLength(1));
+    expect(seen, [
+      'POST /v1/agent-experiences',
+      'GET /v1/agents/demo-agent/experiences',
+      'POST /v1/agent-experiences/exp-1/lessons',
+      'GET /v1/agent-experiences/exp-1/lessons',
+      'GET /v1/fitness/selection',
+    ]);
+    client.close();
+  });
+
 }
