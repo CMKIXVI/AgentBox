@@ -62,6 +62,14 @@ Keep these domains distinct while reusing shared artifact, lineage, evaluation, 
 
 The detailed repository conformance and implementation gaps are tracked in [the 2026-11-14 architecture audit](docs/architecture-conformance-audit-2026-11-14.md). That audit is a snapshot; this master document remains the canonical target.
 
+## 2.1.1 Cognitive Runtime Explorer
+
+The Next.js and Flutter clients expose the existing tenant-scoped cognitive run APIs without creating a second runtime authority. The explorer supports run creation against an immutable `agent-id@version` reference, run inspection, ordered event retrieval, and explicit context snapshot assembly. Its nine-stage timeline is derived from persisted events:
+
+`intent → context → cognition → capability → responsibility → execution → observation → verification → memory`
+
+The event view is read-only. Cognitive event records are evidence/state records and cannot grant permissions, invoke capabilities, or execute agents. Context assembly is a separate authorized backend operation; by default it includes only currently valid observed facts and human-validated entities, validated evidence, and a minimized snapshot. Inferences remain disabled unless explicitly requested through the backend contract. A visible event or stage does not prove that the corresponding operational subsystem is implemented or that an agent executed successfully.
+
 ## 2.2 Evidence validation and provenance governance
 
 Enterprise Context evidence submission is untrusted by default. Evidence records are immutable and begin as `unverified`; submitters cannot set a validated or rejected state. A separately authorized reviewer must be distinct from the recorded submitter. Each evidence record receives at most one terminal review (`validated` or `rejected`), stored in an append-only review table and represented by an append-only context event. Review decisions are tenant-scoped and cannot be edited or reversed in place; corrected evidence must be submitted as a new record with new provenance.
