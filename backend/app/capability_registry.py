@@ -18,7 +18,7 @@ from typing import Any, Iterator
 from .capability_contract import validate_capability
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
-_VERSION = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$")
+_VERSION = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 
 
 class CapabilityRegistryError(Exception):
