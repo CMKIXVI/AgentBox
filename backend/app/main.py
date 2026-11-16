@@ -1136,7 +1136,9 @@ def create_app(database_path: str | None = None) -> FastAPI:
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
-        enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
+        enforce_authorization(
+            app, principal, "evaluation.profile", "profile.read", request.profile_id
+        )
         try:
             app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
