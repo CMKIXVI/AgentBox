@@ -38,7 +38,9 @@ def client_for(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
-def test_evaluation_executes_each_profile_case_and_persists_execution_evidence(tmp_path: Path) -> None:
+def test_evaluation_executes_profile_cases_and_persists_execution_evidence(
+    tmp_path: Path,
+) -> None:
     client = client_for(tmp_path)
     manifest = copy.deepcopy(AGENT)
     manifest["agent_id"] = "runtime.test"
@@ -90,8 +92,12 @@ def test_execution_backed_evaluation_reuses_per_case_execution_on_retry(tmp_path
     first = client.post(url, headers=headers, json=payload)
     second = client.post(url, headers=headers, json=payload)
     assert first.status_code == second.status_code == 201
-    first_ids = [item["execution_id"] for item in first.json()["execution_evidence"]["case_executions"]]
-    second_ids = [item["execution_id"] for item in second.json()["execution_evidence"]["case_executions"]]
+    first_ids = [
+        item["execution_id"] for item in first.json()["execution_evidence"]["case_executions"]
+    ]
+    second_ids = [
+        item["execution_id"] for item in second.json()["execution_evidence"]["case_executions"]
+    ]
     assert first_ids == second_ids
 
 
