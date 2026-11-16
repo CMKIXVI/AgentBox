@@ -45,4 +45,17 @@ void main() {
     expect(find.text('Evaluation history'), findsOneWidget);
   });
 
+  testWidgets('opens cognitive runtime timeline and context explorer', (tester) async {
+    await tester.pumpWidget(const AgentBoxApp());
+
+    await tester.tap(find.text('Cognition'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cognitive Runtime Explorer'), findsOneWidget);
+    expect(find.text('Create cognitive run'), findsOneWidget);
+    expect(find.text('Nine-stage lifecycle'), findsOneWidget);
+    expect(find.text('Context snapshot'), findsOneWidget);
+    expect(find.text('verification'), findsOneWidget);
+  });
+
 }
