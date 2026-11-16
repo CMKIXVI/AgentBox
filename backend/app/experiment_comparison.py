@@ -132,6 +132,20 @@ class ExperimentComparisonService:
                 CREATE INDEX IF NOT EXISTS idx_agent_experiment_comparisons_agent
                 ON agent_experiment_comparisons(tenant_id, agent_id, created_at)
             """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS agent_experiment_comparisons_no_update
+                BEFORE UPDATE ON agent_experiment_comparisons
+                BEGIN
+                    SELECT RAISE(ABORT, 'experiment comparison records are append-only');
+                END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS agent_experiment_comparisons_no_delete
+                BEFORE DELETE ON agent_experiment_comparisons
+                BEGIN
+                    SELECT RAISE(ABORT, 'experiment comparison records are append-only');
+                END
+            """)
 
     @staticmethod
     def _record(row: sqlite3.Row) -> dict[str, Any]:
@@ -183,6 +197,8 @@ class ExperimentComparisonService:
             value = values[name]
             if not isinstance(value, str) or not value.strip() or len(value) > 512:
                 raise ExperimentComparisonValidationError(f"{name} must contain 1 to 512 characters")
+        if parent_version == candidate_version:
+            raise ExperimentComparisonValidationError("Parent and candidate versions must differ")
         if parent_evaluation_run_id == candidate_evaluation_run_id:
             raise ExperimentComparisonValidationError("Parent and candidate evaluation run IDs must differ")
         if not isinstance(workload_hash, str) or not _HASH.fullmatch(workload_hash):
