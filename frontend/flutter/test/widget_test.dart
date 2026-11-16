@@ -71,4 +71,17 @@ void main() {
     expect(find.textContaining('caller-asserted'), findsOneWidget);
   });
 
+  testWidgets('opens parent candidate experiment explorer', (tester) async {
+    await tester.pumpWidget(const AgentBoxApp());
+
+    await tester.tap(find.text('Experiments'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Parent–Candidate Experiment'), findsOneWidget);
+    expect(find.text('Create comparison'), findsOneWidget);
+    expect(find.text('Parent evaluation run ID'), findsOneWidget);
+    expect(find.text('Candidate evaluation run ID'), findsOneWidget);
+    expect(find.textContaining('caller-asserted'), findsOneWidget);
+  });
+
 }
