@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -74,10 +75,15 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
   final _manifestController = TextEditingController();
   final _agentIdController = TextEditingController();
   final _executionIdController = TextEditingController();
+  final _jobVersionController = TextEditingController(text: '1.0.0');
+  final _jobInputController = TextEditingController(text: '{"message":"Hello from AgentBox"}');
+  final _jobIdController = TextEditingController();
   Map<String, dynamic>? _createdAgent;
   List<dynamic> _versions = [];
   Map<String, dynamic>? _selectedVersion;
   Map<String, dynamic>? _execution;
+  Map<String, dynamic>? _job;
+  List<dynamic> _jobEvents = [];
 
   @override
   void initState() {
@@ -92,6 +98,9 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     _manifestController.dispose();
     _agentIdController.dispose();
     _executionIdController.dispose();
+    _jobVersionController.dispose();
+    _jobInputController.dispose();
+    _jobIdController.dispose();
     super.dispose();
   }
 
@@ -250,6 +259,84 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     }
   }
 
+  String _newIdempotencyKey() {
+    final random = Random.secure();
+    return List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+  }
+
+  Future<void> _submitJob() async {
+    final api = _api;
+    final agentId = _agentIdController.text.trim();
+    final version = _jobVersionController.text.trim();
+    if (!_signedIn || api == null || agentId.isEmpty || version.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final input = jsonDecode(_jobInputController.text);
+      final result = await api.submitExecutionJob(
+        agentId: agentId,
+        version: version,
+        input: input,
+        maxOutputTokens: 1024,
+        idempotencyKey: _newIdempotencyKey(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _job = result;
+        _jobIdController.text = result['job_id']?.toString() ?? '';
+        _jobEvents = [];
+      });
+      _setNotice('Execution job accepted. Worker completion is asynchronous.');
+    } catch (error) {
+      _setNotice('Could not submit execution job: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _inspectJob() async {
+    final api = _api;
+    final jobId = _jobIdController.text.trim();
+    if (!_signedIn || api == null || jobId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final results = await Future.wait([
+        api.getExecutionJob(jobId),
+        api.listExecutionJobEvents(jobId),
+      ]);
+      if (!mounted) return;
+      final events = results[1]['items'];
+      setState(() {
+        _job = results[0];
+        _jobEvents = events is List ? events : [];
+      });
+      _setNotice('Execution job state refreshed.');
+    } catch (error) {
+      _setNotice('Could not inspect execution job: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _cancelJob() async {
+    final api = _api;
+    final jobId = _jobIdController.text.trim();
+    if (!_signedIn || api == null || jobId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.cancelExecutionJob(jobId);
+      if (!mounted) return;
+      setState(() => _job = result);
+      _setNotice('Cancellation requested. Refresh to observe the confirmed terminal state.');
+    } catch (error) {
+      _setNotice('Could not request cancellation: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _loadExecution() async {
     final api = _api;
     final executionId = _executionIdController.text.trim();
@@ -269,7 +356,6 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = ['Overview', 'Agent Studio', 'Execution'];
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -453,7 +539,53 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
         const Text('Retrieve a real execution record by ID. No simulated run data is shown.', style: TextStyle(color: Color(0xFF9AAAC2), height: 1.5)),
         const SizedBox(height: 18),
         _sectionCard(
-          title: 'Find execution',
+          title: 'Submit durable agent job',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(controller: _agentIdController, decoration: const InputDecoration(labelText: 'Agent ID')),
+              const SizedBox(height: 10),
+              TextField(controller: _jobVersionController, decoration: const InputDecoration(labelText: 'Immutable version')),
+              const SizedBox(height: 10),
+              TextField(controller: _jobInputController, minLines: 3, maxLines: 6, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), decoration: const InputDecoration(labelText: 'Input · JSON', alignLabelWithHint: true)),
+              const SizedBox(height: 10),
+              const Text('Requires a trusted worker and matching server-side provider allowlist.', style: TextStyle(color: Color(0xFF9AAAC2), fontSize: 11, height: 1.5)),
+              const SizedBox(height: 10),
+              FilledButton(onPressed: !_signedIn || _busy ? null : _submitJob, child: const Text('Submit execution job')),
+              if (_job != null) ...[
+                const SizedBox(height: 12),
+                _jsonResult(_job!),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Job lifecycle',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(controller: _jobIdController, decoration: const InputDecoration(labelText: 'Execution job ID')),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: OutlinedButton(onPressed: !_signedIn || _busy ? null : _inspectJob, child: const Text('Refresh status'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: OutlinedButton(onPressed: !_signedIn || _busy ? null : _cancelJob, child: const Text('Request cancel'))),
+                ],
+              ),
+              if (_jobEvents.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text('Append-only lifecycle events', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                const SizedBox(height: 8),
+                _jsonResult({'items': _jobEvents}),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Find synchronous execution',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
