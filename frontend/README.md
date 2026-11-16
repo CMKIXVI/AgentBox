@@ -20,7 +20,7 @@ The authenticated Next.js console and Flutter client now provide:
 
 - A five-pillar overview aligned with the canonical AgentBox architecture.
 - Agent Studio: register an immutable agent manifest version, list versions for a known agent ID, and inspect a selected version.
-- Execution inspector: retrieve an existing execution record by execution ID.
+- Execution: submit tenant-scoped durable jobs with idempotency keys, refresh job state, inspect append-only lifecycle events, request cancellation, and retrieve existing synchronous execution records.
 - Visible authentication/session state and explicit sign-out.
 - Structured success/error feedback and JSON inspection without fabricated data.
 
