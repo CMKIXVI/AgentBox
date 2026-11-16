@@ -23,10 +23,11 @@ The authenticated Next.js console and Flutter client now provide:
 - Execution: submit tenant-scoped durable jobs with idempotency keys, refresh job state, inspect append-only lifecycle events, request cancellation, and retrieve existing synchronous execution records.
 - Evaluation Explorer: create immutable evaluation profile versions, inspect profile history, submit externally measured case outputs for deterministic scoring, inspect gate results, and browse prior evaluation runs.
 - Cognitive Runtime Explorer: create and inspect tenant-scoped cognitive runs, view the nine-stage append-only event timeline, and explicitly assemble minimized context snapshots from policy-eligible evidence.
+- Experience, Learning & Fitness Explorer: record minimized execution/evaluation links, create and inspect source-linked proposed lessons, and select agents using repeated samples from an exact evaluation profile version.
 - Visible authentication/session state and explicit sign-out.
 - Structured success/error feedback and JSON inspection without fabricated data.
 
-Cognitive lifecycle events are displayed read-only; event records cannot authorize or execute tools. Context assembly is an explicit backend operation and includes currently valid observed facts and human-validated entities by default. The screens use the existing API contracts only. The backend does not yet expose a tenant-scoped agent catalogue endpoint, so the UI does not pretend to provide a global agent list. Execution creation, evaluation, candidate promotion, workflow authoring, and approval inbox screens remain gated on their complete operational contracts and evidence.
+Experience records are explicitly caller-asserted and unverified until a trusted execution attestation exists; fitness aggregates are prioritization signals only and cannot authorize promotion. Lessons remain proposed and immutable. Cognitive lifecycle events are displayed read-only; event records cannot authorize or execute tools. Context assembly is an explicit backend operation and includes currently valid observed facts and human-validated entities by default. The screens use the existing API contracts only. The backend does not yet expose a tenant-scoped agent catalogue endpoint, so the UI does not pretend to provide a global agent list. Execution creation, evaluation, candidate promotion, workflow authoring, and approval inbox screens remain gated on their complete operational contracts and evidence.
 
 ## Local development
 
