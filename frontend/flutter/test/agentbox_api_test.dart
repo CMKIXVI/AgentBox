@@ -110,4 +110,65 @@ void main() {
     client.close();
   });
 
+  test('evaluation profile and scoring transport uses tenant-authenticated routes', () async {
+    final seen = <String>[];
+    final client = AgentBoxApiClient(
+      baseUrl: 'https://api.example.test',
+      accessTokenProvider: () async => 'short-lived-access-token',
+      httpClient: MockClient((request) async {
+        seen.add('${request.method} ${request.url.path}');
+        expect(request.headers['authorization'], 'Bearer short-lived-access-token');
+        if (request.url.path == '/v1/evaluation-profiles') {
+          expect(request.method, 'POST');
+          expect(jsonDecode(request.body), {
+            'profile': {'profile_id': 'quality', 'version': '1.0.0'},
+          });
+          return http.Response(jsonEncode({'profile_id': 'quality', 'version': '1.0.0'}), 201);
+        }
+        if (request.url.path.endsWith('/evaluations') && request.method == 'POST') {
+          expect(jsonDecode(request.body), {
+            'profile_id': 'quality',
+            'profile_version': '1.0.0',
+            'results': [
+              {'case_id': 'case-1', 'output': 'ok', 'latency_ms': 100, 'cost_usd': 0.001},
+            ],
+          });
+          return http.Response(jsonEncode({'run_id': 'eval-001', 'passed': true}), 201);
+        }
+        if (request.url.path.endsWith('/versions')) {
+          return http.Response(jsonEncode({'items': []}), 200);
+        }
+        if (request.url.path.endsWith('/evaluations')) {
+          return http.Response(jsonEncode({'items': []}), 200);
+        }
+        return http.Response(jsonEncode({'run_id': 'eval-001', 'passed': true}), 200);
+      }),
+    );
+
+    await client.createEvaluationProfile({'profile_id': 'quality', 'version': '1.0.0'});
+    expect((await client.listEvaluationProfileVersions('quality'))['items'], isEmpty);
+    expect((await client.getEvaluationProfile('quality', '1.0.0'))['run_id'], 'eval-001');
+    final run = await client.submitEvaluation(
+      agentId: 'demo-agent',
+      version: '1.0.0',
+      profileId: 'quality',
+      profileVersion: '1.0.0',
+      results: [
+        {'case_id': 'case-1', 'output': 'ok', 'latency_ms': 100, 'cost_usd': 0.001},
+      ],
+    );
+    expect(run['passed'], true);
+    expect((await client.listEvaluations('demo-agent', '1.0.0'))['items'], isEmpty);
+    expect((await client.getEvaluation('eval-001'))['run_id'], 'eval-001');
+    expect(seen, [
+      'POST /v1/evaluation-profiles',
+      'GET /v1/evaluation-profiles/quality/versions',
+      'GET /v1/evaluation-profiles/quality/versions/1.0.0',
+      'POST /v1/agents/demo-agent/versions/1.0.0/evaluations',
+      'GET /v1/agents/demo-agent/versions/1.0.0/evaluations',
+      'GET /v1/evaluations/eval-001',
+    ]);
+    client.close();
+  });
+
 }
