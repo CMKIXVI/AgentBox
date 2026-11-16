@@ -126,6 +126,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
       });
 
   Future<void> _restoreSession() async {
+    if (!_oidcConfig.isConfigured || _apiBaseUrl.isEmpty) return;
     final token = await _oidcAuth.accessToken();
     if (!mounted) return;
     if (token != null && _apiBaseUrl.isNotEmpty) {
