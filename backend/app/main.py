@@ -1176,7 +1176,9 @@ def create_app(database_path: str | None = None) -> FastAPI:
             )
         enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
-        enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
+        enforce_authorization(
+            app, principal, "evaluation.profile", "profile.read", request.profile_id
+        )
         try:
             artifact = app.state.registry.get(agent_id, version, principal.tenant_id)
             profile_record = app.state.evaluations.get_profile(
