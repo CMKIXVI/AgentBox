@@ -254,4 +254,34 @@ export class AgentBoxBffClient {
       body: JSON.stringify(request),
     });
   }
+
+  createExperience(input: {
+    execution_id: string; evaluation_run_id: string; workload_ref: string; workload_hash: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request("/v1/agent-experiences", { method: "POST", body: JSON.stringify(input) });
+  }
+
+  listExperiences(agentId: string, profileId?: string, profileVersion?: string): Promise<{ items: Record<string, unknown>[] }> {
+    const query = new URLSearchParams();
+    if (profileId && profileVersion) {
+      query.set("profile_id", profileId);
+      query.set("profile_version", profileVersion);
+    }
+    return this.request(`/v1/agents/${encodeURIComponent(agentId)}/experiences${query.size ? `?${query}` : ""}`);
+  }
+
+  createLearningLesson(experienceId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request(`/v1/agent-experiences/${encodeURIComponent(experienceId)}/lessons`, {
+      method: "POST", body: JSON.stringify(input),
+    });
+  }
+
+  listLearningLessons(experienceId: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/agent-experiences/${encodeURIComponent(experienceId)}/lessons`);
+  }
+
+  selectFitness(profileId: string, profileVersion: string, minSamples = 3): Promise<{ items: Record<string, unknown>[] }> {
+    const query = new URLSearchParams({ profile_id: profileId, profile_version: profileVersion, min_samples: String(minSamples) });
+    return this.request(`/v1/fitness/selection?${query}`);
+  }
 }
