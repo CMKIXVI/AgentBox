@@ -62,4 +62,52 @@ void main() {
     );
     client.close();
   });
+  test('durable execution job transport binds idempotency and lifecycle routes', () async {
+    final seen = <String>[];
+    final client = AgentBoxApiClient(
+      baseUrl: 'https://api.example.test',
+      accessTokenProvider: () async => 'short-lived-access-token',
+      httpClient: MockClient((request) async {
+        seen.add('${request.method} ${request.url.path}');
+        expect(request.headers['authorization'], 'Bearer short-lived-access-token');
+        if (request.url.path.endsWith('/jobs')) {
+          expect(request.method, 'POST');
+          expect(request.headers['idempotency-key'], 'job-key-001');
+          expect(jsonDecode(request.body), {
+            'input': {'prompt': 'hello'},
+            'max_output_tokens': 512,
+          });
+          return http.Response(jsonEncode({'job_id': 'job-001', 'state': 'queued'}), 202);
+        }
+        if (request.url.path.endsWith('/events')) {
+          return http.Response(jsonEncode({'items': []}), 200);
+        }
+        if (request.url.path.endsWith('/cancel')) {
+          expect(request.method, 'POST');
+          return http.Response(jsonEncode({'job_id': 'job-001', 'state': 'cancel_requested'}), 200);
+        }
+        return http.Response(jsonEncode({'job_id': 'job-001', 'state': 'queued'}), 200);
+      }),
+    );
+
+    final submitted = await client.submitExecutionJob(
+      agentId: 'demo-agent',
+      version: '1.0.0',
+      input: {'prompt': 'hello'},
+      maxOutputTokens: 512,
+      idempotencyKey: 'job-key-001',
+    );
+    expect(submitted['state'], 'queued');
+    expect((await client.getExecutionJob('job-001'))['job_id'], 'job-001');
+    expect((await client.listExecutionJobEvents('job-001'))['items'], isEmpty);
+    expect((await client.cancelExecutionJob('job-001'))['state'], 'cancel_requested');
+    expect(seen, [
+      'POST /v1/agents/demo-agent/versions/1.0.0/jobs',
+      'GET /v1/execution-jobs/job-001',
+      'GET /v1/execution-jobs/job-001/events',
+      'POST /v1/execution-jobs/job-001/cancel',
+    ]);
+    client.close();
+  });
+
 }
