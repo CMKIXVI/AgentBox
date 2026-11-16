@@ -47,6 +47,14 @@ def test_register_is_idempotent_and_content_addressed(tmp_path):
     store.close()
 
 
+def test_semantic_version_prerelease_and_build_metadata(tmp_path):
+    store = registry(tmp_path)
+    record, created = store.register(contract("1.2.3-rc.1+build.5"), "tenant-a")
+    assert created is True
+    assert record.version == "1.2.3-rc.1+build.5"
+    store.close()
+
+
 def test_version_is_immutable(tmp_path):
     store = registry(tmp_path)
     store.register(contract(), "tenant-a")
