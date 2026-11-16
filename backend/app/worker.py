@@ -9,6 +9,7 @@ import logging
 import os
 import signal
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -33,6 +34,16 @@ class CapabilityInvocationContext:
     version: str
     content_hash: str
     timeout_seconds: int
+    deadline_monotonic: float
+
+    def remaining_seconds(self) -> float:
+        """Return the remaining cooperative execution budget in seconds."""
+        return max(0.0, self.deadline_monotonic - time.monotonic())
+
+    def raise_if_expired(self) -> None:
+        """Allow handlers to enforce the deadline at safe cancellation checkpoints."""
+        if self.remaining_seconds() <= 0:
+            raise TimeoutError("capability execution deadline exceeded")
 
 
 CapabilityHandler = Callable[[CapabilityInvocationContext, Any], Any]
@@ -263,8 +274,13 @@ class ExecutionJobWorker:
             version=version,
             content_hash=artifact.content_hash,
             timeout_seconds=contract["timeout_seconds"],
+            deadline_monotonic=time.monotonic() + contract["timeout_seconds"],
         )
+        context.raise_if_expired()
         output = handler(context, payload["input"])
+        # A synchronous trusted handler cannot be forcibly interrupted safely.
+        # Discard late results and expose checkpoints for cooperative cancellation.
+        context.raise_if_expired()
         try:
             Draft202012Validator(contract["output_schema"]).validate(output)
         except JSONSchemaValidationError as exc:
