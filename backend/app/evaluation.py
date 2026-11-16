@@ -426,9 +426,13 @@ class EvaluationService:
             "profile_content_hash": profile_record["content_hash"],
             "cases": [{"case_id": case["case_id"], "input": case["input"]} for case in cases],
         }
-        expected_workload_hash = hashlib.sha256(canonical_json(workload_definition).encode("utf-8")).hexdigest()
+        expected_workload_hash = hashlib.sha256(
+            canonical_json(workload_definition).encode("utf-8")
+        ).hexdigest()
         if evidence.get("workload_hash") != expected_workload_hash:
-            raise ValueError("execution evidence workload hash does not match the pinned profile inputs")
+            raise ValueError(
+                "execution evidence workload hash does not match the pinned profile inputs"
+            )
 
         with self._connection() as connection:
             agent = connection.execute(
@@ -451,7 +455,8 @@ class EvaluationService:
             if not isinstance(evidence_items, list) or len(evidence_items) != len(cases):
                 raise ValueError("execution evidence must contain exactly one record per evaluation case")
             evidence_by_id = {item.get("case_id"): item for item in evidence_items if isinstance(item, dict)}
-            if len(evidence_by_id) != len(cases) or set(evidence_by_id) != {case["case_id"] for case in cases}:
+            expected_case_ids = {case["case_id"] for case in cases}
+            if len(evidence_by_id) != len(cases) or set(evidence_by_id) != expected_case_ids:
                 raise ValueError("execution evidence case IDs do not match the pinned profile")
             if set(submitted_by_id) != {case["case_id"] for case in cases}:
                 raise ValueError("submitted results do not cover the pinned evaluation profile")
@@ -472,11 +477,18 @@ class EvaluationService:
                 if row is None or row["status"] != "completed" or (
                     row["agent_id"], row["agent_version"]
                 ) != (agent_id, agent_version):
-                    raise ValueError("execution evidence does not reference a completed execution for this agent version")
+                    raise ValueError(
+                        "execution evidence does not reference a completed execution "
+                        "for this agent version"
+                    )
                 execution = json.loads(row["result_json"] or "{}")
                 usage = execution.get("usage", {})
-                input_hash = hashlib.sha256(canonical_json({"input": case["input"]}).encode("utf-8")).hexdigest()
-                output_hash = hashlib.sha256(canonical_json({"output": execution.get("output")}).encode("utf-8")).hexdigest()
+                input_hash = hashlib.sha256(
+                    canonical_json({"input": case["input"]}).encode("utf-8")
+                ).hexdigest()
+                output_hash = hashlib.sha256(
+                    canonical_json({"output": execution.get("output")}).encode("utf-8")
+                ).hexdigest()
                 submitted = submitted_by_id[case_id]
                 if (
                     execution.get("input_hash") != input_hash
@@ -490,7 +502,9 @@ class EvaluationService:
                     or item.get("provider_id") != execution.get("provider_id")
                     or item.get("model_id") != execution.get("model_id")
                 ):
-                    raise ValueError(f"Execution evidence for case {case_id} does not match its persisted execution")
+                    raise ValueError(
+                        f"Execution evidence for case {case_id} does not match its persisted execution"
+                    )
 
     def create_run(
         self,
@@ -523,11 +537,16 @@ class EvaluationService:
             "profile_version": profile_version,
             "status": "completed",
             "created_at": created_at,
-            "evidence_status": "server_recorded" if execution_evidence is not None else "caller_submitted",
+            "evidence_status": (
+                "server_recorded" if execution_evidence is not None else "caller_submitted"
+            ),
             **evaluation,
         }
         if execution_evidence is not None:
-            if not isinstance(execution_evidence, dict) or execution_evidence.get("source") != "server_execution_records":
+            if (
+                not isinstance(execution_evidence, dict)
+                or execution_evidence.get("source") != "server_execution_records"
+            ):
                 raise ValueError("execution_evidence must originate from server execution records")
             payload["execution_evidence"] = execution_evidence
         with self._connection() as connection:
