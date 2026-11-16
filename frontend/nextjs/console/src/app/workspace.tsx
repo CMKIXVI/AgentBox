@@ -67,6 +67,23 @@ export default function Workspace() {
   const [job, setJob] = useState<Record<string, unknown> | null>(null);
   const [jobEvents, setJobEvents] = useState<Record<string, unknown>[]>([]);
   const [created, setCreated] = useState<AgentVersionRecord | null>(null);
+  const [profileId, setProfileId] = useState("support-quality");
+  const [profileVersion, setProfileVersion] = useState("1.0.0");
+  const [profileText, setProfileText] = useState(JSON.stringify({
+    schema_version: "1.0.0",
+    profile_id: "support-quality",
+    version: "1.0.0",
+    name: "Support response quality",
+    description: "Deterministic checks for support agent outputs.",
+    scoring: { correctness_weight: 0.7, latency_weight: 0.2, cost_weight: 0.1 },
+    gates: { min_case_pass_rate: 0.9, max_avg_latency_ms: 3000, max_total_cost_usd: 0.05 },
+    cases: [{ case_id: "greeting", description: "Response contains a greeting", input: { message: "Hello" }, assertions: [{ type: "contains", expected_value: "Hello" }] }]
+  }, null, 2));
+  const [profileVersions, setProfileVersions] = useState<Record<string, unknown>[]>([]);
+  const [evaluationResultsText, setEvaluationResultsText] = useState('[{"case_id":"greeting","output":"Hello! How can I help?","latency_ms":420,"cost_usd":0.001}]');
+  const [evaluationRuns, setEvaluationRuns] = useState<Record<string, unknown>[]>([]);
+  const [evaluationRun, setEvaluationRun] = useState<Record<string, unknown> | null>(null);
+  const [evaluationRunId, setEvaluationRunId] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -191,6 +208,87 @@ export default function Workspace() {
     }
   }
 
+  async function saveEvaluationProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("profile-save");
+    setNotice(null);
+    try {
+      const profile = JSON.parse(profileText) as Record<string, unknown>;
+      const saved = await api.createEvaluationProfile(profile);
+      setProfileId(String(saved.profile_id ?? profileId));
+      setProfileVersion(String(saved.version ?? profileVersion));
+      setNotice({ kind: "success", text: "Immutable evaluation profile version registered." });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof SyntaxError ? "Evaluation profile must be valid JSON." : errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function loadEvaluationProfiles(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("profile-list");
+    setNotice(null);
+    try {
+      const result = await api.listEvaluationProfileVersions(profileId.trim());
+      setProfileVersions(result.items);
+      setNotice({ kind: "success", text: `Loaded ${result.items.length} immutable profile version(s).` });
+    } catch (error) {
+      setProfileVersions([]);
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runEvaluation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("evaluation-run");
+    setNotice(null);
+    setEvaluationRun(null);
+    try {
+      const results = JSON.parse(evaluationResultsText) as unknown;
+      if (!Array.isArray(results)) throw new Error("Evaluation results must be a JSON array.");
+      const result = await api.submitEvaluation(
+        agentId.trim(), jobVersion.trim(), profileId.trim(), profileVersion.trim(), results,
+      );
+      setEvaluationRun(result);
+      setEvaluationRunId(String(result.run_id ?? ""));
+      setNotice({ kind: "success", text: "Evaluation scored the submitted outputs. This endpoint does not execute the agent." });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof SyntaxError ? "Submitted evaluation results must be valid JSON." : errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function loadEvaluationHistory() {
+    if (!agentId.trim() || !jobVersion.trim()) return;
+    setBusy("evaluation-history");
+    setNotice(null);
+    try {
+      const result = await api.listEvaluations(agentId.trim(), jobVersion.trim());
+      setEvaluationRuns(result.items);
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function inspectEvaluationRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("evaluation-inspect");
+    setNotice(null);
+    try {
+      setEvaluationRun(await api.getEvaluation(evaluationRunId.trim()));
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -201,7 +299,7 @@ export default function Workspace() {
         <nav className="side-nav" aria-label="Workspace sections">
           <a className="active" href="#overview">Overview</a>
           <a href="#agent-studio">Agent Studio</a>
-          <a href="#execution">Execution</a>
+          <a href="#execution">Execution</a>\n          <a href="#evaluation">Evaluation</a>
           <a href="#governance">Governance</a>
         </nav>
         <div className="sidebar-foot">
@@ -312,6 +410,54 @@ export default function Workspace() {
             </form>
             {execution ? <JsonPanel value={execution} /> : <p className="empty-state">Synchronous execution records appear here after a successful API lookup. No simulated data is shown.</p>}
           </article>
+        </section>
+
+        <section className="content-section" id="evaluation">
+          <div className="section-heading">
+            <div><p className="eyebrow">QUALITY & VERIFICATION</p><h2>Evaluation Explorer</h2><p>Version deterministic quality profiles, submit measured outputs, and inspect scoring and gates.</p></div>
+          </div>
+          <div className="two-column">
+            <article className="surface-card">
+              <div className="card-heading"><div><span className="card-kicker">IMMUTABLE CONTRACT</span><h3>Evaluation profile</h3></div><span className="card-symbol">✓</span></div>
+              <form onSubmit={saveEvaluationProfile} className="stack-form">
+                <label htmlFor="evaluation-profile">Profile · JSON</label>
+                <textarea id="evaluation-profile" value={profileText} onChange={(event) => setProfileText(event.target.value)} rows={18} spellCheck={false} />
+                <p className="helper">Profiles define cases, deterministic assertions, scoring weights, and promotion gates. No executable evaluator code is accepted.</p>
+                <button className="primary-button" type="submit" disabled={busy !== null}>{busy === "profile-save" ? "Saving…" : "Register profile version"}</button>
+              </form>
+              <form onSubmit={loadEvaluationProfiles} className="stack-form detail-block">
+                <label htmlFor="profile-id">Profile ID</label>
+                <input id="profile-id" value={profileId} onChange={(event) => setProfileId(event.target.value)} required />
+                <button className="secondary-button" type="submit" disabled={busy !== null || !profileId.trim()}>{busy === "profile-list" ? "Loading…" : "Load profile versions"}</button>
+              </form>
+              {profileVersions.length > 0 && <div className="version-list">{profileVersions.map((item) => <button className="version-row" key={String(item.version)} type="button" onClick={async () => { setBusy("profile-detail"); try { const result = await api.getEvaluationProfile(profileId.trim(), String(item.version)); setProfileVersion(String(item.version)); setProfileText(JSON.stringify(result.profile, null, 2)); setNotice({ kind: "success", text: `Loaded profile version ${String(item.version)}.` }); } catch (error) { setNotice({ kind: "error", text: errorMessage(error) }); } finally { setBusy(null); } }}><span><strong>v{String(item.version)}</strong><small>{String(item.created_at ?? "")}</small></span><span className="version-arrow">→</span></button>)}</div>}
+            </article>
+            <article className="surface-card execution-card">
+              <div className="card-heading"><div><span className="card-kicker">DETERMINISTIC SCORING</span><h3>Score submitted outputs</h3></div><span className="card-symbol">◎</span></div>
+              <form onSubmit={runEvaluation} className="stack-form">
+                <label htmlFor="eval-agent-id">Agent ID</label>
+                <input id="eval-agent-id" value={agentId} onChange={(event) => setAgentId(event.target.value)} required />
+                <label htmlFor="eval-agent-version">Agent version</label>
+                <input id="eval-agent-version" value={jobVersion} onChange={(event) => setJobVersion(event.target.value)} required />
+                <label htmlFor="eval-profile-version">Profile version</label>
+                <input id="eval-profile-version" value={profileVersion} onChange={(event) => setProfileVersion(event.target.value)} required />
+                <label htmlFor="eval-results">Measured case outputs · JSON array</label>
+                <textarea id="eval-results" value={evaluationResultsText} onChange={(event) => setEvaluationResultsText(event.target.value)} rows={9} spellCheck={false} />
+                <p className="helper">Supply output, latency_ms, and cost_usd for each case. Agent execution and benchmark generation are not performed by this scoring API.</p>
+                <button className="primary-button" type="submit" disabled={busy !== null || !agentId.trim()}>{busy === "evaluation-run" ? "Scoring…" : "Score submitted outputs"}</button>
+              </form>
+              {evaluationRun && <div className="result-card"><strong>{evaluationRun.passed ? "All evaluation gates passed" : "Evaluation gates not passed"} · score {String(evaluationRun.score ?? "—")}</strong><small>Run: {String(evaluationRun.run_id ?? "")} · case pass rate {String(evaluationRun.case_pass_rate ?? "—")}</small><JsonPanel value={evaluationRun.gate_results ?? {}} /></div>}
+              <div className="detail-block">
+                <button className="secondary-button" type="button" onClick={() => void loadEvaluationHistory()} disabled={busy !== null || !agentId.trim()}>Load evaluation history</button>
+                {evaluationRuns.length > 0 && <div className="version-list">{evaluationRuns.map((item) => <button className="version-row" key={String(item.run_id)} type="button" onClick={() => { setEvaluationRun(item); setEvaluationRunId(String(item.run_id)); }}><span><strong>{String(item.passed ? "PASS" : "FAIL")} · {String(item.score)}</strong><small>{String(item.run_id)}</small></span><span className="version-arrow">→</span></button>)}</div>}
+              </div>
+              <form onSubmit={inspectEvaluationRun} className="stack-form detail-block">
+                <label htmlFor="evaluation-run-id">Evaluation run ID</label>
+                <input id="evaluation-run-id" value={evaluationRunId} onChange={(event) => setEvaluationRunId(event.target.value)} required />
+                <button className="secondary-button" type="submit" disabled={busy !== null || !evaluationRunId.trim()}>{busy === "evaluation-inspect" ? "Loading…" : "Inspect evaluation run"}</button>
+              </form>
+            </article>
+          </div>
         </section>
 
         <section className="content-section" id="governance">
