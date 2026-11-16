@@ -91,6 +91,20 @@ export default function Workspace() {
   const [cognitiveEvents, setCognitiveEvents] = useState<Record<string, unknown>[]>([]);
   const [contextSearch, setContextSearch] = useState("");
   const [contextSnapshot, setContextSnapshot] = useState<Record<string, unknown> | null>(null);
+  const [experienceAgentId, setExperienceAgentId] = useState("");
+  const [experienceExecutionId, setExperienceExecutionId] = useState("");
+  const [experienceEvaluationId, setExperienceEvaluationId] = useState("");
+  const [experienceWorkloadRef, setExperienceWorkloadRef] = useState("benchmark://support-quality/v1");
+  const [experienceWorkloadHash, setExperienceWorkloadHash] = useState("");
+  const [experienceItems, setExperienceItems] = useState<Record<string, unknown>[]>([]);
+  const [experienceId, setExperienceId] = useState("");
+  const [lessonType, setLessonType] = useState("response.quality");
+  const [lessonStatement, setLessonStatement] = useState("");
+  const [lessonItems, setLessonItems] = useState<Record<string, unknown>[]>([]);
+  const [fitnessProfileId, setFitnessProfileId] = useState("support-quality");
+  const [fitnessProfileVersion, setFitnessProfileVersion] = useState("1.0.0");
+  const [fitnessMinSamples, setFitnessMinSamples] = useState("3");
+  const [fitnessItems, setFitnessItems] = useState<Record<string, unknown>[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -361,6 +375,77 @@ export default function Workspace() {
     }
   }
 
+  async function createExperience(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("experience-create");
+    setNotice(null);
+    try {
+      const result = await api.createExperience({
+        execution_id: experienceExecutionId.trim(),
+        evaluation_run_id: experienceEvaluationId.trim(),
+        workload_ref: experienceWorkloadRef.trim(),
+        workload_hash: experienceWorkloadHash.trim(),
+      });
+      setExperienceId(String(result.experience_id ?? ""));
+      setNotice({ kind: "success", text: "Experience record saved. Its linkage remains caller-asserted and unverified." });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
+  async function loadExperiences(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("experience-list");
+    try {
+      const result = await api.listExperiences(experienceAgentId.trim());
+      setExperienceItems(result.items);
+      setNotice({ kind: "success", text: `Loaded ${result.items.length} experience record(s).` });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
+  async function createLesson(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("lesson-create");
+    try {
+      const result = await api.createLearningLesson(experienceId.trim(), {
+        lesson_type: lessonType.trim(),
+        statement: lessonStatement.trim(),
+        evidence_refs: [experienceId.trim()],
+        source_kind: "human_review",
+        extractor_version: "agentbox-learning-ui/1.0.0",
+        confidence: 1,
+      });
+      setLessonItems((items) => [result, ...items.filter((item) => item.lesson_id !== result.lesson_id)]);
+      setNotice({ kind: "success", text: "Proposed lesson recorded with its source experience reference." });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
+  async function loadLessons() {
+    setBusy("lesson-list");
+    try {
+      const result = await api.listLearningLessons(experienceId.trim());
+      setLessonItems(result.items);
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
+  async function loadFitness(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("fitness");
+    try {
+      const result = await api.selectFitness(fitnessProfileId.trim(), fitnessProfileVersion.trim(), Number(fitnessMinSamples));
+      setFitnessItems(result.items);
+      setNotice({ kind: "success", text: `Loaded ${result.items.length} evidence-based fitness candidate(s). This ranking is not promotion approval.` });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -374,6 +459,7 @@ export default function Workspace() {
           <a href="#execution">Execution</a>
           <a href="#evaluation">Evaluation</a>
           <a href="#cognition">Cognition</a>
+          <a href="#learning">Learning & Fitness</a>
           <a href="#governance">Governance</a>
         </nav>
         <div className="sidebar-foot">
@@ -575,6 +661,55 @@ export default function Workspace() {
               })}
             </div>
             {cognitiveEvents.length > 0 ? <JsonPanel value={cognitiveEvents} /> : <p className="empty-state">Lifecycle events appear after a run is created or inspected. This view cannot append events, invoke capabilities, or grant authority.</p>}
+          </article>
+        </section>
+
+        <section className="content-section" id="learning">
+          <div className="section-heading">
+            <div><p className="eyebrow">AI INTELLIGENCE · AGENT EVOLUTION</p><h2>Experience, Learning & Fitness</h2><p>Retain minimized execution/evaluation links, derive traceable lessons, and rank agents using repeated evidence.</p></div>
+          </div>
+          <div className="two-column">
+            <article className="surface-card">
+              <div className="card-heading"><div><span className="card-kicker">EXPERIENCE LEDGER</span><h3>Record execution experience</h3></div></div>
+              <form onSubmit={createExperience} className="stack-form">
+                <label htmlFor="experience-execution">Execution ID</label><input id="experience-execution" value={experienceExecutionId} onChange={(e) => setExperienceExecutionId(e.target.value)} required />
+                <label htmlFor="experience-evaluation">Evaluation run ID</label><input id="experience-evaluation" value={experienceEvaluationId} onChange={(e) => setExperienceEvaluationId(e.target.value)} required />
+                <label htmlFor="experience-workload">Workload reference</label><input id="experience-workload" value={experienceWorkloadRef} onChange={(e) => setExperienceWorkloadRef(e.target.value)} required />
+                <label htmlFor="experience-hash">Workload SHA-256</label><input id="experience-hash" value={experienceWorkloadHash} onChange={(e) => setExperienceWorkloadHash(e.target.value)} minLength={64} maxLength={64} pattern="[a-fA-F0-9]{64}" required />
+                <button className="primary-button" type="submit" disabled={busy !== null}>{busy === "experience-create" ? "Saving…" : "Record experience"}</button>
+              </form>
+              <form onSubmit={loadExperiences} className="stack-form detail-block">
+                <label htmlFor="experience-agent">Agent ID</label><input id="experience-agent" value={experienceAgentId} onChange={(e) => setExperienceAgentId(e.target.value)} required />
+                <button className="secondary-button" type="submit" disabled={busy !== null}>{busy === "experience-list" ? "Loading…" : "Load experiences"}</button>
+              </form>
+              {experienceItems.length > 0 && <div className="version-list">{experienceItems.map((item) => <button className="version-row" key={String(item.experience_id)} type="button" onClick={() => setExperienceId(String(item.experience_id))}><span><strong>{String(item.agent_id)}@{String(item.agent_version)}</strong><small>{String(item.experience_id)} · {String(item.evidence_status)}</small></span><span className="version-arrow">→</span></button>)}</div>}
+              <p className="helper">Experience API currently records caller-asserted execution/evaluation linkage. Records are marked unverified and must not be treated as trusted execution proof.</p>
+            </article>
+            <article className="surface-card">
+              <div className="card-heading"><div><span className="card-kicker">TRACEABLE LEARNING</span><h3>Propose a lesson</h3></div></div>
+              <form onSubmit={createLesson} className="stack-form">
+                <label htmlFor="lesson-experience">Source experience ID</label><input id="lesson-experience" value={experienceId} onChange={(e) => setExperienceId(e.target.value)} required />
+                <label htmlFor="lesson-type">Normalized lesson type</label><input id="lesson-type" value={lessonType} onChange={(e) => setLessonType(e.target.value)} pattern="[a-z][a-z0-9._-]{1,63}" required />
+                <label htmlFor="lesson-statement">Lesson statement</label><textarea id="lesson-statement" value={lessonStatement} onChange={(e) => setLessonStatement(e.target.value)} maxLength={2000} rows={4} required />
+                <button className="primary-button" type="submit" disabled={busy !== null || !experienceId.trim()}>{busy === "lesson-create" ? "Saving…" : "Save proposed lesson"}</button>
+                <button className="secondary-button" type="button" onClick={() => void loadLessons()} disabled={busy !== null || !experienceId.trim()}>{busy === "lesson-list" ? "Loading…" : "Load lessons"}</button>
+              </form>
+              {lessonItems.length > 0 && <JsonPanel value={lessonItems} />}
+              <p className="helper">Lessons remain proposed, immutable and source-linked. They do not rewrite agent configuration or grant authority.</p>
+            </article>
+          </div>
+          <article className="surface-card execution-card">
+            <div className="card-heading"><div><span className="card-kicker">REPEATED SAMPLE SELECTION</span><h3>Fitness ranking</h3></div></div>
+            <form onSubmit={loadFitness} className="stack-form">
+              <div className="two-column">
+                <div><label htmlFor="fitness-profile">Evaluation profile ID</label><input id="fitness-profile" value={fitnessProfileId} onChange={(e) => setFitnessProfileId(e.target.value)} required /></div>
+                <div><label htmlFor="fitness-version">Profile version</label><input id="fitness-version" value={fitnessProfileVersion} onChange={(e) => setFitnessProfileVersion(e.target.value)} required /></div>
+              </div>
+              <label htmlFor="fitness-samples">Minimum sample count</label><input id="fitness-samples" type="number" min={1} max={1000} value={fitnessMinSamples} onChange={(e) => setFitnessMinSamples(e.target.value)} required />
+              <button className="primary-button" type="submit" disabled={busy !== null}>{busy === "fitness" ? "Selecting…" : "Select fitness candidates"}</button>
+            </form>
+            {fitnessItems.length > 0 ? <JsonPanel value={fitnessItems} /> : <p className="empty-state">No fitness selection loaded. Selection requires repeated experience samples under the exact evaluation profile version.</p>}
+            <p className="helper">Fitness scores are historical aggregates over unverified, caller-asserted records. They are prioritization signals only—not trusted benchmark comparisons, gate results, or promotion authority.</p>
           </article>
         </section>
 
