@@ -236,3 +236,12 @@ The source-side connector now includes a `DatabaseSecretProvider` protocol and `
 Catalog extraction now places a server-side `LIMIT maximum + 1` on each schema, relation, column, index and constraint query. The extra row is an overflow sentinel, so oversized catalogues fail closed rather than being silently truncated. This bounds result materialization before snapshot construction. The reader also rejects boolean statement-timeout values instead of accepting Python's boolean-as-integer coercion. New tests cover query limits, overflow cleanup and strict timeout validation.
 
 **Evidence boundary:** tests were added but have not been executed here. No live PostgreSQL database, load test, or source-side deployment has been exercised. The connector still requires a deployment-owned secret provider and concrete KMS/HSM signer.
+
+## Follow-up — 2026-11-16: Experience, Learning and Fitness clients
+
+- Added Next.js and Flutter clients for the existing tenant-scoped experience record, learning lesson, and fitness selection APIs.
+- Added Flutter API transport and widget coverage.
+- The clients explicitly label experience linkage as caller-asserted/unverified, lessons as proposed, and fitness aggregates as prioritization signals only.
+- No API routes or backend trust semantics changed. No trusted execution attestation, same-workload experiment runner, hard-gate evaluator, approval workflow, promotion pointer, or rollback authority was added.
+- Tests were authored but not executed in this environment. No CI workflow run exists for the latest branch commit; frontend compilation and live API/browser/device E2E remain unverified.
+- This is a frontend observability/workflow slice, not evidence of autonomous evolution or production readiness.
