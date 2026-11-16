@@ -64,3 +64,14 @@ The first vertical slice is intentionally narrow: it performs one provider invoc
 The Enterprise Context Engine is an additive, tenant-scoped metadata and relationship layer over the existing AgentBox SQLite database. It reuses OIDC authentication, active-tenant enforcement and exact-match authorization. Its v1 API supports immutable entity versions, typed relationships, evidence references, bounded queries and append-only context events.
 
 See [Enterprise Context architecture map](../docs/enterprise-context-architecture-map.md) for the existing-module mapping, scope boundaries and implementation sequence. ECE does not yet include external discovery connectors, a natural-language reasoning agent, a workflow interpreter or a production action gateway. The current API routes are under `/v1/enterprise-context`; grants use capability ID `enterprise.context` and explicit context actions.
+
+
+## Trusted capability worker adapter
+
+Capability invocation requests are admitted to the durable queue only when the API deployment binds the exact `capability_id@version` to an exact handler tuple in `AGENTBOX_CAPABILITY_HANDLERS`; that tuple must also appear in `AGENTBOX_JOB_ALLOWED_HANDLERS`. The request cannot choose a handler.
+
+The worker dispatches capability jobs only through reviewed Python callables registered in `app.worker.CAPABILITY_HANDLERS`, keyed by `(handler_id, handler_version)`. Add a handler in trusted application code and pass the same mapping to `ExecutionJobWorker`; the standalone worker entrypoint uses this static registry. The registry is empty by default, so capability jobs fail closed until a handler is installed. Never import or execute a contract's `implementation_ref`, and never load Python module paths from job payloads or environment variables.
+
+Each handler receives an immutable context (tenant, subject, capability version, contract hash and declared timeout) plus the validated input. The worker independently reloads the tenant-owned immutable contract, checks its content hash, revalidates input, and validates handler output against the contract's output schema before completing the job. Handler implementations must enforce the supplied timeout and perform any required downstream authorization themselves; the worker does not infer business permissions from a handler name.
+
+This is a trusted adapter boundary, not a general-purpose sandbox. `sandbox_workload` remains unsupported. A registered handler is executable trusted server code and must be reviewed, tested and deployed as part of the worker release.
