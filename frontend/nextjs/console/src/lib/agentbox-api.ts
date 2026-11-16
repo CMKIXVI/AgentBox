@@ -267,7 +267,8 @@ export class AgentBoxBffClient {
       query.set("profile_id", profileId);
       query.set("profile_version", profileVersion);
     }
-    return this.request(`/v1/agents/${encodeURIComponent(agentId)}/experiences${query.size ? `?${query}` : ""}`);
+    const queryString = query.toString();
+    return this.request(`/v1/agents/${encodeURIComponent(agentId)}/experiences${queryString ? `?${queryString}` : ""}`);
   }
 
   createLearningLesson(experienceId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
