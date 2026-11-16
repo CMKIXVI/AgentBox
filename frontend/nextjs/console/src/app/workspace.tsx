@@ -371,7 +371,9 @@ export default function Workspace() {
         <nav className="side-nav" aria-label="Workspace sections">
           <a className="active" href="#overview">Overview</a>
           <a href="#agent-studio">Agent Studio</a>
-          <a href="#execution">Execution</a>\n          <a href="#evaluation">Evaluation</a>\n          <a href="#cognition">Cognition</a>
+          <a href="#execution">Execution</a>
+          <a href="#evaluation">Evaluation</a>
+          <a href="#cognition">Cognition</a>
           <a href="#governance">Governance</a>
         </nav>
         <div className="sidebar-foot">
