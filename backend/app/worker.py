@@ -5,8 +5,8 @@ interpret agent manifests as code and intentionally rejects sandbox workloads.
 """
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import multiprocessing
 import os
 import signal
@@ -58,10 +58,6 @@ def _capability_handler_child(connection: Any, handler: CapabilityHandler,
         context.raise_if_expired()
         result = handler(context, value)
         context.raise_if_expired()
-        encoded = json.dumps(result, ensure_ascii=False, allow_nan=False,
-                             separators=(",", ":")).encode("utf-8")
-        if len(encoded) > 1_048_576:
-            raise ValueError("capability handler result exceeds 1 MiB")
         envelope = json.dumps({"ok": True, "result": result}, ensure_ascii=False,
                               allow_nan=False, separators=(",", ":")).encode("utf-8")
         if len(envelope) > 1_048_576:
@@ -92,7 +88,7 @@ def _run_capability_handler_isolated(
     try:
         process.start()
         send.close()
-        if not receive.poll(context.timeout_seconds):
+        if not receive.poll(context.remaining_seconds()):
             process.terminate()
             process.join(timeout=1)
             if process.is_alive():
