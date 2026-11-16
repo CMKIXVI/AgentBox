@@ -648,7 +648,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
           NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Evaluation'),
           NavigationDestination(icon: Icon(Icons.account_tree_outlined), selectedIcon: Icon(Icons.account_tree), label: 'Cognition'),
           NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: 'Learning'),
-          NavigationDestination(icon: Icon(Icons.compare_arrows_outlined), selectedIcon: Icon(Icons.compare_arrows), label: 'Experiments'),
+          NavigationDestination(icon: Icon(Icons.compare_arrows), selectedIcon: Icon(Icons.compare_arrows), label: 'Experiments'),
         ],
       ),
     );
