@@ -72,6 +72,20 @@ def _capability_handler_child(connection: Any, handler: CapabilityHandler,
         connection.close()
 
 
+def _stop_capability_process(process: multiprocessing.Process) -> None:
+    """Reap a handler process; escalate to kill if graceful termination stalls."""
+    if process.pid is None:
+        return
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=1)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=5)
+    if process.is_alive():
+        raise RuntimeError("capability handler process could not be reaped")
+
+
 def _run_capability_handler_isolated(
     handler: CapabilityHandler,
     context: CapabilityInvocationContext,
@@ -89,11 +103,7 @@ def _run_capability_handler_isolated(
         process.start()
         send.close()
         if not receive.poll(context.remaining_seconds()):
-            process.terminate()
-            process.join(timeout=1)
-            if process.is_alive():
-                process.kill()
-                process.join(timeout=1)
+            _stop_capability_process(process)
             raise TimeoutError("capability handler exceeded its execution deadline")
         try:
             payload = receive.recv_bytes(1_048_576)
@@ -101,8 +111,7 @@ def _run_capability_handler_isolated(
             raise RuntimeError("capability handler process exited without a result") from exc
         process.join(timeout=1)
         if process.is_alive():
-            process.terminate()
-            process.join(timeout=1)
+            _stop_capability_process(process)
             raise RuntimeError("capability handler did not exit after returning a result")
         try:
             result = json.loads(payload.decode("utf-8"))
@@ -112,9 +121,13 @@ def _run_capability_handler_isolated(
             raise RuntimeError("capability handler failed")
         return result["result"]
     finally:
+        send.close()
         receive.close()
         if process.pid is not None:
-            process.close()
+            if process.is_alive():
+                _stop_capability_process(process)
+            if not process.is_alive():
+                process.close()
 
 
 # Deployments add reviewed Python callables here. No contract implementation_ref
