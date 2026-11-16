@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.execution import DeterministicFakeProvider
 from app.main import create_app
-from app.worker import ExecutionJobWorker
+from app.worker import CapabilityInvocationContext, ExecutionJobWorker
 
 
 @pytest.fixture
@@ -282,6 +282,46 @@ def test_worker_fails_capability_job_when_handler_output_violates_contract(clien
         client,
         capability_handlers={("provider.fake", "1.0.0"): lambda _context, _value: {"name": 42}},
     )
+    assert worker.run_once() is True
+    failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
+    assert failed["state"] == "failed"
+    assert failed["error_code"] == "provider_execution_failed"
+
+
+
+def test_capability_invocation_context_exposes_cooperative_deadline(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr("app.worker.time.monotonic", lambda: now[0])
+    context = CapabilityInvocationContext(
+        tenant_id="tenant-a",
+        subject_id="user-a",
+        capability_id="crm.contact.read",
+        version="1.0.0",
+        content_hash="a" * 64,
+        timeout_seconds=5,
+        deadline_monotonic=105.0,
+    )
+    assert context.remaining_seconds() == 5.0
+    context.raise_if_expired()
+    now[0] = 104.5
+    assert context.remaining_seconds() == 0.5
+    context.raise_if_expired()
+    now[0] = 105.0
+    assert context.remaining_seconds() == 0.0
+    with pytest.raises(TimeoutError, match="deadline exceeded"):
+        context.raise_if_expired()
+
+
+def test_worker_discards_capability_result_after_deadline(client, monkeypatch):
+    job = enqueue_capability(client, "capability-deadline-expired")
+    clock = [100.0]
+    monkeypatch.setattr("app.worker.time.monotonic", lambda: clock[0])
+
+    def late_handler(context, _value):
+        clock[0] = context.deadline_monotonic
+        return {"name": "Too late"}
+
+    worker = make_worker(client, capability_handlers={("provider.fake", "1.0.0"): late_handler})
     assert worker.run_once() is True
     failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
     assert failed["state"] == "failed"
