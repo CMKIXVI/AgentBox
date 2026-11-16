@@ -84,6 +84,13 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
   final _evaluationResultsController = TextEditingController(
     text: '[{"case_id":"greeting","output":"Hello! How can I help?","latency_ms":420,"cost_usd":0.001}]',
   );
+  final _cognitiveGoalController = TextEditingController(text: 'goal://support/triage');
+  final _cognitiveAgentRefController = TextEditingController();
+  final _cognitiveRunIdController = TextEditingController();
+  final _contextSearchController = TextEditingController();
+  Map<String, dynamic>? _cognitiveRun;
+  List<dynamic> _cognitiveEvents = [];
+  Map<String, dynamic>? _contextSnapshot;
   Map<String, dynamic>? _createdAgent;
   List<dynamic> _versions = [];
   Map<String, dynamic>? _selectedVersion;
@@ -115,6 +122,10 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     _profileVersionController.dispose();
     _profileController.dispose();
     _evaluationResultsController.dispose();
+    _cognitiveGoalController.dispose();
+    _cognitiveAgentRefController.dispose();
+    _cognitiveRunIdController.dispose();
+    _contextSearchController.dispose();
     super.dispose();
   }
 
@@ -243,7 +254,11 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
       _profileVersions = [];
       _evaluationRuns = [];
       _evaluationRun = null;
+      _cognitiveRun = null;
+      _cognitiveEvents = [];
+      _contextSnapshot = null;
       _jobIdController.clear();
+      _cognitiveRunIdController.clear();
     });
     _setNotice('Signed out. Secure tokens were cleared.');
   }
@@ -568,6 +583,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
                   _buildAgentStudio(),
                   _buildExecution(),
                   _buildEvaluation(),
+                  _buildCognitiveRuntime(),
                 ],
               ),
             ),
@@ -582,6 +598,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
           NavigationDestination(icon: Icon(Icons.hub_outlined), selectedIcon: Icon(Icons.hub), label: 'Agent Studio'),
           NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Execution'),
           NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Evaluation'),
+          NavigationDestination(icon: Icon(Icons.account_tree_outlined), selectedIcon: Icon(Icons.account_tree), label: 'Cognition'),
         ],
       ),
     );
@@ -757,6 +774,155 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
               ],
             ],
           ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _createCognitiveRun() async {
+    final api = _api;
+    if (!_signedIn || api == null) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.createCognitiveRun(
+        goalRef: _cognitiveGoalController.text.trim(),
+        agentRef: _cognitiveAgentRefController.text.trim(),
+        idempotencyKey: 'cognition-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      final run = result['run'] as Map<String, dynamic>;
+      final events = await api.listCognitiveRunEvents(run['run_id'].toString());
+      if (!mounted) return;
+      setState(() {
+        _cognitiveRun = run;
+        _cognitiveRunIdController.text = run['run_id'].toString();
+        _cognitiveEvents = events['items'] as List<dynamic>? ?? [];
+        _contextSnapshot = null;
+      });
+      _setNotice('Cognitive run created. Lifecycle records do not execute agents or grant authority.');
+    } catch (error) {
+      _setNotice('Could not create cognitive run: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _inspectCognitiveRun() async {
+    final api = _api;
+    final runId = _cognitiveRunIdController.text.trim();
+    if (!_signedIn || api == null || runId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final results = await Future.wait([
+        api.getCognitiveRun(runId),
+        api.listCognitiveRunEvents(runId),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _cognitiveRun = results[0];
+        _cognitiveEvents = results[1]['items'] as List<dynamic>? ?? [];
+        _contextSnapshot = null;
+      });
+    } catch (error) {
+      _setNotice('Could not inspect cognitive run: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _assembleCognitiveContext() async {
+    final api = _api;
+    final runId = _cognitiveRunIdController.text.trim();
+    if (!_signedIn || api == null || runId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final search = _contextSearchController.text.trim();
+      final result = await api.assembleCognitiveContext(
+        runId: runId,
+        request: {
+          if (search.isNotEmpty) 'search': search,
+          'include_inferences': false,
+          'limit': 8,
+        },
+        idempotencyKey: 'context-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      final events = await api.listCognitiveRunEvents(runId);
+      if (!mounted) return;
+      setState(() {
+        _contextSnapshot = result;
+        _cognitiveEvents = events['items'] as List<dynamic>? ?? [];
+      });
+      _setNotice('Context snapshot assembled from policy-eligible tenant evidence.');
+    } catch (error) {
+      _setNotice('Could not assemble context: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _buildCognitiveRuntime() {
+    const stages = [
+      'intent', 'context', 'cognition', 'capability', 'responsibility',
+      'execution', 'observation', 'verification', 'memory',
+    ];
+    final seen = _cognitiveEvents
+        .whereType<Map<String, dynamic>>()
+        .map((event) => event['stage']?.toString())
+        .toSet();
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        const Text('AI INTELLIGENCE', style: TextStyle(color: Color(0xFF8BB7FF), fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text('Cognitive Runtime Explorer', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        const Text('Inspect tenant-scoped run state, append-only lifecycle events, and minimized context snapshots. This screen is not an execution or authorization surface.', style: TextStyle(color: Color(0xFF9AAAC2), height: 1.5)),
+        const SizedBox(height: 18),
+        _sectionCard(
+          title: 'Create cognitive run',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: _cognitiveGoalController, decoration: const InputDecoration(labelText: 'Goal reference')),
+            const SizedBox(height: 8),
+            TextField(controller: _cognitiveAgentRefController, decoration: const InputDecoration(labelText: 'Immutable agent reference · id@version')),
+            const SizedBox(height: 10),
+            FilledButton(onPressed: !_signedIn || _busy ? null : _createCognitiveRun, child: const Text('Create run')),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Run inspector',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: _cognitiveRunIdController, decoration: const InputDecoration(labelText: 'Cognitive run ID')),
+            const SizedBox(height: 8),
+            OutlinedButton(onPressed: !_signedIn || _busy ? null : _inspectCognitiveRun, child: const Text('Inspect run and events')),
+            if (_cognitiveRun != null) _jsonResult(_cognitiveRun!),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Nine-stage lifecycle',
+          child: Column(children: [
+            for (var i = 0; i < stages.length; i++)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(radius: 13, child: Text('${i + 1}', style: const TextStyle(fontSize: 11))),
+                title: Text(stages[i]),
+                trailing: Icon(seen.contains(stages[i]) ? Icons.check_circle : Icons.radio_button_unchecked, color: seen.contains(stages[i]) ? Colors.greenAccent : Colors.white38),
+                subtitle: Text(seen.contains(stages[i]) ? 'Event recorded' : 'Not yet recorded'),
+              ),
+            if (_cognitiveEvents.isNotEmpty) _jsonResult({'events': _cognitiveEvents}),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Context snapshot',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: _contextSearchController, decoration: const InputDecoration(labelText: 'Optional entity search')),
+            const SizedBox(height: 8),
+            const Text('Only currently valid observed facts and human-validated entities are included by default. Inferences are disabled.', style: TextStyle(color: Color(0xFF9AAAC2), fontSize: 11, height: 1.5)),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: !_signedIn || _busy || _cognitiveRunIdController.text.trim().isEmpty ? null : _assembleCognitiveContext, child: const Text('Assemble context')),
+            if (_contextSnapshot != null) _jsonResult(_contextSnapshot!),
+          ]),
         ),
       ],
     );
