@@ -84,6 +84,13 @@ export default function Workspace() {
   const [evaluationRuns, setEvaluationRuns] = useState<Record<string, unknown>[]>([]);
   const [evaluationRun, setEvaluationRun] = useState<Record<string, unknown> | null>(null);
   const [evaluationRunId, setEvaluationRunId] = useState("");
+  const [cognitiveGoalRef, setCognitiveGoalRef] = useState("goal://support/triage");
+  const [cognitiveAgentRef, setCognitiveAgentRef] = useState("");
+  const [cognitiveRunId, setCognitiveRunId] = useState("");
+  const [cognitiveRun, setCognitiveRun] = useState<Record<string, unknown> | null>(null);
+  const [cognitiveEvents, setCognitiveEvents] = useState<Record<string, unknown>[]>([]);
+  const [contextSearch, setContextSearch] = useState("");
+  const [contextSnapshot, setContextSnapshot] = useState<Record<string, unknown> | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -289,6 +296,71 @@ export default function Workspace() {
     }
   }
 
+  async function createCognitiveRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("cognition-create");
+    setNotice(null);
+    setCognitiveRun(null);
+    setCognitiveEvents([]);
+    setContextSnapshot(null);
+    try {
+      const result = await api.createCognitiveRun(
+        cognitiveGoalRef.trim(), cognitiveAgentRef.trim(), crypto.randomUUID(),
+      );
+      const run = result.run as Record<string, unknown>;
+      setCognitiveRun(run);
+      setCognitiveRunId(String(run.run_id ?? ""));
+      const eventResult = await api.listCognitiveRunEvents(String(run.run_id ?? ""));
+      setCognitiveEvents(eventResult.items);
+      setNotice({ kind: "success", text: "Cognitive run created. The runtime records lifecycle state; it does not execute an agent." });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function inspectCognitiveRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("cognition-inspect");
+    setNotice(null);
+    setContextSnapshot(null);
+    try {
+      const [run, events] = await Promise.all([
+        api.getCognitiveRun(cognitiveRunId.trim()),
+        api.listCognitiveRunEvents(cognitiveRunId.trim()),
+      ]);
+      setCognitiveRun(run);
+      setCognitiveEvents(events.items);
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function assembleCognitiveContext(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!cognitiveRunId.trim()) return;
+    setBusy("cognition-context");
+    setNotice(null);
+    try {
+      const result = await api.assembleCognitiveContext(
+        cognitiveRunId.trim(),
+        { ...(contextSearch.trim() ? { search: contextSearch.trim() } : {}), include_inferences: false, limit: 8 },
+        crypto.randomUUID(),
+      );
+      setContextSnapshot(result);
+      const events = await api.listCognitiveRunEvents(cognitiveRunId.trim());
+      setCognitiveEvents(events.items);
+      setNotice({ kind: "success", text: "Context snapshot assembled from currently valid, policy-eligible tenant evidence." });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -299,7 +371,7 @@ export default function Workspace() {
         <nav className="side-nav" aria-label="Workspace sections">
           <a className="active" href="#overview">Overview</a>
           <a href="#agent-studio">Agent Studio</a>
-          <a href="#execution">Execution</a>\n          <a href="#evaluation">Evaluation</a>
+          <a href="#execution">Execution</a>\n          <a href="#evaluation">Evaluation</a>\n          <a href="#cognition">Cognition</a>
           <a href="#governance">Governance</a>
         </nav>
         <div className="sidebar-foot">
@@ -458,6 +530,50 @@ export default function Workspace() {
               </form>
             </article>
           </div>
+        </section>
+
+        <section className="content-section" id="cognition">
+          <div className="section-heading">
+            <div><p className="eyebrow">AI INTELLIGENCE</p><h2>Cognitive Runtime Explorer</h2><p>Inspect tenant-scoped run state, ordered lifecycle events, and minimized context snapshots.</p></div>
+          </div>
+          <div className="two-column">
+            <article className="surface-card">
+              <div className="card-heading"><div><span className="card-kicker">RUN INITIALIZATION</span><h3>Create cognitive run</h3></div></div>
+              <form onSubmit={createCognitiveRun} className="stack-form">
+                <label htmlFor="cognitive-goal">Goal reference</label>
+                <input id="cognitive-goal" value={cognitiveGoalRef} onChange={(event) => setCognitiveGoalRef(event.target.value)} required />
+                <label htmlFor="cognitive-agent">Immutable agent reference · agent-id@version</label>
+                <input id="cognitive-agent" value={cognitiveAgentRef} onChange={(event) => setCognitiveAgentRef(event.target.value)} placeholder="support-agent@1.0.0" required />
+                <button className="primary-button" type="submit" disabled={busy !== null}>{busy === "cognition-create" ? "Creating…" : "Create cognitive run"}</button>
+              </form>
+              <form onSubmit={inspectCognitiveRun} className="stack-form detail-block">
+                <label htmlFor="cognitive-run-id">Run ID</label>
+                <input id="cognitive-run-id" value={cognitiveRunId} onChange={(event) => setCognitiveRunId(event.target.value)} required />
+                <button className="secondary-button" type="submit" disabled={busy !== null || !cognitiveRunId.trim()}>{busy === "cognition-inspect" ? "Loading…" : "Inspect run"}</button>
+              </form>
+              {cognitiveRun && <JsonPanel value={cognitiveRun} />}
+            </article>
+            <article className="surface-card">
+              <div className="card-heading"><div><span className="card-kicker">CONTEXT ASSEMBLY</span><h3>Inspect context snapshot</h3></div></div>
+              <form onSubmit={assembleCognitiveContext} className="stack-form">
+                <label htmlFor="context-search">Optional entity search</label>
+                <input id="context-search" value={contextSearch} onChange={(event) => setContextSearch(event.target.value)} placeholder="Search eligible tenant context" />
+                <p className="helper">Only currently valid observed facts and human-validated entities are included by default. Inferences remain disabled.</p>
+                <button className="primary-button" type="submit" disabled={busy !== null || !cognitiveRunId.trim()}>{busy === "cognition-context" ? "Assembling…" : "Assemble context snapshot"}</button>
+              </form>
+              {contextSnapshot ? <JsonPanel value={contextSnapshot} /> : <p className="empty-state">No context snapshot loaded. Assembly is an explicit, audited API operation.</p>}
+            </article>
+          </div>
+          <article className="surface-card execution-card">
+            <div className="card-heading"><div><span className="card-kicker">APPEND-ONLY JOURNAL · READ-ONLY VIEW</span><h3>Nine-stage lifecycle timeline</h3></div></div>
+            <div className="governance-grid">
+              {["intent","context","cognition","capability","responsibility","execution","observation","verification","memory"].map((stage, index) => {
+                const seen = cognitiveEvents.some((item) => item.stage === stage);
+                return <div className="governance-item" key={stage}><strong>{String(index + 1).padStart(2, "0")} · {stage}</strong><p>{seen ? "Event recorded" : "Not yet recorded"}</p></div>;
+              })}
+            </div>
+            {cognitiveEvents.length > 0 ? <JsonPanel value={cognitiveEvents} /> : <p className="empty-state">Lifecycle events appear after a run is created or inspected. This view cannot append events, invoke capabilities, or grant authority.</p>}
+          </article>
         </section>
 
         <section className="content-section" id="governance">
