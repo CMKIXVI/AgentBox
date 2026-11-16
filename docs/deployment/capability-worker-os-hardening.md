@@ -69,3 +69,20 @@ The worker exposes `CapabilityInvocationContext.resolve_secret(secret_ref, purpo
 The default `DenyAllCapabilitySecretBroker` rejects every request. A deployment must replace the static `app.worker.CAPABILITY_SECRET_BROKER` with a reviewed, importable broker client (or inject one into `ExecutionJobWorker`); the implementation must independently authorize the exact tuple, return short-lived material, enforce expiry/revocation, and avoid logging values. Broker implementations are passed into spawned child processes and therefore must be safe to serialize and connect from that process. Do not implement a broker by reading ambient environment variables.
 
 This change defines and tests the broker contract only. It does **not** ship a Vault/KMS/cloud-secret-manager adapter, transport authentication, secret rotation, revocation, per-handler identity, or a live secret store. Until a production broker adapter is deployed and verified, secret resolution remains unavailable and handlers must fail closed.
+
+
+## Per-invocation resource limits
+
+Each spawned capability child now applies POSIX resource limits before calling its
+registered handler: CPU time is bounded to the declared wall-time budget plus a
+one-second startup/teardown allowance; address space is capped at 1 GiB; individual
+files at 16 MiB; open file descriptors at 64; and core dumps are disabled. The
+parent process continues to enforce the independent wall-clock deadline, while
+systemd cgroups continue to enforce aggregate worker limits.
+
+These are fixed trusted-runtime defaults, not values supplied by a capability
+contract or caller. They may need tuning for production workloads. They do not
+limit network destinations, provide a per-invocation process-count boundary, or
+isolate filesystem/network credentials. The child remains trusted application
+code, not hostile-code sandboxing. The implementation fails closed on platforms
+without POSIX resource-limit support.
