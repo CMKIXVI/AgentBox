@@ -118,3 +118,58 @@ def test_execution_backed_evaluation_rejects_tool_enabled_agent(tmp_path: Path) 
         json={"profile_id": PROFILE["profile_id"], "profile_version": PROFILE["version"]},
     )
     assert response.status_code == 403
+
+
+def test_execution_evidence_tampering_is_rejected_before_scoring(tmp_path: Path) -> None:
+    client = client_for(tmp_path)
+    manifest = copy.deepcopy(AGENT)
+    manifest["agent_id"] = "runtime.test"
+    manifest["model_binding"]["provider_id"] = "provider.fake"
+    manifest["tools"] = []
+    assert client.post("/v1/agents", json={"manifest": manifest}).status_code == 201
+    assert client.post("/v1/evaluation-profiles", json={"profile": PROFILE}).status_code == 201
+    response = client.post(
+        "/v1/agents/runtime.test/versions/1.0.0/evaluations/execute",
+        headers={"Idempotency-Key": "tamper-evidence-001"},
+        json={"profile_id": PROFILE["profile_id"], "profile_version": PROFILE["version"]},
+    )
+    assert response.status_code == 201, response.text
+    run = response.json()
+    evidence = copy.deepcopy(run["execution_evidence"])
+    evidence["case_executions"][0]["output_hash"] = "0" * 64
+    submitted = []
+    for item in evidence["case_executions"]:
+        execution = client.app.state.executions.get(item["execution_id"], "test-tenant")
+        result = execution["result"]
+        submitted.append({
+            "case_id": item["case_id"],
+            "output": result["output"],
+            "latency_ms": result["latency_ms"],
+            "cost_usd": result["usage"]["cost_usd"],
+        })
+    import pytest
+    with pytest.raises(ValueError, match="does not match its persisted execution"):
+        client.app.state.evaluations.create_run(
+            "runtime.test", "1.0.0", PROFILE["profile_id"], PROFILE["version"],
+            submitted, "test-tenant", execution_evidence=evidence,
+        )
+
+
+def test_public_evaluation_endpoint_rejects_caller_supplied_execution_evidence(
+    tmp_path: Path,
+) -> None:
+    client = client_for(tmp_path)
+    manifest = copy.deepcopy(AGENT)
+    manifest["agent_id"] = "runtime.test"
+    assert client.post("/v1/agents", json={"manifest": manifest}).status_code == 201
+    assert client.post("/v1/evaluation-profiles", json={"profile": PROFILE}).status_code == 201
+    response = client.post(
+        "/v1/agents/runtime.test/versions/1.0.0/evaluations",
+        json={
+            "profile_id": PROFILE["profile_id"],
+            "profile_version": PROFILE["version"],
+            "results": [],
+            "execution_evidence": {"source": "server_execution_records"},
+        },
+    )
+    assert response.status_code == 422
