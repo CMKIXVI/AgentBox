@@ -203,5 +203,48 @@ class AgentBoxApiClient {
         extraHeaders: {'Idempotency-Key': idempotencyKey},
       );
 
+  Future<Map<String, dynamic>> createExperience({
+    required String executionId,
+    required String evaluationRunId,
+    required String workloadRef,
+    required String workloadHash,
+  }) =>
+      _request('POST', const ['v1', 'agent-experiences'], body: {
+        'execution_id': executionId,
+        'evaluation_run_id': evaluationRunId,
+        'workload_ref': workloadRef,
+        'workload_hash': workloadHash,
+      });
+
+  Future<Map<String, dynamic>> listExperiences(
+    String agentId, {
+    String? profileId,
+    String? profileVersion,
+  }) =>
+      _request('GET', ['v1', 'agents', agentId, 'experiences'], query: {
+        if (profileId != null && profileVersion != null) 'profile_id': profileId,
+        if (profileId != null && profileVersion != null) 'profile_version': profileVersion,
+      });
+
+  Future<Map<String, dynamic>> createLearningLesson({
+    required String experienceId,
+    required Map<String, dynamic> lesson,
+  }) =>
+      _request('POST', ['v1', 'agent-experiences', experienceId, 'lessons'], body: lesson);
+
+  Future<Map<String, dynamic>> listLearningLessons(String experienceId) =>
+      _request('GET', ['v1', 'agent-experiences', experienceId, 'lessons']);
+
+  Future<Map<String, dynamic>> selectFitness({
+    required String profileId,
+    required String profileVersion,
+    int minSamples = 3,
+  }) =>
+      _request('GET', const ['v1', 'fitness', 'selection'], query: {
+        'profile_id': profileId,
+        'profile_version': profileVersion,
+        'min_samples': '$minSamples',
+      });
+
   void close() => _httpClient.close();
 }
