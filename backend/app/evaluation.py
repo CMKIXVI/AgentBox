@@ -436,25 +436,37 @@ class EvaluationService:
 
         with self._connection() as connection:
             agent = connection.execute(
-                "SELECT content_hash FROM agent_versions WHERE tenant_id=? AND agent_id=? AND version=?",
+                "SELECT content_hash FROM agent_versions "
+                "WHERE tenant_id=? AND agent_id=? AND version=?",
                 (tenant_id, agent_id, agent_version),
             ).fetchone()
             profile = connection.execute(
-                "SELECT content_hash FROM evaluation_profiles WHERE tenant_id=? AND profile_id=? AND version=?",
+                "SELECT content_hash FROM evaluation_profiles "
+                "WHERE tenant_id=? AND profile_id=? AND version=?",
                 (tenant_id, profile_record["profile_id"], profile_record["version"]),
             ).fetchone()
             if agent is None or profile is None:
                 raise ValueError("execution evidence references a missing immutable artifact")
             if evidence.get("agent_content_hash") != agent["content_hash"]:
-                raise ValueError("execution evidence agent hash does not match the immutable registry")
+                raise ValueError(
+                    "execution evidence agent hash does not match the immutable registry"
+                )
             if evidence.get("profile_content_hash") != profile["content_hash"]:
-                raise ValueError("execution evidence profile hash does not match the immutable profile")
+                raise ValueError(
+                    "execution evidence profile hash does not match the immutable profile"
+                )
 
             submitted_by_id = {item["case_id"]: item for item in submitted_results}
             evidence_items = evidence.get("case_executions")
             if not isinstance(evidence_items, list) or len(evidence_items) != len(cases):
-                raise ValueError("execution evidence must contain exactly one record per evaluation case")
-            evidence_by_id = {item.get("case_id"): item for item in evidence_items if isinstance(item, dict)}
+                raise ValueError(
+                    "execution evidence must contain exactly one record per evaluation case"
+                )
+            evidence_by_id = {
+                item.get("case_id"): item
+                for item in evidence_items
+                if isinstance(item, dict)
+            }
             expected_case_ids = {case["case_id"] for case in cases}
             if len(evidence_by_id) != len(cases) or set(evidence_by_id) != expected_case_ids:
                 raise ValueError("execution evidence case IDs do not match the pinned profile")
@@ -466,8 +478,14 @@ class EvaluationService:
                 case_id = case["case_id"]
                 item = evidence_by_id[case_id]
                 execution_id = item.get("execution_id")
-                if not isinstance(execution_id, str) or not execution_id or execution_id in execution_ids:
-                    raise ValueError("execution evidence contains a missing or duplicate execution ID")
+                if (
+                    not isinstance(execution_id, str)
+                    or not execution_id
+                    or execution_id in execution_ids
+                ):
+                    raise ValueError(
+                        "execution evidence contains a missing or duplicate execution ID"
+                    )
                 execution_ids.add(execution_id)
                 row = connection.execute(
                     "SELECT agent_id, agent_version, status, result_json FROM executions "
@@ -503,7 +521,8 @@ class EvaluationService:
                     or item.get("model_id") != execution.get("model_id")
                 ):
                     raise ValueError(
-                        f"Execution evidence for case {case_id} does not match its persisted execution"
+                        "Execution evidence for case "
+                        f"{case_id} does not match its persisted execution"
                     )
 
     def create_run(
