@@ -45,9 +45,11 @@ class AgentBoxApiClient {
     List<String> pathSegments, {
     Map<String, String>? query,
     Object? body,
+    Map<String, String>? extraHeaders,
     bool authenticated = true,
   }) async {
     final headers = <String, String>{'Accept': 'application/json'};
+    if (extraHeaders != null) headers.addAll(extraHeaders);
     if (body != null) headers['Content-Type'] = 'application/json';
     if (authenticated) {
       final token = await _accessTokenProvider();
@@ -107,6 +109,29 @@ class AgentBoxApiClient {
 
   Future<Map<String, dynamic>> getExecution(String executionId) =>
       _request('GET', ['v1', 'executions', executionId]);
+
+  Future<Map<String, dynamic>> submitExecutionJob({
+    required String agentId,
+    required String version,
+    required Object? input,
+    required int maxOutputTokens,
+    required String idempotencyKey,
+  }) =>
+      _request(
+        'POST',
+        ['v1', 'agents', agentId, 'versions', version, 'jobs'],
+        body: {'input': input, 'max_output_tokens': maxOutputTokens},
+        extraHeaders: {'Idempotency-Key': idempotencyKey},
+      );
+
+  Future<Map<String, dynamic>> getExecutionJob(String jobId) =>
+      _request('GET', ['v1', 'execution-jobs', jobId]);
+
+  Future<Map<String, dynamic>> listExecutionJobEvents(String jobId) =>
+      _request('GET', ['v1', 'execution-jobs', jobId, 'events']);
+
+  Future<Map<String, dynamic>> cancelExecutionJob(String jobId) =>
+      _request('POST', ['v1', 'execution-jobs', jobId, 'cancel']);
 
   void close() => _httpClient.close();
 }
