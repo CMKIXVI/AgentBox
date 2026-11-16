@@ -2,7 +2,7 @@
 
 **Document status:** Canonical architecture authority  
 **Version:** 1.5  
-**Updated:** 2026-11-14  
+**Updated:** 2026-11-16  
 **Scope:** AgentBox platform, backend, runtime, security, data, and dual frontend strategy
 
 > This document defines the intended architecture and decision boundaries for AgentBox. It does not claim that every described capability is implemented. The repository's implementation status, CI results, and production-readiness evidence must be reported separately from target architecture.
