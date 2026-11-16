@@ -39,6 +39,12 @@ from .evaluation import (
     EvaluationRunNotFoundError,
     EvaluationService,
 )
+from .experiment_comparison import (
+    ExperimentComparisonConflictError,
+    ExperimentComparisonNotFoundError,
+    ExperimentComparisonService,
+    ExperimentComparisonValidationError,
+)
 from .execution import (
     DeterministicFakeProvider,
     ExecutionConflictError,
@@ -200,6 +206,17 @@ class LearningLessonRequest(BaseModel):
     source_kind: Literal["deterministic_rule", "human_review", "model_proposal"]
     extractor_version: str = Field(min_length=1, max_length=128)
     confidence: float = Field(ge=0, le=1)
+
+
+class ExperimentComparisonRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(min_length=1, max_length=128)
+    parent_version: str = Field(min_length=1, max_length=128)
+    candidate_version: str = Field(min_length=1, max_length=128)
+    parent_evaluation_run_id: str = Field(min_length=1, max_length=128)
+    candidate_evaluation_run_id: str = Field(min_length=1, max_length=128)
+    workload_ref: str = Field(min_length=1, max_length=512)
+    workload_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
 
 
 class CognitiveRunRequest(BaseModel):
@@ -489,6 +506,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app.state.execution_jobs,
             app.state.executions,
             app.state.experiences,
+            app.state.experiment_comparisons,
             app.state.cognitive_runs,
             app.state.enterprise_context,
             app.state.evaluations,
@@ -1212,6 +1230,50 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except CognitiveRunValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/agent-experiment-comparisons", status_code=status.HTTP_201_CREATED)
+    def create_agent_experiment_comparison(
+        request: ExperimentComparisonRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "agent.experiment", "experiment.compare", request.agent_id
+        )
+        try:
+            record, created = app.state.experiment_comparisons.compare(
+                agent_id=request.agent_id,
+                parent_version=request.parent_version,
+                candidate_version=request.candidate_version,
+                parent_evaluation_run_id=request.parent_evaluation_run_id,
+                candidate_evaluation_run_id=request.candidate_evaluation_run_id,
+                workload_ref=request.workload_ref,
+                workload_hash=request.workload_hash,
+                tenant_id=principal.tenant_id,
+                actor_id=principal.subject_id,
+            )
+            response = dict(record)
+            response["created"] = created
+            return response
+        except ExperimentComparisonNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExperimentComparisonConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ExperimentComparisonValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/agent-experiment-comparisons/{comparison_id}")
+    def get_agent_experiment_comparison(
+        comparison_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            record = app.state.experiment_comparisons.get(comparison_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.experiment", "experiment.read", record["agent_id"]
+            )
+            return record
+        except ExperimentComparisonNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/v1/fitness/selection")
     def select_fitness_candidates(
