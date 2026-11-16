@@ -95,7 +95,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     super.dispose();
   }
 
-  String _starterManifest() => const JsonEncoder.withIndent('  ').convert({
+  String _starterManifest() => JsonEncoder.withIndent('  ').convert({
         'schema_version': '1.0.0',
         'agent_id': 'sample-support-agent',
         'version': '1.0.0',
@@ -491,7 +491,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: const Color(0xFF0A1220), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF2A3A55))),
-      child: SelectableText(const JsonEncoder.withIndent('  ').convert(value), style: const TextStyle(fontFamily: 'monospace', fontSize: 10, height: 1.5)),
+      child: SelectableText(JsonEncoder.withIndent('  ').convert(value), style: const TextStyle(fontFamily: 'monospace', fontSize: 10, height: 1.5)),
     );
   }
 }
