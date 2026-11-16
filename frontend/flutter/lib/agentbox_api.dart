@@ -246,5 +246,27 @@ class AgentBoxApiClient {
         'min_samples': '$minSamples',
       });
 
+  Future<Map<String, dynamic>> compareAgentExperiment({
+    required String agentId,
+    required String parentVersion,
+    required String candidateVersion,
+    required String parentEvaluationRunId,
+    required String candidateEvaluationRunId,
+    required String workloadRef,
+    required String workloadHash,
+  }) =>
+      _request('POST', const ['v1', 'agent-experiment-comparisons'], body: {
+        'agent_id': agentId,
+        'parent_version': parentVersion,
+        'candidate_version': candidateVersion,
+        'parent_evaluation_run_id': parentEvaluationRunId,
+        'candidate_evaluation_run_id': candidateEvaluationRunId,
+        'workload_ref': workloadRef,
+        'workload_hash': workloadHash,
+      });
+
+  Future<Map<String, dynamic>> getAgentExperimentComparison(String comparisonId) =>
+      _request('GET', ['v1', 'agent-experiment-comparisons', comparisonId]);
+
   void close() => _httpClient.close();
 }
