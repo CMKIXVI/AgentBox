@@ -12,7 +12,7 @@ def configure_test_access(app):
     )
     resources = [
         "research.summarizer", "runtime.test", "quality.research-summary",
-        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha", "evidence.alpha", "tenant-connectors", "connector.alpha", "warehouse-prod",
+        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha", "evidence.alpha", "tenant-connectors", "connector.alpha", "warehouse-prod", "research.summarizer",
     ]
     grants = [
         ("agent.registry", "agent.create"),
@@ -43,6 +43,8 @@ def configure_test_access(app):
         ("agent.experience", "lesson.create"),
         ("agent.experience", "lesson.read"),
         ("agent.experience", "fitness.select"),
+        ("agent.experiment", "experiment.compare"),
+        ("agent.experiment", "experiment.read"),
         ("agent.cognition", "cognition.run.create"),
         ("agent.cognition", "cognition.run.read"),
         ("agent.cognition", "cognition.event.append"),
