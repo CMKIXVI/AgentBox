@@ -1209,7 +1209,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         for case in cases:
             case_id = case["case_id"]
             input_hash = hashlib.sha256(
-                json.dumps(case["input"], sort_keys=True, separators=(",", ":"),
+                json.dumps({"input": case["input"]}, sort_keys=True, separators=(",", ":"),
                            ensure_ascii=False, allow_nan=False).encode("utf-8")
             ).hexdigest()
             case_key = hashlib.sha256(
@@ -1256,7 +1256,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 "execution_id": execution["execution_id"],
                 "input_hash": input_hash,
                 "output_hash": hashlib.sha256(
-                    json.dumps(executed.get("output"), sort_keys=True, separators=(",", ":"),
+                    json.dumps({"output": executed.get("output")}, sort_keys=True, separators=(",", ":"),
                                ensure_ascii=False, allow_nan=False).encode("utf-8")
                 ).hexdigest(),
                 "provider_id": executed.get("provider_id"),
