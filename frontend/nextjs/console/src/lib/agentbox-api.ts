@@ -226,4 +226,32 @@ export class AgentBoxBffClient {
   getEvaluation(runId: string): Promise<Record<string, unknown>> {
     return this.request(`/v1/evaluations/${encodeURIComponent(runId)}`);
   }
+
+  createCognitiveRun(goalRef: string, agentRef: string, idempotencyKey: string): Promise<Record<string, unknown>> {
+    return this.request("/v1/cognitive-runs", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ goal_ref: goalRef, agent_ref: agentRef }),
+    });
+  }
+
+  getCognitiveRun(runId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/cognitive-runs/${encodeURIComponent(runId)}`);
+  }
+
+  listCognitiveRunEvents(runId: string, afterSequence = 0, limit = 200): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/cognitive-runs/${encodeURIComponent(runId)}/events?after_sequence=${afterSequence}&limit=${limit}`);
+  }
+
+  assembleCognitiveContext(
+    runId: string,
+    request: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(`/v1/cognitive-runs/${encodeURIComponent(runId)}/context`, {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(request),
+    });
+  }
 }
