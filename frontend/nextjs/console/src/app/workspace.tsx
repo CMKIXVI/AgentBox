@@ -105,6 +105,15 @@ export default function Workspace() {
   const [fitnessProfileVersion, setFitnessProfileVersion] = useState("1.0.0");
   const [fitnessMinSamples, setFitnessMinSamples] = useState("3");
   const [fitnessItems, setFitnessItems] = useState<Record<string, unknown>[]>([]);
+  const [experimentAgentId, setExperimentAgentId] = useState("");
+  const [experimentParentVersion, setExperimentParentVersion] = useState("1.0.0");
+  const [experimentCandidateVersion, setExperimentCandidateVersion] = useState("1.1.0");
+  const [experimentParentRunId, setExperimentParentRunId] = useState("");
+  const [experimentCandidateRunId, setExperimentCandidateRunId] = useState("");
+  const [experimentWorkloadRef, setExperimentWorkloadRef] = useState("benchmark://support-quality/v1");
+  const [experimentWorkloadHash, setExperimentWorkloadHash] = useState("");
+  const [experimentComparison, setExperimentComparison] = useState<Record<string, unknown> | null>(null);
+  const [experimentComparisonId, setExperimentComparisonId] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -446,6 +455,38 @@ export default function Workspace() {
     } finally { setBusy(null); }
   }
 
+  async function compareExperiment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("experiment");
+    setNotice(null);
+    try {
+      const result = await api.compareAgentExperiment({
+        agent_id: experimentAgentId.trim(),
+        parent_version: experimentParentVersion.trim(),
+        candidate_version: experimentCandidateVersion.trim(),
+        parent_evaluation_run_id: experimentParentRunId.trim(),
+        candidate_evaluation_run_id: experimentCandidateRunId.trim(),
+        workload_ref: experimentWorkloadRef.trim(),
+        workload_hash: experimentWorkloadHash.trim(),
+      });
+      setExperimentComparison(result);
+      setExperimentComparisonId(String(result.comparison_id ?? ""));
+      setNotice({ kind: "success", text: "Comparison recorded. Workload identity remains caller-asserted and the result is advisory only." });
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
+  async function loadExperimentComparison(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("experiment-read");
+    try {
+      setExperimentComparison(await api.getAgentExperimentComparison(experimentComparisonId.trim()));
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally { setBusy(null); }
+  }
+
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -460,6 +501,7 @@ export default function Workspace() {
           <a href="#evaluation">Evaluation</a>
           <a href="#cognition">Cognition</a>
           <a href="#learning">Learning & Fitness</a>
+          <a href="#experiments">Experiments</a>
           <a href="#governance">Governance</a>
         </nav>
         <div className="sidebar-foot">
@@ -710,6 +752,32 @@ export default function Workspace() {
             </form>
             {fitnessItems.length > 0 ? <JsonPanel value={fitnessItems} /> : <p className="empty-state">No fitness selection loaded. Selection requires repeated experience samples under the exact evaluation profile version.</p>}
             <p className="helper">Fitness scores are historical aggregates over unverified, caller-asserted records. They are prioritization signals only—not trusted benchmark comparisons, gate results, or promotion authority.</p>
+          </article>
+        </section>
+
+        <section className="content-section" id="experiments">
+          <div className="section-heading">
+            <div><p className="eyebrow">AGENT FACTORY · CONTROLLED COMPARISON</p><h2>Parent–Candidate Experiment</h2><p>Compare immutable parent and candidate versions using two evaluation runs pinned to one profile version and an asserted workload identity.</p></div>
+          </div>
+          <article className="surface-card execution-card">
+            <form onSubmit={compareExperiment} className="stack-form">
+              <div className="two-column">
+                <div><label htmlFor="experiment-agent">Agent ID</label><input id="experiment-agent" value={experimentAgentId} onChange={(e) => setExperimentAgentId(e.target.value)} required /></div>
+                <div><label htmlFor="experiment-parent">Parent version</label><input id="experiment-parent" value={experimentParentVersion} onChange={(e) => setExperimentParentVersion(e.target.value)} required /></div>
+                <div><label htmlFor="experiment-candidate">Candidate version</label><input id="experiment-candidate" value={experimentCandidateVersion} onChange={(e) => setExperimentCandidateVersion(e.target.value)} required /></div>
+                <div><label htmlFor="experiment-parent-run">Parent evaluation run ID</label><input id="experiment-parent-run" value={experimentParentRunId} onChange={(e) => setExperimentParentRunId(e.target.value)} required /></div>
+                <div><label htmlFor="experiment-candidate-run">Candidate evaluation run ID</label><input id="experiment-candidate-run" value={experimentCandidateRunId} onChange={(e) => setExperimentCandidateRunId(e.target.value)} required /></div>
+                <div><label htmlFor="experiment-workload">Workload reference</label><input id="experiment-workload" value={experimentWorkloadRef} onChange={(e) => setExperimentWorkloadRef(e.target.value)} required /></div>
+              </div>
+              <label htmlFor="experiment-hash">Workload SHA-256</label><input id="experiment-hash" value={experimentWorkloadHash} onChange={(e) => setExperimentWorkloadHash(e.target.value)} minLength={64} maxLength={64} pattern="[a-fA-F0-9]{64}" required />
+              <button className="primary-button" type="submit" disabled={busy !== null}>{busy === "experiment" ? "Comparing…" : "Create parent–candidate comparison"}</button>
+            </form>
+            <form onSubmit={loadExperimentComparison} className="stack-form detail-block">
+              <label htmlFor="experiment-comparison-id">Comparison ID</label><input id="experiment-comparison-id" value={experimentComparisonId} onChange={(e) => setExperimentComparisonId(e.target.value)} required />
+              <button className="secondary-button" type="submit" disabled={busy !== null}>{busy === "experiment-read" ? "Loading…" : "Load comparison"}</button>
+            </form>
+            {experimentComparison ? <JsonPanel value={experimentComparison} /> : <p className="empty-state">No experiment comparison loaded.</p>}
+            <p className="helper">The backend verifies tenant ownership, immutable candidate-to-parent lineage, exact agent versions, completed evaluation runs and profile-version identity. The supplied workload reference/hash is still caller-asserted. Results are unverified and advisory; there are no trusted-runner attestations, hard-gate authority, or promotion action.</p>
           </article>
         </section>
 
