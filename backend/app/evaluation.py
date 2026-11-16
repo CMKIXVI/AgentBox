@@ -414,6 +414,7 @@ class EvaluationService:
         profile_version: str,
         submitted_results: list[dict[str, Any]],
         tenant_id: str = LEGACY_TENANT_ID,
+        execution_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         profile_record = self.get_profile(profile_id, profile_version, tenant_id)
         evaluation = self.score(profile_record["profile"], submitted_results)
@@ -427,8 +428,13 @@ class EvaluationService:
             "profile_version": profile_version,
             "status": "completed",
             "created_at": created_at,
+            "evidence_status": "server_recorded" if execution_evidence is not None else "caller_submitted",
             **evaluation,
         }
+        if execution_evidence is not None:
+            if not isinstance(execution_evidence, dict) or execution_evidence.get("source") != "server_execution_records":
+                raise ValueError("execution_evidence must originate from server execution records")
+            payload["execution_evidence"] = execution_evidence
         with self._connection() as connection:
             connection.execute(
                 """
