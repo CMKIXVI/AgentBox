@@ -95,6 +95,37 @@ export class AgentBoxApiClient {
   getExecution(executionId: string): Promise<Record<string, unknown>> {
     return this.request(`/v1/executions/${encodeURIComponent(executionId)}`);
   }
+
+  submitExecutionJob(
+    agentId: string,
+    version: string,
+    input: unknown,
+    maxOutputTokens: number,
+    idempotencyKey: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}/jobs`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ input, max_output_tokens: maxOutputTokens }),
+      },
+    );
+  }
+
+  getExecutionJob(jobId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/execution-jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  listExecutionJobEvents(jobId: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/execution-jobs/${encodeURIComponent(jobId)}/events`);
+  }
+
+  cancelExecutionJob(jobId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/execution-jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST",
+    });
+  }
 }
 
 /**
