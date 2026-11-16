@@ -28,6 +28,8 @@ void main() {
     await tester.tap(find.text('Execution').last);
     await tester.pumpAndSettle();
     expect(find.text('Execution inspector'), findsOneWidget);
-    expect(find.text('Find execution'), findsOneWidget);
+    expect(find.text('Submit durable agent job'), findsOneWidget);
+    expect(find.text('Job lifecycle'), findsOneWidget);
+    expect(find.text('Find synchronous execution'), findsOneWidget);
   });
 }
