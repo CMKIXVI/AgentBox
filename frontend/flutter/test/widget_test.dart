@@ -58,4 +58,17 @@ void main() {
     expect(find.text('verification'), findsOneWidget);
   });
 
+  testWidgets('opens experience learning and fitness explorer', (tester) async {
+    await tester.pumpWidget(const AgentBoxApp());
+
+    await tester.tap(find.text('Learning'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Experience, Learning & Fitness'), findsOneWidget);
+    expect(find.text('Record execution experience'), findsOneWidget);
+    expect(find.text('Traceable learning lessons'), findsOneWidget);
+    expect(find.text('Evidence-based fitness selection'), findsOneWidget);
+    expect(find.textContaining('caller-asserted'), findsOneWidget);
+  });
+
 }
