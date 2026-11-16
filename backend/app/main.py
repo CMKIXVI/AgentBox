@@ -495,6 +495,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.experiences = ExecutionExperienceService(db_path)
     app.state.cognitive_runs = CognitiveRunService(db_path)
     app.state.candidate_generation = CandidateGenerationService(app.state.registry)
+    app.state.experiment_comparisons = ExperimentComparisonService(db_path)
     app.state.enterprise_context = EnterpriseContextService(db_path)
     app.state.context_assembly = ContextAssemblyService(app.state.enterprise_context)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
