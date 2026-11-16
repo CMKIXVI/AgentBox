@@ -4,6 +4,8 @@ import copy
 import json
 from pathlib import Path
 
+import pytest
+
 from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
@@ -147,7 +149,6 @@ def test_execution_evidence_tampering_is_rejected_before_scoring(tmp_path: Path)
             "latency_ms": result["latency_ms"],
             "cost_usd": result["usage"]["cost_usd"],
         })
-    import pytest
     with pytest.raises(ValueError, match="does not match its persisted execution"):
         client.app.state.evaluations.create_run(
             "runtime.test", "1.0.0", PROFILE["profile_id"], PROFILE["version"],
