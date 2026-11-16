@@ -61,6 +61,11 @@ export default function Workspace() {
   const [selectedVersion, setSelectedVersion] = useState<AgentVersionRecord | null>(null);
   const [executionId, setExecutionId] = useState("");
   const [execution, setExecution] = useState<Record<string, unknown> | null>(null);
+  const [jobVersion, setJobVersion] = useState("1.0.0");
+  const [jobInput, setJobInput] = useState('{"message":"Hello from AgentBox"}');
+  const [jobId, setJobId] = useState("");
+  const [job, setJob] = useState<Record<string, unknown> | null>(null);
+  const [jobEvents, setJobEvents] = useState<Record<string, unknown>[]>([]);
   const [created, setCreated] = useState<AgentVersionRecord | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -122,6 +127,63 @@ export default function Workspace() {
     setExecution(null);
     try {
       setExecution(await api.getExecution(executionId.trim()));
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitJob(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy("job-submit");
+    setNotice(null);
+    setJob(null);
+    setJobEvents([]);
+    try {
+      const input = JSON.parse(jobInput) as unknown;
+      const result = await api.submitExecutionJob(
+        agentId.trim(),
+        jobVersion.trim(),
+        input,
+        1024,
+        crypto.randomUUID(),
+      );
+      setJob(result);
+      setJobId(String(result.job_id ?? ""));
+      setNotice({ kind: "success", text: "Execution job accepted by the API. Worker completion is asynchronous." });
+    } catch (error) {
+      setNotice({ kind: "error", text: error instanceof SyntaxError ? "Execution input must be valid JSON." : errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function inspectJob() {
+    if (!jobId.trim()) return;
+    setBusy("job-inspect");
+    setNotice(null);
+    try {
+      const [record, eventResult] = await Promise.all([
+        api.getExecutionJob(jobId.trim()),
+        api.listExecutionJobEvents(jobId.trim()),
+      ]);
+      setJob(record);
+      setJobEvents(eventResult.items);
+    } catch (error) {
+      setNotice({ kind: "error", text: errorMessage(error) });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cancelJob() {
+    if (!jobId.trim()) return;
+    setBusy("job-cancel");
+    setNotice(null);
+    try {
+      setJob(await api.cancelExecutionJob(jobId.trim()));
+      setNotice({ kind: "success", text: "Cancellation request submitted. The worker confirms the final state." });
     } catch (error) {
       setNotice({ kind: "error", text: errorMessage(error) });
     } finally {
@@ -213,12 +275,42 @@ export default function Workspace() {
           <div className="section-heading">
             <div><p className="eyebrow">EXECUTION ENGINE</p><h2>Execution inspector</h2><p>Retrieve a real execution record using its identifier.</p></div>
           </div>
+          <div className="two-column">
+            <article className="surface-card execution-card">
+              <div className="card-heading"><div><span className="card-kicker">DURABLE WORKER</span><h3>Submit agent job</h3></div><span className="card-symbol">▶</span></div>
+              <form onSubmit={submitJob} className="stack-form">
+                <label htmlFor="job-agent-id">Agent ID</label>
+                <input id="job-agent-id" value={agentId} onChange={(event) => setAgentId(event.target.value)} placeholder="Agent ID from Agent Studio" required />
+                <label htmlFor="job-version">Immutable version</label>
+                <input id="job-version" value={jobVersion} onChange={(event) => setJobVersion(event.target.value)} placeholder="1.0.0" required />
+                <label htmlFor="job-input">Input · JSON</label>
+                <textarea id="job-input" value={jobInput} onChange={(event) => setJobInput(event.target.value)} rows={5} spellCheck={false} />
+                <p className="helper">The API admits a tenant-scoped job with an idempotency key. A trusted worker and matching server allowlist must be configured for execution.</p>
+                <button className="primary-button" type="submit" disabled={busy !== null || !agentId.trim() || !jobVersion.trim()}>{busy === "job-submit" ? "Submitting…" : "Submit execution job"}</button>
+              </form>
+              {job && <div className="result-card"><strong>Job {String(job.job_id ?? jobId)} · {String(job.state ?? "accepted")}</strong><small>Workload: {String(job.workload_ref ?? "")}</small></div>}
+            </article>
+            <article className="surface-card execution-card">
+              <div className="card-heading"><div><span className="card-kicker">JOB LIFECYCLE</span><h3>Inspect and control</h3></div><span className="card-symbol">↻</span></div>
+              <div className="stack-form">
+                <label htmlFor="job-id">Execution job ID</label>
+                <input id="job-id" value={jobId} onChange={(event) => setJobId(event.target.value)} placeholder="Paste a job ID" />
+                <div className="action-row">
+                  <button className="secondary-button" type="button" onClick={() => void inspectJob()} disabled={busy !== null || !jobId.trim()}>{busy === "job-inspect" ? "Loading…" : "Refresh status"}</button>
+                  <button className="danger-button" type="button" onClick={() => void cancelJob()} disabled={busy !== null || !jobId.trim()}>Request cancel</button>
+                </div>
+              </div>
+              {job && <JsonPanel value={job} />}
+              {jobEvents.length > 0 && <div className="detail-block"><div className="detail-title">Append-only lifecycle events</div><JsonPanel value={jobEvents} /></div>}
+            </article>
+          </div>
           <article className="surface-card execution-card">
+            <div className="card-heading"><div><span className="card-kicker">SYNCHRONOUS RECORD</span><h3>Execution inspector</h3></div></div>
             <form onSubmit={loadExecution} className="inline-form">
               <div className="field-grow"><label htmlFor="execution-id">Execution ID</label><input id="execution-id" value={executionId} onChange={(event) => setExecutionId(event.target.value)} placeholder="Paste an execution ID" required /></div>
               <button className="primary-button" type="submit" disabled={busy !== null || !executionId.trim()}>{busy === "execution" ? "Loading…" : "Inspect execution"}</button>
             </form>
-            {execution ? <JsonPanel value={execution} /> : <p className="empty-state">Execution records appear here after a successful API lookup. No simulated data is shown.</p>}
+            {execution ? <JsonPanel value={execution} /> : <p className="empty-state">Synchronous execution records appear here after a successful API lookup. No simulated data is shown.</p>}
           </article>
         </section>
 
