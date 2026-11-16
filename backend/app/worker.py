@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
+from .capability_process_limits import apply_capability_process_limits
 from .capability_secrets import (
     CapabilitySecretBroker,
     CapabilitySecretRequest,
@@ -80,6 +81,7 @@ def _capability_handler_child(connection: Any, handler: CapabilityHandler,
                               context: CapabilityInvocationContext, value: Any) -> None:
     """Run one importable trusted handler in a disposable spawned process."""
     try:
+        apply_capability_process_limits(context.timeout_seconds)
         context.raise_if_expired()
         result = handler(context, value)
         context.raise_if_expired()
@@ -177,8 +179,7 @@ class ExecutionJobWorker:
         worker_id: str | None = None,
         lease_seconds: int = 30,
         poll_interval_seconds: float = 1.0,
-    ) -> None:
-        if not 3 <= lease_seconds <= 3600:
+    ) -> None:        if not 3 <= lease_seconds <= 3600:
             raise ValueError("lease_seconds must be between 3 and 3600")
         if not 0.05 <= poll_interval_seconds <= 60:
             raise ValueError("poll_interval_seconds must be between 0.05 and 60")
