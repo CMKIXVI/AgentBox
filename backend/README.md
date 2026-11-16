@@ -75,3 +75,11 @@ The worker dispatches capability jobs only through reviewed Python callables reg
 Each handler receives an immutable context (tenant, subject, capability version, contract hash and declared timeout) plus the validated input. The worker independently reloads the tenant-owned immutable contract, checks its content hash, revalidates input, and validates handler output against the contract's output schema before completing the job. Handler implementations must enforce the supplied timeout and perform any required downstream authorization themselves; the worker does not infer business permissions from a handler name.
 
 This is a trusted adapter boundary, not a general-purpose sandbox. `sandbox_workload` remains unsupported. A registered handler is executable trusted server code and must be reviewed, tested and deployed as part of the worker release.
+
+
+
+### Capability handler execution budgets
+
+Capability handlers receive a monotonic deadline through `CapabilityInvocationContext`. They should call `context.raise_if_expired()` at safe checkpoints and may use `context.remaining_seconds()` to bound downstream HTTP, database or subprocess operations. The worker checks the deadline before dispatch and after the handler returns, and discards results returned after the deadline.
+
+This is cooperative deadline enforcement only: Python synchronous handlers cannot be safely force-stopped by the worker. A handler that blocks without honoring its budget can continue running past the contract timeout while its lease heartbeat remains active. Do not register untrusted or potentially unbounded handlers; hard termination requires a separately isolated process/container execution boundary, which is not yet implemented.
