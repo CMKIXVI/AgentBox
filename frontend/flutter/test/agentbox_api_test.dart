@@ -312,4 +312,56 @@ void main() {
     client.close();
   });
 
+  test('parent candidate experiment comparison transport', () async {
+    final seen = <String>[];
+    final client = AgentBoxApiClient(
+      baseUrl: 'https://api.example.test',
+      accessTokenProvider: () async => 'short-lived-access-token',
+      httpClient: MockClient((request) async {
+        seen.add('${request.method} ${request.url.path}');
+        expect(request.headers['authorization'], 'Bearer short-lived-access-token');
+        if (request.method == 'POST') {
+          expect(jsonDecode(request.body), {
+            'agent_id': 'demo-agent',
+            'parent_version': '1.0.0',
+            'candidate_version': '1.1.0',
+            'parent_evaluation_run_id': 'parent-run',
+            'candidate_evaluation_run_id': 'candidate-run',
+            'workload_ref': 'benchmark://support/v1',
+            'workload_hash': 'a' * 64,
+          });
+          return http.Response(jsonEncode({
+            'comparison_id': 'comparison-1',
+            'evidence_status': 'unverified',
+            'promotion_eligible': false,
+            'decision_authority': 'advisory_only',
+          }), 201);
+        }
+        return http.Response(jsonEncode({
+          'comparison_id': 'comparison-1',
+          'evidence_status': 'unverified',
+          'promotion_eligible': false,
+        }), 200);
+      }),
+    );
+
+    final created = await client.compareAgentExperiment(
+      agentId: 'demo-agent',
+      parentVersion: '1.0.0',
+      candidateVersion: '1.1.0',
+      parentEvaluationRunId: 'parent-run',
+      candidateEvaluationRunId: 'candidate-run',
+      workloadRef: 'benchmark://support/v1',
+      workloadHash: 'a' * 64,
+    );
+    expect(created['promotion_eligible'], isFalse);
+    final loaded = await client.getAgentExperimentComparison('comparison-1');
+    expect(loaded['evidence_status'], 'unverified');
+    expect(seen, [
+      'POST /v1/agent-experiment-comparisons',
+      'GET /v1/agent-experiment-comparisons/comparison-1',
+    ]);
+    client.close();
+  });
+
 }
