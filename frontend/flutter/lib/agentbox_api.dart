@@ -133,5 +133,37 @@ class AgentBoxApiClient {
   Future<Map<String, dynamic>> cancelExecutionJob(String jobId) =>
       _request('POST', ['v1', 'execution-jobs', jobId, 'cancel']);
 
+  Future<Map<String, dynamic>> createEvaluationProfile(Map<String, dynamic> profile) =>
+      _request('POST', ['v1', 'evaluation-profiles'], body: {'profile': profile});
+
+  Future<Map<String, dynamic>> listEvaluationProfileVersions(String profileId) =>
+      _request('GET', ['v1', 'evaluation-profiles', profileId, 'versions']);
+
+  Future<Map<String, dynamic>> getEvaluationProfile(String profileId, String version) =>
+      _request('GET', ['v1', 'evaluation-profiles', profileId, 'versions', version]);
+
+  Future<Map<String, dynamic>> submitEvaluation({
+    required String agentId,
+    required String version,
+    required String profileId,
+    required String profileVersion,
+    required List<dynamic> results,
+  }) =>
+      _request(
+        'POST',
+        ['v1', 'agents', agentId, 'versions', version, 'evaluations'],
+        body: {
+          'profile_id': profileId,
+          'profile_version': profileVersion,
+          'results': results,
+        },
+      );
+
+  Future<Map<String, dynamic>> listEvaluations(String agentId, String version) =>
+      _request('GET', ['v1', 'agents', agentId, 'versions', version, 'evaluations']);
+
+  Future<Map<String, dynamic>> getEvaluation(String runId) =>
+      _request('GET', ['v1', 'evaluations', runId]);
+
   void close() => _httpClient.close();
 }
