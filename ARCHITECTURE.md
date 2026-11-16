@@ -490,3 +490,12 @@ This is an adapter boundary with deterministic injected tests, not a bundled clo
 ## PostgreSQL catalog extraction bounds
 
 The source-side reader applies server-side `LIMIT maximum + 1` to every catalog query. The additional row acts as an overflow sentinel and causes a fail-closed error; the collector never silently returns a partial catalogue. This bounds rows materialized for schema, relation, column, index and constraint metadata before snapshot assembly. Per-category, aggregate entity and serialized snapshot limits remain enforced, and overflow/error paths roll back and close the connection. This is a resource-safety boundary, not a substitute for database statement timeout, network limits or operational monitoring.
+
+
+## Dual-client operational UI implementation
+
+The Next.js console and Flutter client now expose a shared operational foundation aligned to the five pillars. Both clients support the existing backend operations for immutable agent-version registration, tenant-scoped version listing and version inspection, and execution-record lookup. The Next.js browser uses the Auth.js BFF proxy; Flutter uses AppAuth and platform-secure token storage. The clients display actual API responses and do not seed synthetic agent or execution records.
+
+The backend currently exposes version listing only when an `agent_id` is already known; it does not yet expose a tenant-scoped agent catalogue endpoint. Accordingly, neither client claims to implement a global agent inventory. Execution inspection is read-only; the UI does not add execution submission, evaluation execution, candidate promotion, workflow authoring, or approval actions until their complete API contracts, policy checks, and operational evidence are available.
+
+The UI implementation is not a production release. Remaining gates include executing the Next.js typecheck and production build, Flutter analysis and widget tests, browser/device accessibility review, live OIDC issuer/JWKS and native redirect validation, real client-to-API end-to-end tests, deployment configuration, and security review. UI capability completion must be reported separately from backend runtime and production readiness.
