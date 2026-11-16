@@ -240,6 +240,9 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
       _execution = null;
       _job = null;
       _jobEvents = [];
+      _profileVersions = [];
+      _evaluationRuns = [];
+      _evaluationRun = null;
       _jobIdController.clear();
     });
     _setNotice('Signed out. Secure tokens were cleared.');
