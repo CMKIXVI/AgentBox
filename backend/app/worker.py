@@ -158,6 +158,8 @@ def _run_capability_handler_isolated(
 # Deployments add reviewed Python callables here. No contract implementation_ref
 # or environment-provided import path is ever loaded.
 CAPABILITY_HANDLERS: dict[tuple[str, str], CapabilityHandler] = {}
+# Deployments may replace this with a reviewed broker client. The default denies all.
+CAPABILITY_SECRET_BROKER: CapabilitySecretBroker = DenyAllCapabilitySecretBroker()
 
 
 class ExecutionJobWorker:
@@ -185,7 +187,7 @@ class ExecutionJobWorker:
         self.executions = executions
         self.capabilities = capabilities
         self.capability_handlers = dict(capability_handlers or {})
-        self.secret_broker = secret_broker or DenyAllCapabilitySecretBroker()
+        self.secret_broker = secret_broker if secret_broker is not None else DenyAllCapabilitySecretBroker()
         allowed_capability_handlers = {
             (handler_id, handler_version)
             for kind, handler_id, handler_version in self.jobs.allowed_handlers
@@ -422,6 +424,7 @@ def main() -> None:
         app.state.executions,
         capabilities=app.state.capabilities,
         capability_handlers=CAPABILITY_HANDLERS,
+        secret_broker=CAPABILITY_SECRET_BROKER,
         worker_id=os.getenv("AGENTBOX_WORKER_ID") or None,
         lease_seconds=int(os.getenv("AGENTBOX_WORKER_LEASE_SECONDS", "30")),
         poll_interval_seconds=float(os.getenv("AGENTBOX_WORKER_POLL_INTERVAL_SECONDS", "1")),
