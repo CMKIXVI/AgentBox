@@ -535,6 +535,11 @@ class EvaluationService:
         tenant_id: str = LEGACY_TENANT_ID,
         execution_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if execution_evidence is not None and (
+            not isinstance(execution_evidence, dict)
+            or execution_evidence.get("source") != "server_execution_records"
+        ):
+            raise ValueError("execution_evidence must originate from server execution records")
         profile_record = self.get_profile(profile_id, profile_version, tenant_id)
         if execution_evidence is not None:
             self._verify_execution_evidence(
@@ -562,11 +567,6 @@ class EvaluationService:
             **evaluation,
         }
         if execution_evidence is not None:
-            if (
-                not isinstance(execution_evidence, dict)
-                or execution_evidence.get("source") != "server_execution_records"
-            ):
-                raise ValueError("execution_evidence must originate from server execution records")
             payload["execution_evidence"] = execution_evidence
         with self._connection() as connection:
             connection.execute(
