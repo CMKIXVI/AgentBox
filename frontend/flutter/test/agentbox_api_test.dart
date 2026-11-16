@@ -171,4 +171,67 @@ void main() {
     client.close();
   });
 
+  test('cognitive runtime transport binds run, event, and context contracts', () async {
+    final seen = <String>[];
+    final client = AgentBoxApiClient(
+      baseUrl: 'https://api.example.test',
+      accessTokenProvider: () async => 'short-lived-access-token',
+      httpClient: MockClient((request) async {
+        seen.add('${request.method} ${request.url.path}');
+        expect(request.headers['authorization'], 'Bearer short-lived-access-token');
+        if (request.url.path == '/v1/cognitive-runs') {
+          expect(request.headers['idempotency-key'], 'cognition-key');
+          expect(jsonDecode(request.body), {
+            'goal_ref': 'goal://demo',
+            'agent_ref': 'demo-agent@1.0.0',
+          });
+          return http.Response(jsonEncode({
+            'run': {'run_id': 'cog-001', 'current_stage': 'intent'},
+            'initial_event': {'stage': 'intent'},
+            'created': true,
+          }), 201);
+        }
+        if (request.url.path.endsWith('/context')) {
+          expect(request.headers['idempotency-key'], 'context-key');
+          expect(jsonDecode(request.body), {
+            'search': 'customer',
+            'include_inferences': false,
+            'limit': 8,
+          });
+          return http.Response(jsonEncode({
+            'snapshot_ref': 'context-snapshot:abc',
+            'snapshot': {'entities': [], 'relationships': [], 'evidence': []},
+          }), 201);
+        }
+        if (request.url.path.endsWith('/events')) {
+          expect(request.url.queryParameters['after_sequence'], '0');
+          return http.Response(jsonEncode({'run_id': 'cog-001', 'items': []}), 200);
+        }
+        return http.Response(jsonEncode({'run_id': 'cog-001', 'status': 'active'}), 200);
+      }),
+    );
+
+    final created = await client.createCognitiveRun(
+      goalRef: 'goal://demo',
+      agentRef: 'demo-agent@1.0.0',
+      idempotencyKey: 'cognition-key',
+    );
+    expect((created['run'] as Map<String, dynamic>)['run_id'], 'cog-001');
+    expect((await client.getCognitiveRun('cog-001'))['status'], 'active');
+    expect((await client.listCognitiveRunEvents('cog-001'))['items'], isEmpty);
+    final context = await client.assembleCognitiveContext(
+      runId: 'cog-001',
+      request: {'search': 'customer', 'include_inferences': false, 'limit': 8},
+      idempotencyKey: 'context-key',
+    );
+    expect(context['snapshot_ref'], 'context-snapshot:abc');
+    expect(seen, [
+      'POST /v1/cognitive-runs',
+      'GET /v1/cognitive-runs/cog-001',
+      'GET /v1/cognitive-runs/cog-001/events',
+      'POST /v1/cognitive-runs/cog-001/context',
+    ]);
+    client.close();
+  });
+
 }
