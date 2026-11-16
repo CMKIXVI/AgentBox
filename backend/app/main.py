@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import hmac
 import json
 import os
@@ -58,6 +59,7 @@ from .execution import (
     ExecutionNotFoundError,
     ExecutionPolicyError,
     ExecutionService,
+    ProviderError,
 )
 from .execution_jobs import (
     DurableExecutionJobService,
@@ -205,6 +207,13 @@ class EvaluationRunRequest(BaseModel):
     profile_id: str = Field(min_length=3, max_length=128)
     profile_version: str = Field(min_length=1, max_length=128)
     results: list[EvaluationCaseSubmission] = Field(max_length=500)
+
+
+class EvaluationExecutionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    profile_id: str = Field(min_length=3, max_length=128)
+    profile_version: str = Field(min_length=1, max_length=128)
+    max_output_tokens: int = Field(default=1024, ge=1, le=8192)
 
 
 class ExperienceRecordRequest(BaseModel):
@@ -1140,6 +1149,138 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 request.profile_version,
                 [item.model_dump() for item in request.results],
                 principal.tenant_id,
+            )
+        except EvaluationProfileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/agents/{agent_id}/versions/{version}/evaluations/execute",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def execute_agent_evaluation(
+        agent_id: str,
+        version: str,
+        request: EvaluationExecutionRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        """Run every pinned profile case through the configured provider and score recorded outputs."""
+        if not idempotency_key.strip() or len(idempotency_key) > 128:
+            raise HTTPException(status_code=422, detail="Idempotency-Key must contain 1 to 128 characters")
+        enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
+        enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
+        enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
+        try:
+            artifact = app.state.registry.get(agent_id, version, principal.tenant_id)
+            profile_record = app.state.evaluations.get_profile(
+                request.profile_id, request.profile_version, principal.tenant_id
+            )
+        except AgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except EvaluationProfileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        profile = profile_record["profile"]
+        cases = profile.get("cases", [])
+        if not isinstance(cases, list) or not 1 <= len(cases) <= 100:
+            raise HTTPException(status_code=422, detail="Execution-backed evaluations require 1 to 100 cases")
+        if artifact.manifest.get("tools"):
+            raise HTTPException(
+                status_code=403,
+                detail="Tool-enabled agents cannot be evaluated until trusted tool execution is available",
+            )
+        if any(not isinstance(case, dict) or "input" not in case for case in cases):
+            raise HTTPException(status_code=422, detail="Every evaluation case must define an input")
+
+        workload_definition = {
+            "profile_id": request.profile_id,
+            "profile_version": request.profile_version,
+            "profile_content_hash": profile_record["content_hash"],
+            "cases": [{"case_id": case["case_id"], "input": case["input"]} for case in cases],
+        }
+        workload_hash = hashlib.sha256(
+            json.dumps(workload_definition, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=False, allow_nan=False).encode("utf-8")
+        ).hexdigest()
+        submitted_results: list[dict[str, Any]] = []
+        case_evidence: list[dict[str, Any]] = []
+        for case in cases:
+            case_id = case["case_id"]
+            input_hash = hashlib.sha256(
+                json.dumps(case["input"], sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False, allow_nan=False).encode("utf-8")
+            ).hexdigest()
+            case_key = hashlib.sha256(
+                f"{idempotency_key}:{principal.tenant_id}:{agent_id}:{artifact.content_hash}:"
+                f"{profile_record['content_hash']}:{case_id}".encode("utf-8")
+            ).hexdigest()
+            try:
+                execution = app.state.executions.execute(
+                    agent_id,
+                    version,
+                    case["input"],
+                    case_key,
+                    request.max_output_tokens,
+                    principal.tenant_id,
+                )
+            except ExecutionPolicyError as exc:
+                code = 503 if "Provider is not configured" in str(exc) else 403
+                raise HTTPException(status_code=code, detail=str(exc)) from exc
+            except ExecutionConflictError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            except ProviderError as exc:
+                raise HTTPException(status_code=502, detail="Configured provider execution failed") from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if execution["status"] != "completed" or not isinstance(execution.get("result"), dict):
+                raise HTTPException(status_code=502, detail="Provider execution did not complete successfully")
+            executed = execution["result"]
+            usage = executed.get("usage", {})
+            cost = usage.get("cost_usd") if isinstance(usage, dict) else None
+            latency = executed.get("latency_ms")
+            if cost is None or latency is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Provider execution lacks recorded cost or latency; evaluation fails closed",
+                )
+            submitted_results.append({
+                "case_id": case_id,
+                "output": executed.get("output"),
+                "latency_ms": latency,
+                "cost_usd": cost,
+            })
+            case_evidence.append({
+                "case_id": case_id,
+                "execution_id": execution["execution_id"],
+                "input_hash": input_hash,
+                "output_hash": hashlib.sha256(
+                    json.dumps(executed.get("output"), sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False).encode("utf-8")
+                ).hexdigest(),
+                "provider_id": executed.get("provider_id"),
+                "model_id": executed.get("model_id"),
+                "latency_ms": latency,
+                "cost_usd": cost,
+            })
+
+        execution_evidence = {
+            "source": "server_execution_records",
+            "agent_content_hash": artifact.content_hash,
+            "profile_content_hash": profile_record["content_hash"],
+            "workload_hash": workload_hash,
+            "case_executions": case_evidence,
+        }
+        try:
+            return app.state.evaluations.create_run(
+                agent_id,
+                version,
+                request.profile_id,
+                request.profile_version,
+                submitted_results,
+                principal.tenant_id,
+                execution_evidence=execution_evidence,
             )
         except EvaluationProfileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
