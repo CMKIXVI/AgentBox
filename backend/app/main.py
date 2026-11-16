@@ -1166,9 +1166,12 @@ def create_app(database_path: str | None = None) -> FastAPI:
         idempotency_key: str = Header(alias="Idempotency-Key"),
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
-        """Run every pinned profile case through the configured provider and score recorded outputs."""
+        """Run pinned profile cases through the configured provider and score recorded outputs."""
         if not idempotency_key.strip() or len(idempotency_key) > 128:
-            raise HTTPException(status_code=422, detail="Idempotency-Key must contain 1 to 128 characters")
+            raise HTTPException(
+                status_code=422,
+                detail="Idempotency-Key must contain 1 to 128 characters",
+            )
         enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
@@ -1185,14 +1188,22 @@ def create_app(database_path: str | None = None) -> FastAPI:
         profile = profile_record["profile"]
         cases = profile.get("cases", [])
         if not isinstance(cases, list) or not 1 <= len(cases) <= 100:
-            raise HTTPException(status_code=422, detail="Execution-backed evaluations require 1 to 100 cases")
+            raise HTTPException(
+                status_code=422,
+                detail="Execution-backed evaluations require 1 to 100 cases",
+            )
         if artifact.manifest.get("tools"):
             raise HTTPException(
                 status_code=403,
-                detail="Tool-enabled agents cannot be evaluated until trusted tool execution is available",
+                detail=(
+                    "Tool-enabled agents cannot be evaluated until trusted tool execution "
+                    "is available"
+                ),
             )
         if any(not isinstance(case, dict) or "input" not in case for case in cases):
-            raise HTTPException(status_code=422, detail="Every evaluation case must define an input")
+            raise HTTPException(
+                status_code=422, detail="Every evaluation case must define an input"
+            )
 
         workload_definition = {
             "profile_id": request.profile_id,
@@ -1231,11 +1242,16 @@ def create_app(database_path: str | None = None) -> FastAPI:
             except ExecutionConflictError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             except ProviderError as exc:
-                raise HTTPException(status_code=502, detail="Configured provider execution failed") from exc
+                raise HTTPException(
+                    status_code=502, detail="Configured provider execution failed"
+                ) from exc
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             if execution["status"] != "completed" or not isinstance(execution.get("result"), dict):
-                raise HTTPException(status_code=502, detail="Provider execution did not complete successfully")
+                raise HTTPException(
+                    status_code=502,
+                    detail="Provider execution did not complete successfully",
+                )
             executed = execution["result"]
             usage = executed.get("usage", {})
             cost = usage.get("cost_usd") if isinstance(usage, dict) else None
@@ -1243,7 +1259,10 @@ def create_app(database_path: str | None = None) -> FastAPI:
             if cost is None or latency is None:
                 raise HTTPException(
                     status_code=503,
-                    detail="Provider execution lacks recorded cost or latency; evaluation fails closed",
+                    detail=(
+                        "Provider execution lacks recorded cost or latency; "
+                        "evaluation fails closed"
+                    ),
                 )
             submitted_results.append({
                 "case_id": case_id,
@@ -1256,8 +1275,10 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 "execution_id": execution["execution_id"],
                 "input_hash": input_hash,
                 "output_hash": hashlib.sha256(
-                    json.dumps({"output": executed.get("output")}, sort_keys=True, separators=(",", ":"),
-                               ensure_ascii=False, allow_nan=False).encode("utf-8")
+                    json.dumps(
+                        {"output": executed.get("output")}, sort_keys=True,
+                        separators=(",", ":"), ensure_ascii=False, allow_nan=False,
+                    ).encode("utf-8")
                 ).hexdigest(),
                 "provider_id": executed.get("provider_id"),
                 "model_id": executed.get("model_id"),
