@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
+from jsonschema import Draft202012Validator, ValidationError as JSONSchemaValidationError
 
 from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
@@ -111,6 +112,11 @@ AUTHENTICATED_PRINCIPAL = Depends(require_active_tenant_principal)
 class CapabilityContractRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     contract: dict[str, Any]
+
+
+class CapabilityInvocationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input: Any
 
 
 class ManifestRequest(BaseModel):
@@ -453,6 +459,38 @@ def load_job_handler_allowlist() -> set[tuple[str, str, str]]:
     return allowed
 
 
+
+def load_capability_handler_bindings(
+    allowed_handlers: set[tuple[str, str, str]],
+) -> dict[tuple[str, str], tuple[str, str, str]]:
+    """Bind immutable capability versions to exact server-allowlisted handlers."""
+    raw = os.getenv("AGENTBOX_CAPABILITY_HANDLERS", "[]")
+    try:
+        entries = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError("AGENTBOX_CAPABILITY_HANDLERS must be valid JSON") from exc
+    if not isinstance(entries, list):
+        raise TypeError("AGENTBOX_CAPABILITY_HANDLERS must be a JSON array")
+    bindings: dict[tuple[str, str], tuple[str, str, str]] = {}
+    required = {
+        "capability_id", "version", "workload_kind", "handler_id", "handler_version"
+    }
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != required:
+            raise ValueError("Each capability handler entry must contain exactly capability_id, version, workload_kind, handler_id and handler_version")
+        capability_id, version = entry["capability_id"], entry["version"]
+        handler = (entry["workload_kind"], entry["handler_id"], entry["handler_version"])
+        if not all(isinstance(value, str) and value.strip() for value in (capability_id, version, *handler)):
+            raise ValueError("Capability handler binding fields must be non-empty strings")
+        key = (capability_id, version)
+        if key in bindings:
+            raise ValueError(f"Duplicate capability handler binding: {capability_id}@{version}")
+        if handler not in allowed_handlers:
+            raise ValueError(f"Capability handler is not present in AGENTBOX_JOB_ALLOWED_HANDLERS: {handler[1]}@{handler[2]}")
+        bindings[key] = handler
+    return bindings
+
+
 def require_job_worker(authorization: str | None) -> None:
     """Authenticate internal worker endpoints with a dedicated server secret."""
     expected = os.getenv("AGENTBOX_JOB_WORKER_TOKEN")
@@ -491,6 +529,9 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.authorization_audit = AuthorizationAuditStore(db_path)
     app.state.capabilities = CapabilityRegistry(db_path)
     app.state.job_handler_allowlist = load_job_handler_allowlist()
+    app.state.capability_handler_bindings = load_capability_handler_bindings(
+        app.state.job_handler_allowlist
+    )
     app.state.execution_jobs = DurableExecutionJobService(
         db_path, allowed_handlers=app.state.job_handler_allowlist
     )
@@ -589,6 +630,83 @@ def create_app(database_path: str | None = None) -> FastAPI:
             "content_hash": record.content_hash, "contract": record.contract,
             "created_at": record.created_at,
         }
+
+
+
+    @app.post(
+        "/v1/capabilities/{capability_id}/versions/{version}/invocations",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def submit_capability_invocation(
+        capability_id: str,
+        version: str,
+        request: CapabilityInvocationRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            artifact = app.state.capabilities.get(
+                capability_id, version, principal.tenant_id
+            )
+        except CapabilityNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Capability version not found") from exc
+
+        contract = artifact.contract
+        permission = contract.get("permission_profile", {})
+        actions = permission.get("actions", [])
+        if (
+            permission.get("principal_scope") != principal.principal_type
+            or len(actions) != 1
+            or not isinstance(actions[0], str)
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Capability invocation requires a matching principal scope and exactly one declared permission action",
+            )
+
+        binding = app.state.capability_handler_bindings.get((capability_id, version))
+        if binding is None:
+            raise HTTPException(
+                status_code=503,
+                detail="No trusted server handler is configured for this capability version",
+            )
+
+        try:
+            Draft202012Validator(contract["input_schema"]).validate(request.input)
+        except JSONSchemaValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "Capability input does not match its contract", "path": list(exc.absolute_path)},
+            ) from exc
+
+        enforce_authorization(
+            app, principal, capability_id, actions[0], capability_id
+        )
+        workload_kind, handler_id, handler_version = binding
+        try:
+            record, created = app.state.execution_jobs.create(
+                tenant_id=principal.tenant_id,
+                subject_id=principal.subject_id,
+                principal_type=principal.principal_type,
+                workload_kind=workload_kind,
+                handler_id=handler_id,
+                handler_version=handler_version,
+                workload_ref=f"capability:{capability_id}@{version}",
+                workload_hash=artifact.content_hash,
+                payload={
+                    "capability_id": capability_id,
+                    "version": version,
+                    "input": request.input,
+                },
+                idempotency_key=idempotency_key,
+            )
+        except JobConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        response = dict(record)
+        response["created"] = created
+        return response
 
     @app.post("/v1/agents/validate")
     def validate(request: ManifestRequest) -> dict[str, Any]:
