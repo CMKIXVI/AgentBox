@@ -12,7 +12,9 @@ def configure_test_access(app):
     )
     resources = [
         "research.summarizer", "runtime.test", "quality.research-summary",
-        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha", "evidence.alpha", "tenant-connectors", "connector.alpha", "warehouse-prod", "research.summarizer", "crm.contact.read", "*",
+        "tenant-context", "tenant-experience", "app.alpha", "db.alpha",
+        "rel.alpha", "evidence.alpha", "tenant-connectors", "connector.alpha",
+        "warehouse-prod", "crm.contact.read", "*",
     ]
     grants = [
         ("agent.registry", "agent.create"),
@@ -48,7 +50,9 @@ def configure_test_access(app):
         ("agent.cognition", "cognition.run.create"),
         ("agent.cognition", "cognition.run.read"),
         ("agent.cognition", "cognition.event.append"),
-        ("agent.cognition", "cognition.context.assemble"),\n        ("capability.registry", "capability.register"),\n        ("capability.registry", "capability.read"),
+        ("agent.cognition", "cognition.context.assemble"),
+        ("capability.registry", "capability.register"),
+        ("capability.registry", "capability.read"),
     ]
     created_at = datetime(2026, 11, 12, tzinfo=UTC).isoformat()
     app.state.authorization_policies = [
