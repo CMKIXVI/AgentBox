@@ -245,3 +245,13 @@ Catalog extraction now places a server-side `LIMIT maximum + 1` on each schema, 
 - No API routes or backend trust semantics changed. No trusted execution attestation, same-workload experiment runner, hard-gate evaluator, approval workflow, promotion pointer, or rollback authority was added.
 - Tests were authored but not executed in this environment. No CI workflow run exists for the latest branch commit; frontend compilation and live API/browser/device E2E remain unverified.
 - This is a frontend observability/workflow slice, not evidence of autonomous evolution or production readiness.
+
+## Follow-up — 2026-11-16: Parent–candidate experiment comparison
+
+- Added a tenant-scoped immutable comparison service and authenticated create/read API.
+- Validates immutable parent/candidate registry versions, exact candidate parent lineage, completed evaluation-run ownership/version, and exact evaluation profile version/content hash.
+- Records score, pass-state, latency and cost deltas; same evaluation-pair replay is idempotent and conflicting replay is rejected.
+- Added append-only SQLite update/delete guards, service tests, API integration tests, and Next.js/Flutter API and workspace coverage.
+- The supplied workload reference/hash is caller-asserted and is not bound to execution inputs or evaluation-run output. The evaluator still scores caller-submitted outputs. Comparisons remain `unverified`, advisory-only and ineligible for promotion.
+- No trusted same-workload runner, cryptographic workload attestation, hard-gate authority, approval, promotion pointer or rollback was introduced.
+- Tests are authored but not executed in this environment. CI is not run for this batch; frontend typecheck/build and live provider/browser/device E2E remain unverified.
