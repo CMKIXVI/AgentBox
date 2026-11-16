@@ -292,6 +292,9 @@ class ExecutionService:
                 },
                 "provider_id": provider_id,
                 "model_id": request.model_id,
+                "input_hash": hashlib.sha256(
+                    canonical_json({"input": user_input}).encode("utf-8")
+                ).hexdigest(),
                 "steps": 1,
                 "latency_ms": round((time.perf_counter() - started_monotonic) * 1000, 3),
             }
