@@ -49,11 +49,12 @@ def submit(client, key="worker-test-job"):
     )
 
 
-def make_worker(client, worker_id="test-worker", capability_handlers=None):
+def make_worker(client, worker_id="test-worker", capability_handlers=None, secret_broker=None):
     state = client.app.state
     return ExecutionJobWorker(
         state.execution_jobs, state.registry, state.executions,
         capabilities=state.capabilities, capability_handlers=capability_handlers,
+        secret_broker=secret_broker,
         worker_id=worker_id, lease_seconds=6, poll_interval_seconds=0.05,
     )
 
@@ -304,8 +305,8 @@ def test_capability_secret_broker_receives_exact_invocation_scope(client):
     worker = make_worker(
         client,
         capability_handlers={( "provider.fake", "1.0.0"): capability_test_secret_handler},
+        secret_broker=CapabilityTestSecretBroker(),
     )
-    worker.secret_broker = CapabilityTestSecretBroker()
     assert worker.run_once() is True
     completed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
     assert completed["state"] == "succeeded"
