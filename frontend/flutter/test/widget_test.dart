@@ -32,4 +32,17 @@ void main() {
     expect(find.text('Job lifecycle'), findsOneWidget);
     expect(find.text('Find synchronous execution'), findsOneWidget);
   });
+  testWidgets('opens evaluation profile and scoring workspace', (tester) async {
+    await tester.pumpWidget(const AgentBoxApp());
+
+    await tester.tap(find.text('Evaluation'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Evaluation Explorer'), findsOneWidget);
+    expect(find.text('Evaluation profile · JSON'), findsOneWidget);
+    expect(find.text('Profile versions'), findsOneWidget);
+    expect(find.text('Score submitted outputs'), findsOneWidget);
+    expect(find.text('Evaluation history'), findsOneWidget);
+  });
+
 }
