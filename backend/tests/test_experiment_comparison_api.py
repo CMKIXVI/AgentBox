@@ -19,7 +19,7 @@ def client_for(tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
-def prepare_runs(client: TestClient) -> tuple[str, str, str, str]:
+def prepare_runs(client: TestClient) -> tuple[str, str, str, str, str]:
     manifest = copy.deepcopy(AGENT)
     manifest["agent_id"] = "research.summarizer"
     created = client.post("/v1/agents", json={"manifest": manifest})
@@ -95,7 +95,7 @@ def test_parent_candidate_comparison_api_is_immutable_and_advisory(tmp_path: Pat
     assert fetched.json()["comparison_id"] == record["comparison_id"]
 
 
-def test_parent_candidate_comparison_rejects_mismatched_lineage_and_profile(tmp_path: Path) -> None:
+def test_parent_candidate_comparison_rejects_missing_parent_and_same_run(tmp_path: Path) -> None:
     client = client_for(tmp_path)
     agent_id, parent_version, candidate_version, parent_run, candidate_run = prepare_runs(client)
     payload = {
