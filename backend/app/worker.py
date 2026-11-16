@@ -179,7 +179,8 @@ class ExecutionJobWorker:
         worker_id: str | None = None,
         lease_seconds: int = 30,
         poll_interval_seconds: float = 1.0,
-    ) -> None:        if not 3 <= lease_seconds <= 3600:
+    ) -> None:
+        if not 3 <= lease_seconds <= 3600:
             raise ValueError("lease_seconds must be between 3 and 3600")
         if not 0.05 <= poll_interval_seconds <= 60:
             raise ValueError("poll_interval_seconds must be between 0.05 and 60")
