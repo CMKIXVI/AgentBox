@@ -499,3 +499,8 @@ The Next.js console and Flutter client now expose a shared operational foundatio
 The backend currently exposes version listing only when an `agent_id` is already known; it does not yet expose a tenant-scoped agent catalogue endpoint. Accordingly, neither client claims to implement a global agent inventory. Execution inspection is read-only; the UI does not add execution submission, evaluation execution, candidate promotion, workflow authoring, or approval actions until their complete API contracts, policy checks, and operational evidence are available.
 
 The UI implementation is not a production release. Remaining gates include executing the Next.js typecheck and production build, Flutter analysis and widget tests, browser/device accessibility review, live OIDC issuer/JWKS and native redirect validation, real client-to-API end-to-end tests, deployment configuration, and security review. UI capability completion must be reported separately from backend runtime and production readiness.
+
+
+### Evaluation Explorer UI
+
+Both Next.js and Flutter clients expose the existing tenant-scoped evaluation-profile and evaluation-run APIs. Users can register immutable declarative profiles, inspect profile versions, submit case outputs with measured latency/cost, inspect deterministic scoring and gate results, and retrieve prior runs. The evaluation service scores submitted outputs; it does not execute agents, generate benchmark outputs, or independently attest caller-supplied latency and cost. UI wording and controls must preserve this distinction. Evaluation gates are evidence for review, not automatic authorization to promote a candidate.
