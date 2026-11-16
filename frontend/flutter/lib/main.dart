@@ -91,6 +91,20 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
   Map<String, dynamic>? _cognitiveRun;
   List<dynamic> _cognitiveEvents = [];
   Map<String, dynamic>? _contextSnapshot;
+  final _experienceAgentController = TextEditingController();
+  final _experienceExecutionController = TextEditingController();
+  final _experienceEvaluationController = TextEditingController();
+  final _experienceWorkloadRefController = TextEditingController(text: 'benchmark://support-quality/v1');
+  final _experienceWorkloadHashController = TextEditingController();
+  final _experienceIdController = TextEditingController();
+  final _lessonTypeController = TextEditingController(text: 'response.quality');
+  final _lessonStatementController = TextEditingController();
+  final _fitnessProfileController = TextEditingController(text: 'support-quality');
+  final _fitnessVersionController = TextEditingController(text: '1.0.0');
+  final _fitnessSamplesController = TextEditingController(text: '3');
+  List<dynamic> _experienceItems = [];
+  List<dynamic> _lessonItems = [];
+  List<dynamic> _fitnessItems = [];
   Map<String, dynamic>? _createdAgent;
   List<dynamic> _versions = [];
   Map<String, dynamic>? _selectedVersion;
@@ -126,6 +140,17 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     _cognitiveAgentRefController.dispose();
     _cognitiveRunIdController.dispose();
     _contextSearchController.dispose();
+    _experienceAgentController.dispose();
+    _experienceExecutionController.dispose();
+    _experienceEvaluationController.dispose();
+    _experienceWorkloadRefController.dispose();
+    _experienceWorkloadHashController.dispose();
+    _experienceIdController.dispose();
+    _lessonTypeController.dispose();
+    _lessonStatementController.dispose();
+    _fitnessProfileController.dispose();
+    _fitnessVersionController.dispose();
+    _fitnessSamplesController.dispose();
     super.dispose();
   }
 
@@ -257,6 +282,9 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
       _cognitiveRun = null;
       _cognitiveEvents = [];
       _contextSnapshot = null;
+      _experienceItems = [];
+      _lessonItems = [];
+      _fitnessItems = [];
       _jobIdController.clear();
       _cognitiveRunIdController.clear();
     });
@@ -584,6 +612,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
                   _buildExecution(),
                   _buildEvaluation(),
                   _buildCognitiveRuntime(),
+                  _buildLearningExplorer(),
                 ],
               ),
             ),
@@ -599,6 +628,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
           NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Execution'),
           NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Evaluation'),
           NavigationDestination(icon: Icon(Icons.account_tree_outlined), selectedIcon: Icon(Icons.account_tree), label: 'Cognition'),
+          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: 'Learning'),
         ],
       ),
     );
@@ -857,6 +887,173 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _createExperience() async {
+    final api = _api;
+    if (!_signedIn || api == null) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.createExperience(
+        executionId: _experienceExecutionController.text.trim(),
+        evaluationRunId: _experienceEvaluationController.text.trim(),
+        workloadRef: _experienceWorkloadRefController.text.trim(),
+        workloadHash: _experienceWorkloadHashController.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _experienceIdController.text = result['experience_id'].toString());
+      _setNotice('Experience saved. Caller-asserted linkage remains unverified.');
+    } catch (error) {
+      _setNotice('Could not record experience: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadExperiences() async {
+    final api = _api;
+    if (!_signedIn || api == null || _experienceAgentController.text.trim().isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.listExperiences(_experienceAgentController.text.trim());
+      if (!mounted) return;
+      setState(() => _experienceItems = result['items'] as List<dynamic>? ?? []);
+    } catch (error) {
+      _setNotice('Could not load experiences: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _createLesson() async {
+    final api = _api;
+    final experienceId = _experienceIdController.text.trim();
+    if (!_signedIn || api == null || experienceId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.createLearningLesson(
+        experienceId: experienceId,
+        lesson: {
+          'lesson_type': _lessonTypeController.text.trim(),
+          'statement': _lessonStatementController.text.trim(),
+          'evidence_refs': [experienceId],
+          'source_kind': 'human_review',
+          'extractor_version': 'agentbox-learning-ui/1.0.0',
+          'confidence': 1.0,
+        },
+      );
+      if (!mounted) return;
+      setState(() => _lessonItems = [result, ..._lessonItems]);
+      _setNotice('Proposed lesson saved with its source experience reference.');
+    } catch (error) {
+      _setNotice('Could not save lesson: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadLessons() async {
+    final api = _api;
+    final experienceId = _experienceIdController.text.trim();
+    if (!_signedIn || api == null || experienceId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.listLearningLessons(experienceId);
+      if (!mounted) return;
+      setState(() => _lessonItems = result['items'] as List<dynamic>? ?? []);
+    } catch (error) {
+      _setNotice('Could not load lessons: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadFitness() async {
+    final api = _api;
+    if (!_signedIn || api == null) return;
+    final samples = int.tryParse(_fitnessSamplesController.text.trim());
+    if (samples == null || samples < 1 || samples > 1000) {
+      _setNotice('Minimum samples must be an integer from 1 to 1000.', error: true);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final result = await api.selectFitness(
+        profileId: _fitnessProfileController.text.trim(),
+        profileVersion: _fitnessVersionController.text.trim(),
+        minSamples: samples,
+      );
+      if (!mounted) return;
+      setState(() => _fitnessItems = result['items'] as List<dynamic>? ?? []);
+    } catch (error) {
+      _setNotice('Could not select fitness candidates: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _buildLearningExplorer() {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        const Text('AI INTELLIGENCE · AGENT EVOLUTION', style: TextStyle(color: Color(0xFF8BB7FF), fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text('Experience, Learning & Fitness', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        const Text('Retain minimized execution/evaluation links, derive traceable lessons, and rank agents using repeated evidence.', style: TextStyle(color: Color(0xFF9AAAC2), height: 1.5)),
+        const SizedBox(height: 18),
+        _sectionCard(
+          title: 'Record execution experience',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: _experienceExecutionController, decoration: const InputDecoration(labelText: 'Execution ID')),
+            const SizedBox(height: 8),
+            TextField(controller: _experienceEvaluationController, decoration: const InputDecoration(labelText: 'Evaluation run ID')),
+            const SizedBox(height: 8),
+            TextField(controller: _experienceWorkloadRefController, decoration: const InputDecoration(labelText: 'Workload reference')),
+            const SizedBox(height: 8),
+            TextField(controller: _experienceWorkloadHashController, maxLength: 64, decoration: const InputDecoration(labelText: 'Workload SHA-256')),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: !_signedIn || _busy ? null : _createExperience, child: const Text('Record experience')),
+            const Divider(height: 24),
+            TextField(controller: _experienceAgentController, decoration: const InputDecoration(labelText: 'Agent ID for experience history')),
+            OutlinedButton(onPressed: !_signedIn || _busy ? null : _loadExperiences, child: const Text('Load experiences')),
+            if (_experienceItems.isNotEmpty) _jsonResult({'items': _experienceItems}),
+            const Text('Experience links are caller-asserted and remain unverified; they are not trusted execution proof.', style: TextStyle(color: Color(0xFFFFD28A), fontSize: 11, height: 1.5)),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Traceable learning lessons',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: _experienceIdController, decoration: const InputDecoration(labelText: 'Source experience ID')),
+            const SizedBox(height: 8),
+            TextField(controller: _lessonTypeController, decoration: const InputDecoration(labelText: 'Normalized lesson type')),
+            const SizedBox(height: 8),
+            TextField(controller: _lessonStatementController, maxLines: 3, decoration: const InputDecoration(labelText: 'Lesson statement')),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: !_signedIn || _busy ? null : _createLesson, child: const Text('Save proposed lesson')),
+            OutlinedButton(onPressed: !_signedIn || _busy ? null : _loadLessons, child: const Text('Load lessons')),
+            if (_lessonItems.isNotEmpty) _jsonResult({'items': _lessonItems}),
+            const Text('Lessons remain proposed and source-linked. They do not rewrite agent configuration or grant authority.', style: TextStyle(color: Color(0xFF9AAAC2), fontSize: 11, height: 1.5)),
+          ]),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Evidence-based fitness selection',
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(controller: _fitnessProfileController, decoration: const InputDecoration(labelText: 'Evaluation profile ID')),
+            const SizedBox(height: 8),
+            TextField(controller: _fitnessVersionController, decoration: const InputDecoration(labelText: 'Profile version')),
+            const SizedBox(height: 8),
+            TextField(controller: _fitnessSamplesController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Minimum sample count')),
+            const SizedBox(height: 8),
+            FilledButton(onPressed: !_signedIn || _busy ? null : _loadFitness, child: const Text('Select fitness candidates')),
+            if (_fitnessItems.isNotEmpty) _jsonResult({'items': _fitnessItems}),
+            const Text('Historical aggregates over unverified caller-asserted records are prioritization signals only—not benchmark proof, gate results, or promotion approval.', style: TextStyle(color: Color(0xFFFFD28A), fontSize: 11, height: 1.5)),
+          ]),
+        ),
+      ],
+    );
   }
 
   Widget _buildCognitiveRuntime() {
