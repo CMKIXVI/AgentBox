@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import {
   AgentBoxApiError,
   AgentBoxBffClient,
@@ -67,7 +67,7 @@ export default function Workspace() {
 
   const versionCount = useMemo(() => versions.length, [versions]);
 
-  async function createAgent(event: React.FormEvent<HTMLFormElement>) {
+  async function createAgent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy("create");
     setNotice(null);
@@ -85,7 +85,7 @@ export default function Workspace() {
     }
   }
 
-  async function loadVersions(event: React.FormEvent<HTMLFormElement>) {
+  async function loadVersions(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy("versions");
     setNotice(null);
@@ -115,7 +115,7 @@ export default function Workspace() {
     }
   }
 
-  async function loadExecution(event: React.FormEvent<HTMLFormElement>) {
+  async function loadExecution(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy("execution");
     setNotice(null);
