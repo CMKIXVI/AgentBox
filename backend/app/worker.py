@@ -62,10 +62,14 @@ def _capability_handler_child(connection: Any, handler: CapabilityHandler,
                              separators=(",", ":")).encode("utf-8")
         if len(encoded) > 1_048_576:
             raise ValueError("capability handler result exceeds 1 MiB")
-        connection.send_bytes(encoded)
+        envelope = json.dumps({"ok": True, "result": result}, ensure_ascii=False,
+                              allow_nan=False, separators=(",", ":")).encode("utf-8")
+        if len(envelope) > 1_048_576:
+            raise ValueError("capability handler result exceeds 1 MiB")
+        connection.send_bytes(envelope)
     except BaseException:
         try:
-            connection.send_bytes(b'{"error":"capability_handler_failed"}')
+            connection.send_bytes(b'{"ok":false}')
         except (BrokenPipeError, OSError):
             pass
     finally:
@@ -108,9 +112,9 @@ def _run_capability_handler_isolated(
             result = json.loads(payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise RuntimeError("capability handler returned an invalid result envelope") from exc
-        if isinstance(result, dict) and result.get("error") == "capability_handler_failed":
+        if not isinstance(result, dict) or result.get("ok") is not True or "result" not in result:
             raise RuntimeError("capability handler failed")
-        return result
+        return result["result"]
     finally:
         receive.close()
         if process.pid is not None:
