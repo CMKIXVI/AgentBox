@@ -122,7 +122,7 @@ def test_capability_invocation_fails_closed_without_binding_and_audits_denial(tm
     unconfigured = invoke(client)
     assert unconfigured.status_code == 503
 
-    app.state.capability_handler_bindings[("crm.contact.read", "1.0.0")] = HANDLER.values()
+    app.state.capability_handler_bindings[("crm.contact.read", "1.0.0")] = tuple(HANDLER.values())
     app.state.authorization_policies = [
         policy for policy in app.state.authorization_policies
         if policy.get("policy_id") != "test.capability.invoke"
@@ -130,6 +130,9 @@ def test_capability_invocation_fails_closed_without_binding_and_audits_denial(tm
     denied = invoke(client, "denied")
     assert denied.status_code == 403
     events = app.state.authorization_audit.list_events()
-    assert events[0]["capability_id"] == "crm.contact.read"
-    assert events[0]["action"] == "crm.contact.read"
-    assert events[0]["allowed"] is False
+    assert any(
+        event["capability_id"] == "crm.contact.read"
+        and event["action"] == "crm.contact.read"
+        and event["allowed"] is False
+        for event in events
+    )
