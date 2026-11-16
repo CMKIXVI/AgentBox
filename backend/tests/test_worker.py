@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 from threading import Event
+import time
 
 import pytest
 from auth_helpers import configure_test_access
@@ -187,7 +188,7 @@ def test_worker_waits_for_heartbeat_thread_before_returning(client):
 
 
 
-def capability_contract():
+def capability_contract(timeout_seconds=8):
     return {
         "schema_version": "1.0.0",
         "capability_id": "crm.contact.read",
@@ -208,7 +209,7 @@ def capability_contract():
         },
         "auth_ref": "policy:crm.contact.read",
         "permission_profile": {"principal_scope": "user", "actions": ["crm.contact.read"]},
-        "timeout_seconds": 8,
+        "timeout_seconds": timeout_seconds,
         "audit": {
             "required": True,
             "events": ["requested", "authorized", "completed", "failed"],
@@ -218,9 +219,9 @@ def capability_contract():
     }
 
 
-def enqueue_capability(client, key="capability-worker-job"):
+def enqueue_capability(client, key="capability-worker-job", timeout_seconds=8):
     state = client.app.state
-    artifact, _ = state.capabilities.register(capability_contract(), "test-tenant")
+    artifact, _ = state.capabilities.register(capability_contract(timeout_seconds), "test-tenant")
     job, _ = state.execution_jobs.create(
         tenant_id="test-tenant",
         subject_id="test-user",
@@ -240,18 +241,30 @@ def enqueue_capability(client, key="capability-worker-job"):
     return job
 
 
+def capability_test_read_contact(context, value):
+    context.raise_if_expired()
+    if context.tenant_id != "test-tenant" or context.subject_id != "test-user":
+        raise ValueError("unexpected invocation identity")
+    if context.timeout_seconds != 8 or value != {"contact_id": "contact-123"}:
+        raise ValueError("unexpected invocation contract")
+    return {"name": "Ada"}
+
+
+def capability_test_invalid_output(_context, _value):
+    return {"name": 42}
+
+
+def capability_test_slow_handler(context, _value):
+    time.sleep(context.timeout_seconds + 2)
+    return {"name": "Too late"}
+
+
 def test_worker_executes_capability_through_static_handler_and_validates_output(client):
     job = enqueue_capability(client)
-    seen = {}
-
-    def read_contact(context, value):
-        seen["tenant_id"] = context.tenant_id
-        seen["subject_id"] = context.subject_id
-        seen["timeout_seconds"] = context.timeout_seconds
-        seen["input"] = value
-        return {"name": "Ada"}
-
-    worker = make_worker(client, capability_handlers={("provider.fake", "1.0.0"): read_contact})
+    worker = make_worker(
+        client,
+        capability_handlers={("provider.fake", "1.0.0"): capability_test_read_contact},
+    )
     assert worker.run_once() is True
     completed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
     assert completed["state"] == "succeeded"
@@ -259,12 +272,6 @@ def test_worker_executes_capability_through_static_handler_and_validates_output(
         "capability_id": "crm.contact.read",
         "version": "1.0.0",
         "output": {"name": "Ada"},
-    }
-    assert seen == {
-        "tenant_id": "test-tenant",
-        "subject_id": "test-user",
-        "timeout_seconds": 8,
-        "input": {"contact_id": "contact-123"},
     }
 
 
@@ -280,7 +287,7 @@ def test_worker_fails_capability_job_when_handler_output_violates_contract(clien
     job = enqueue_capability(client, "capability-invalid-output")
     worker = make_worker(
         client,
-        capability_handlers={("provider.fake", "1.0.0"): lambda _context, _value: {"name": 42}},
+        capability_handlers={("provider.fake", "1.0.0"): capability_test_invalid_output},
     )
     assert worker.run_once() is True
     failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
@@ -312,17 +319,16 @@ def test_capability_invocation_context_exposes_cooperative_deadline(monkeypatch)
         context.raise_if_expired()
 
 
-def test_worker_discards_capability_result_after_deadline(client, monkeypatch):
-    job = enqueue_capability(client, "capability-deadline-expired")
-    clock = [100.0]
-    monkeypatch.setattr("app.worker.time.monotonic", lambda: clock[0])
-
-    def late_handler(context, _value):
-        clock[0] = context.deadline_monotonic
-        return {"name": "Too late"}
-
-    worker = make_worker(client, capability_handlers={("provider.fake", "1.0.0"): late_handler})
+def test_worker_terminates_capability_handler_at_hard_deadline(client):
+    job = enqueue_capability(client, "capability-hard-timeout", timeout_seconds=1)
+    worker = make_worker(
+        client,
+        capability_handlers={("provider.fake", "1.0.0"): capability_test_slow_handler},
+    )
+    started = time.monotonic()
     assert worker.run_once() is True
+    elapsed = time.monotonic() - started
     failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
     assert failed["state"] == "failed"
     assert failed["error_code"] == "provider_execution_failed"
+    assert elapsed < 4
