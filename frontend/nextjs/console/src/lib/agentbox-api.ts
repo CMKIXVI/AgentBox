@@ -183,4 +183,47 @@ export class AgentBoxBffClient {
   getExecution(executionId: string): Promise<Record<string, unknown>> {
     return this.request(`/v1/executions/${encodeURIComponent(executionId)}`);
   }
+
+  createEvaluationProfile(profile: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("/v1/evaluation-profiles", {
+      method: "POST",
+      body: JSON.stringify({ profile }),
+    });
+  }
+
+  listEvaluationProfileVersions(profileId: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/evaluation-profiles/${encodeURIComponent(profileId)}/versions`);
+  }
+
+  getEvaluationProfile(profileId: string, version: string): Promise<Record<string, unknown>> {
+    return this.request(
+      `/v1/evaluation-profiles/${encodeURIComponent(profileId)}/versions/${encodeURIComponent(version)}`,
+    );
+  }
+
+  submitEvaluation(
+    agentId: string,
+    version: string,
+    profileId: string,
+    profileVersion: string,
+    results: unknown[],
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}/evaluations`,
+      {
+        method: "POST",
+        body: JSON.stringify({ profile_id: profileId, profile_version: profileVersion, results }),
+      },
+    );
+  }
+
+  listEvaluations(agentId: string, version: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}/evaluations`,
+    );
+  }
+
+  getEvaluation(runId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/evaluations/${encodeURIComponent(runId)}`);
+  }
 }
