@@ -56,6 +56,8 @@ async function proxy(request: NextRequest, context: RouteContext) {
 
   const headers = new Headers({ Accept: "application/json" });
   headers.set("Authorization", `Bearer ${accessToken}`);
+  const idempotencyKey = request.headers.get("idempotency-key");
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("Content-Type", contentType);
 
