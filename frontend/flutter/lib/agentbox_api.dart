@@ -165,5 +165,43 @@ class AgentBoxApiClient {
   Future<Map<String, dynamic>> getEvaluation(String runId) =>
       _request('GET', ['v1', 'evaluations', runId]);
 
+  Future<Map<String, dynamic>> createCognitiveRun({
+    required String goalRef,
+    required String agentRef,
+    required String idempotencyKey,
+  }) =>
+      _request(
+        'POST',
+        const ['v1', 'cognitive-runs'],
+        body: {'goal_ref': goalRef, 'agent_ref': agentRef},
+        extraHeaders: {'Idempotency-Key': idempotencyKey},
+      );
+
+  Future<Map<String, dynamic>> getCognitiveRun(String runId) =>
+      _request('GET', ['v1', 'cognitive-runs', runId]);
+
+  Future<Map<String, dynamic>> listCognitiveRunEvents(
+    String runId, {
+    int afterSequence = 0,
+    int limit = 200,
+  }) =>
+      _request(
+        'GET',
+        ['v1', 'cognitive-runs', runId, 'events'],
+        query: {'after_sequence': '$afterSequence', 'limit': '$limit'},
+      );
+
+  Future<Map<String, dynamic>> assembleCognitiveContext({
+    required String runId,
+    required Map<String, dynamic> request,
+    required String idempotencyKey,
+  }) =>
+      _request(
+        'POST',
+        ['v1', 'cognitive-runs', runId, 'context'],
+        body: request,
+        extraHeaders: {'Idempotency-Key': idempotencyKey},
+      );
+
   void close() => _httpClient.close();
 }
