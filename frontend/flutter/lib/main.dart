@@ -78,17 +78,27 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
   final _jobVersionController = TextEditingController(text: '1.0.0');
   final _jobInputController = TextEditingController(text: '{"message":"Hello from AgentBox"}');
   final _jobIdController = TextEditingController();
+  final _profileIdController = TextEditingController(text: 'support-quality');
+  final _profileVersionController = TextEditingController(text: '1.0.0');
+  final _profileController = TextEditingController();
+  final _evaluationResultsController = TextEditingController(
+    text: '[{"case_id":"greeting","output":"Hello! How can I help?","latency_ms":420,"cost_usd":0.001}]',
+  );
   Map<String, dynamic>? _createdAgent;
   List<dynamic> _versions = [];
   Map<String, dynamic>? _selectedVersion;
   Map<String, dynamic>? _execution;
   Map<String, dynamic>? _job;
   List<dynamic> _jobEvents = [];
+  List<dynamic> _profileVersions = [];
+  List<dynamic> _evaluationRuns = [];
+  Map<String, dynamic>? _evaluationRun;
 
   @override
   void initState() {
     super.initState();
     _manifestController.text = _starterManifest();
+    _profileController.text = _starterEvaluationProfile();
     _restoreSession();
   }
 
@@ -101,6 +111,10 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     _jobVersionController.dispose();
     _jobInputController.dispose();
     _jobIdController.dispose();
+    _profileIdController.dispose();
+    _profileVersionController.dispose();
+    _profileController.dispose();
+    _evaluationResultsController.dispose();
     super.dispose();
   }
 
@@ -132,6 +146,34 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
         },
         'runtime_targets': ['server'],
         'tags': ['starter'],
+      });
+
+  String _starterEvaluationProfile() => JsonEncoder.withIndent('  ').convert({
+        'schema_version': '1.0.0',
+        'profile_id': 'support-quality',
+        'version': '1.0.0',
+        'name': 'Support response quality',
+        'description': 'Deterministic checks for support agent outputs.',
+        'scoring': {
+          'correctness_weight': 0.7,
+          'latency_weight': 0.2,
+          'cost_weight': 0.1,
+        },
+        'gates': {
+          'min_case_pass_rate': 0.9,
+          'max_avg_latency_ms': 3000,
+          'max_total_cost_usd': 0.05,
+        },
+        'cases': [
+          {
+            'case_id': 'greeting',
+            'description': 'Response contains a greeting',
+            'input': {'message': 'Hello'},
+            'assertions': [
+              {'type': 'contains', 'expected_value': 'Hello'},
+            ],
+          },
+        ],
       });
 
   Future<void> _restoreSession() async {
@@ -340,6 +382,115 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
     }
   }
 
+  Future<void> _saveEvaluationProfile() async {
+    final api = _api;
+    if (!_signedIn || api == null) return;
+    setState(() => _busy = true);
+    try {
+      final decoded = jsonDecode(_profileController.text);
+      if (decoded is! Map<String, dynamic>) {
+        throw const FormatException('Evaluation profile must be a JSON object.');
+      }
+      final result = await api.createEvaluationProfile(decoded);
+      if (!mounted) return;
+      setState(() {
+        _profileIdController.text = result['profile_id']?.toString() ?? '';
+        _profileVersionController.text = result['version']?.toString() ?? '';
+      });
+      _setNotice('Immutable evaluation profile version registered.');
+    } catch (error) {
+      _setNotice('Could not register evaluation profile: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadEvaluationProfiles() async {
+    final api = _api;
+    final profileId = _profileIdController.text.trim();
+    if (!_signedIn || api == null || profileId.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.listEvaluationProfileVersions(profileId);
+      if (!mounted) return;
+      final items = result['items'];
+      setState(() => _profileVersions = items is List ? items : []);
+      _setNotice('Loaded ${_profileVersions.length} profile version(s).');
+    } catch (error) {
+      _setNotice('Could not load evaluation profiles: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadEvaluationProfile(String version) async {
+    final api = _api;
+    if (!_signedIn || api == null) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.getEvaluationProfile(
+        _profileIdController.text.trim(),
+        version,
+      );
+      if (!mounted) return;
+      setState(() {
+        _profileVersionController.text = version;
+        _profileController.text = JsonEncoder.withIndent('  ').convert(result['profile']);
+      });
+    } catch (error) {
+      _setNotice('Could not load profile version: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _runEvaluation() async {
+    final api = _api;
+    final agentId = _agentIdController.text.trim();
+    final agentVersion = _jobVersionController.text.trim();
+    if (!_signedIn || api == null || agentId.isEmpty || agentVersion.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final decoded = jsonDecode(_evaluationResultsController.text);
+      if (decoded is! List) {
+        throw const FormatException('Evaluation results must be a JSON array.');
+      }
+      final result = await api.submitEvaluation(
+        agentId: agentId,
+        version: agentVersion,
+        profileId: _profileIdController.text.trim(),
+        profileVersion: _profileVersionController.text.trim(),
+        results: decoded,
+      );
+      if (!mounted) return;
+      setState(() => _evaluationRun = result);
+      _setNotice('Scored submitted outputs. This API does not execute the agent.');
+    } catch (error) {
+      _setNotice('Could not score evaluation: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loadEvaluationHistory() async {
+    final api = _api;
+    final agentId = _agentIdController.text.trim();
+    final version = _jobVersionController.text.trim();
+    if (!_signedIn || api == null || agentId.isEmpty || version.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final result = await api.listEvaluations(agentId, version);
+      if (!mounted) return;
+      final items = result['items'];
+      setState(() => _evaluationRuns = items is List ? items : []);
+      _setNotice('Loaded ${_evaluationRuns.length} evaluation run(s).');
+    } catch (error) {
+      _setNotice('Could not load evaluation history: $error', error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _loadExecution() async {
     final api = _api;
     final executionId = _executionIdController.text.trim();
@@ -413,6 +564,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
                   _buildOverview(),
                   _buildAgentStudio(),
                   _buildExecution(),
+                  _buildEvaluation(),
                 ],
               ),
             ),
@@ -426,6 +578,7 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
           NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Overview'),
           NavigationDestination(icon: Icon(Icons.hub_outlined), selectedIcon: Icon(Icons.hub), label: 'Agent Studio'),
           NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Execution'),
+          NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Evaluation'),
         ],
       ),
     );
@@ -599,6 +752,108 @@ class _AgentBoxHomePageState extends State<AgentBoxHomePage> {
                 const SizedBox(height: 12),
                 _jsonResult(_execution!),
               ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEvaluation() {
+    return ListView(
+      padding: const EdgeInsets.all(18),
+      children: [
+        const Text('QUALITY & VERIFICATION', style: TextStyle(color: Color(0xFF8BB7FF), fontSize: 10, letterSpacing: 2, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        Text('Evaluation Explorer', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        const Text('Create immutable deterministic profiles, score supplied outputs, and inspect quality gates. Scoring does not execute an agent.', style: TextStyle(color: Color(0xFF9AAAC2), height: 1.5)),
+        const SizedBox(height: 18),
+        _sectionCard(
+          title: 'Evaluation profile · JSON',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(controller: _profileController, minLines: 12, maxLines: 20, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), decoration: const InputDecoration(alignLabelWithHint: true)),
+              const SizedBox(height: 10),
+              const Text('Profiles contain deterministic assertions, scoring weights, and gates. They cannot contain executable evaluator code.', style: TextStyle(color: Color(0xFF9AAAC2), fontSize: 11, height: 1.5)),
+              const SizedBox(height: 10),
+              FilledButton(onPressed: !_signedIn || _busy ? null : _saveEvaluationProfile, child: const Text('Register immutable profile')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Profile versions',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(controller: _profileIdController, decoration: const InputDecoration(labelText: 'Profile ID')),
+              const SizedBox(height: 8),
+              OutlinedButton(onPressed: !_signedIn || _busy ? null : _loadEvaluationProfiles, child: const Text('Load profile versions')),
+              for (final item in _profileVersions)
+                if (item is Map<String, dynamic>)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Version ${item['version'] ?? 'unknown'}'),
+                    subtitle: Text(item['created_at']?.toString() ?? ''),
+                    onTap: _busy ? null : () => _loadEvaluationProfile(item['version'].toString()),
+                  ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Score submitted outputs',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(controller: _agentIdController, decoration: const InputDecoration(labelText: 'Agent ID')),
+              const SizedBox(height: 8),
+              TextField(controller: _jobVersionController, decoration: const InputDecoration(labelText: 'Agent version')),
+              const SizedBox(height: 8),
+              TextField(controller: _profileVersionController, decoration: const InputDecoration(labelText: 'Profile version')),
+              const SizedBox(height: 8),
+              TextField(controller: _evaluationResultsController, minLines: 5, maxLines: 10, style: const TextStyle(fontFamily: 'monospace', fontSize: 11), decoration: const InputDecoration(labelText: 'Measured case results · JSON array', alignLabelWithHint: true)),
+              const SizedBox(height: 8),
+              const Text('Each result supplies case_id, output, latency_ms, and cost_usd. Missing case outputs fail their case.', style: TextStyle(color: Color(0xFF9AAAC2), fontSize: 11, height: 1.5)),
+              const SizedBox(height: 10),
+              FilledButton(onPressed: !_signedIn || _busy ? null : _runEvaluation, child: const Text('Score evaluation')),
+              if (_evaluationRun != null) ...[
+                const SizedBox(height: 12),
+                _jsonResult(_evaluationRun!),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _sectionCard(
+          title: 'Evaluation history',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OutlinedButton(onPressed: !_signedIn || _busy ? null : _loadEvaluationHistory, child: const Text('Load runs for agent version')),
+              for (final item in _evaluationRuns)
+                if (item is Map<String, dynamic>)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${item['passed'] == true ? 'PASS' : 'FAIL'} · score ${item['score'] ?? '—'}'),
+                    subtitle: Text(item['run_id']?.toString() ?? ''),
+                    onTap: () async {
+                      final api = _api;
+                      if (api == null) return;
+                      setState(() => _busy = true);
+                      try {
+                        final run = await api.getEvaluation(item['run_id'].toString());
+                        if (!mounted) return;
+                        setState(() => _evaluationRun = run);
+                      } catch (error) {
+                        _setNotice('Could not load evaluation run: $error', error: true);
+                      } finally {
+                        if (mounted) setState(() => _busy = false);
+                      }
+                    },
+                  ),
             ],
           ),
         ),
