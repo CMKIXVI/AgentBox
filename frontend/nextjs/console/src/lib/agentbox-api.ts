@@ -285,4 +285,18 @@ export class AgentBoxBffClient {
     const query = new URLSearchParams({ profile_id: profileId, profile_version: profileVersion, min_samples: String(minSamples) });
     return this.request(`/v1/fitness/selection?${query}`);
   }
+
+  compareAgentExperiment(input: {
+    agent_id: string; parent_version: string; candidate_version: string;
+    parent_evaluation_run_id: string; candidate_evaluation_run_id: string;
+    workload_ref: string; workload_hash: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request("/v1/agent-experiment-comparisons", {
+      method: "POST", body: JSON.stringify(input),
+    });
+  }
+
+  getAgentExperimentComparison(comparisonId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/agent-experiment-comparisons/${encodeURIComponent(comparisonId)}`);
+  }
 }
