@@ -163,3 +163,29 @@ def test_comparison_rejects_conflicting_replay(comparison_db):
             service.compare(**request(workload_ref="benchmark://different/v1"))
     finally:
         service.close()
+
+def test_comparison_records_are_append_only(comparison_db):
+    service = ExperimentComparisonService(comparison_db)
+    try:
+        record, _ = service.compare(**request())
+    finally:
+        service.close()
+
+    connection = sqlite3.connect(comparison_db)
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        connection.execute(
+            "UPDATE agent_experiment_comparisons SET workload_ref = ? WHERE comparison_id = ?",
+            ("benchmark://mutated", record["comparison_id"]),
+        )
+    connection.rollback()
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"):
+        connection.execute(
+            "DELETE FROM agent_experiment_comparisons WHERE comparison_id = ?",
+            (record["comparison_id"],),
+        )
+    connection.close()
+
+
+def test_comparison_rejects_same_parent_and_candidate_version(service):
+    with pytest.raises(ExperimentComparisonValidationError, match="versions must differ"):
+        service.compare(**request(candidate_version="1.0.0"))
