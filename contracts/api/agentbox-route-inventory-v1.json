@@ -122,6 +122,16 @@
       "auth_required": true
     },
     {
+      "method": "POST",
+      "path": "/v1/agent-experiment-comparisons",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agent-experiment-comparisons/{comparison_id}",
+      "auth_required": true
+    },
+    {
       "method": "GET",
       "path": "/v1/fitness/selection",
       "auth_required": true
