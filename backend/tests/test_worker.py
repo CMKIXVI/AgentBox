@@ -320,7 +320,7 @@ def test_capability_invocation_context_exposes_cooperative_deadline(monkeypatch)
 
 
 def test_worker_terminates_capability_handler_at_hard_deadline(client):
-    job = enqueue_capability(client, "capability-hard-timeout", timeout_seconds=1)
+    job = enqueue_capability(client, "capability-hard-timeout", timeout_seconds=3)
     worker = make_worker(
         client,
         capability_handlers={("provider.fake", "1.0.0"): capability_test_slow_handler},
@@ -331,4 +331,4 @@ def test_worker_terminates_capability_handler_at_hard_deadline(client):
     failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
     assert failed["state"] == "failed"
     assert failed["error_code"] == "provider_execution_failed"
-    assert elapsed < 4
+    assert elapsed < 5
