@@ -86,3 +86,39 @@ limit network destinations, provide a per-invocation process-count boundary, or
 isolate filesystem/network credentials. The child remains trusted application
 code, not hostile-code sandboxing. The implementation fails closed on platforms
 without POSIX resource-limit support.
+
+
+## Optional outbound-proxy-only network boundary
+
+For deployments with a separately managed, policy-enforcing HTTP(S) proxy, install
+the optional drop-in at
+`/etc/systemd/system/agentbox-capability-worker.service.d/egress-proxy.conf`:
+
+```ini
+[Service]
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/8
+IPAddressAllow=::1/128
+```
+
+The repository supplies this as
+`deploy/systemd/agentbox-capability-worker-egress-proxy.conf`. Create the drop-in
+directory, copy the file, and configure the worker's non-secret `HTTP_PROXY` and
+`HTTPS_PROXY` settings to point to the local proxy (for example,
+`http://127.0.0.1:3128`). Do not add broad `NO_PROXY` entries: they bypass the
+proxy for matching destinations. Then run `systemctl daemon-reload` and restart
+the worker during a controlled deployment window.
+
+This is an optional, fail-closed network boundary: direct IPv4/IPv6 destinations
+from the worker and its children are denied; only loopback IP connections remain
+available. The proxy must independently enforce hostname, resolved-IP, port,
+scheme and redirect policies, including DNS resolution and protection against
+private/link-local address access. Run the proxy as a separate service/identity
+with its own egress firewall policy. A proxy that permits arbitrary CONNECT or
+forwards arbitrary destinations defeats the control.
+
+The drop-in does not filter Unix-domain sockets, distinguish loopback ports, or
+protect against a compromised local proxy. Validate the effective policy and
+proxy behavior on the target host before enabling it. Do not apply this drop-in
+unless the proxy is already running and the required provider endpoints are
+explicitly allowlisted; otherwise outbound provider calls will fail closed.
