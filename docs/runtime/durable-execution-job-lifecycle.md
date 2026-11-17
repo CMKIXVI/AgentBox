@@ -162,3 +162,62 @@ The job lifecycle is not production-ready until a deployed worker proves queue a
 lease ownership, bounded concurrency, cancellation, restart recovery, tenant isolation,
 audit integrity, monitoring, backup/restore and failure handling. Live sandbox tests must
 add network/filesystem isolation, resource limits, timeout cleanup and image provenance.
+
+
+## 12. First service implementation status
+
+The first SQLite service implementation is proposed in PR #47. It currently provides tenant-scoped job creation and reads, tenant-scoped idempotency, a trusted deployment-configured handler allowlist, atomic single-database claims, lease-token fencing, worker start/heartbeat/complete/fail operations, cancellation request/confirmation, conservative expired-lease recovery, bounded payload/result envelopes, and append-only transition events.
+
+This implementation is deliberately not yet wired into FastAPI routes or a worker process. The handler allowlist must be supplied by trusted server configuration; an empty allowlist denies all submissions. The current adapter is single-instance SQLite only. It does not yet provide per-tenant/global admission limits, PostgreSQL semantics, external authorization-audit transaction linkage, automatic retry after ambiguous execution, a deployed sandbox worker, or operational guarantees.
+
+CI and integration status must be read from the exact PR head commit. A green unit-test workflow would verify code paths only; it would not certify a deployed worker or production readiness.
+
+
+## 13. API integration status
+
+The durable-job API is proposed in PR #47 and remains an unmerged feature-branch capability:
+
+- Tenant-authenticated callers can submit jobs only for a registered agent version and a provider handler explicitly allowlisted by server configuration.
+- Job status and cancellation are tenant-scoped and pass the existing capability authorization policy.
+- Internal worker claim/start/heartbeat/complete/fail/cancel-confirm endpoints require a dedicated bearer secret configured outside source control. If the secret is absent, worker access fails closed.
+- Authorization decisions for these API operations are appended to the existing authorization audit store.
+
+These endpoints do not constitute a deployed worker. They do not invoke model providers or sandbox workloads. The synchronous execution API is unchanged. The authorization decision and job transition records currently use separate persistence operations; atomic cross-ledger correlation remains a release gate.
+
+
+## 14. FastAPI endpoint integration
+
+The current unmerged implementation exposes these tenant-authenticated operations:
+
+- `POST /v1/agents/{agent_id}/versions/{version}/jobs` — submit a durable provider-invocation job.
+- `GET /v1/execution-jobs/{job_id}` — retrieve a tenant-scoped job status.
+- `GET /v1/execution-jobs/{job_id}/events` — retrieve tenant-scoped transition history.
+- `POST /v1/execution-jobs/{job_id}/cancel` — request cancellation; it does not claim the work has stopped.
+
+The following internal endpoints require the dedicated worker bearer secret:
+
+- `POST /internal/v1/execution-jobs/claim`
+- `POST /internal/v1/execution-jobs/recover`
+- `POST /internal/v1/execution-jobs/{job_id}/start`
+- `POST /internal/v1/execution-jobs/{job_id}/heartbeat`
+- `POST /internal/v1/execution-jobs/{job_id}/complete`
+- `POST /internal/v1/execution-jobs/{job_id}/fail`
+- `POST /internal/v1/execution-jobs/{job_id}/cancelled`
+
+The worker secret must be injected through the deployment secret manager as `AGENTBOX_JOB_WORKER_TOKEN`. It must not be committed to source control, placed in browser/mobile configuration, or shared with end users. Without it, internal worker routes return service unavailable.
+
+Job creation is disabled unless trusted server configuration explicitly registers a handler. Example shape for `AGENTBOX_JOB_ALLOWED_HANDLERS`:
+
+```json
+[
+  {
+    "workload_kind": "provider_invocation",
+    "handler_id": "provider.fake",
+    "handler_version": "1.0.0"
+  }
+]
+```
+
+The example above is for tests/development only; it does not establish a production provider. A handler is not enabled merely because a client names it. The allowlist is loaded at API startup. Multiple matching versions for the same provider are rejected as ambiguous.
+
+The internal endpoints are control-plane protocol surfaces, not a worker deployment. They do not execute provider calls or sandbox workloads. The existing synchronous execution endpoint remains unchanged.

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import copy
+import hmac
+import json
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -11,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
+from .authorization_audit import AuthorizationAuditStore
 from .authorization_policy import validate_authorization_policy
 from .candidate_generation import (
     CandidateConflictError,
@@ -35,6 +38,12 @@ from .execution import (
     ExecutionNotFoundError,
     ExecutionPolicyError,
     ExecutionService,
+)
+from .execution_jobs import (
+    DurableExecutionJobService,
+    JobConflictError,
+    JobLeaseError,
+    JobNotFoundError,
 )
 from .experience import (
     ExecutionExperienceService,
@@ -108,6 +117,46 @@ class ExecutionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     input: Any
     max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+
+
+class ExecutionJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input: Any
+    max_output_tokens: int = Field(default=1024, ge=1, le=8192)
+
+
+class WorkerClaimRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    worker_id: str = Field(min_length=1, max_length=128)
+    lease_seconds: int = Field(default=30, ge=1, le=3600)
+
+
+class WorkerRecoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    supervisor_id: str = Field(default="recovery", min_length=1, max_length=128)
+
+
+class WorkerLeaseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(min_length=2, max_length=128)
+    worker_id: str = Field(min_length=1, max_length=128)
+    lease_token: str = Field(min_length=1, max_length=128)
+
+
+class WorkerCompleteRequest(WorkerLeaseRequest):
+    result: dict[str, Any]
+
+
+class WorkerCancelConfirmRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tenant_id: str = Field(min_length=2, max_length=128)
+    actor_id: str = Field(min_length=1, max_length=128)
+    worker_id: str | None = Field(default=None, min_length=1, max_length=128)
+    lease_token: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class WorkerFailRequest(WorkerLeaseRequest):
+    error_code: str = Field(min_length=1, max_length=128)
 
 
 class EvaluationCaseSubmission(BaseModel):
@@ -270,10 +319,60 @@ def enforce_authorization(
         resource_id,
         app.state.authorization_policies,
     )
+    if hasattr(app.state, "authorization_audit"):
+        # Audit both grants and denials; failure to persist the decision fails closed.
+        app.state.authorization_audit.append(
+            principal, capability_id, action, resource_id, decision
+        )
     if not decision["allowed"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "Access denied", "reason": decision["reason"]},
+        )
+
+
+def load_job_handler_allowlist() -> set[tuple[str, str, str]]:
+    """Load exact workload handlers from trusted server configuration."""
+    raw = os.getenv("AGENTBOX_JOB_ALLOWED_HANDLERS", "[]")
+    try:
+        entries = json.loads(raw)
+    except ValueError as exc:
+        raise RuntimeError("AGENTBOX_JOB_ALLOWED_HANDLERS must be valid JSON") from exc
+    if not isinstance(entries, list):
+        raise TypeError("AGENTBOX_JOB_ALLOWED_HANDLERS must be a JSON array")
+    allowed: set[tuple[str, str, str]] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {
+            "workload_kind", "handler_id", "handler_version"
+        }:
+            raise ValueError("Each job handler entry must contain exactly workload_kind, handler_id and handler_version")
+        values = (entry["workload_kind"], entry["handler_id"], entry["handler_version"])
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            raise ValueError("Job handler fields must be non-empty strings")
+        if values[0] not in {"provider_invocation", "sandbox_workload"}:
+            raise ValueError("Unsupported job workload kind")
+        allowed.add(values)
+    return allowed
+
+
+def require_job_worker(authorization: str | None) -> None:
+    """Authenticate internal worker endpoints with a dedicated server secret."""
+    expected = os.getenv("AGENTBOX_JOB_WORKER_TOKEN")
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Execution worker authentication is not configured",
+        )
+    parts = authorization.split() if authorization else []
+    if (
+        len(parts) != 2
+        or parts[0].lower() != "bearer"
+        or not hmac.compare_digest(parts[1], expected)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Execution worker authentication failed",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
@@ -291,6 +390,11 @@ def create_app(database_path: str | None = None) -> FastAPI:
         str(Path(__file__).resolve().parents[1] / "data" / "agentbox.sqlite3"),
     )
     app.state.authorization_policies = load_authorization_policies()
+    app.state.authorization_audit = AuthorizationAuditStore(db_path)
+    app.state.job_handler_allowlist = load_job_handler_allowlist()
+    app.state.execution_jobs = DurableExecutionJobService(
+        db_path, allowed_handlers=app.state.job_handler_allowlist
+    )
     app.state.tenants = TenantRegistry(db_path)
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
@@ -457,6 +561,205 @@ def create_app(database_path: str | None = None) -> FastAPI:
             code = 503 if "Provider is not configured" in str(exc) else 403
             raise HTTPException(status_code=code, detail=str(exc)) from exc
         except ExecutionConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/agents/{agent_id}/versions/{version}/jobs",
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    def submit_execution_job(
+        agent_id: str,
+        version: str,
+        request: ExecutionJobRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key"),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
+        try:
+            artifact = app.state.registry.get(agent_id, version, principal.tenant_id)
+        except AgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        model_binding = artifact.manifest.get("model_binding", {})
+        handler_id = model_binding.get("provider_id") if isinstance(model_binding, dict) else None
+        handlers = [
+            entry for entry in app.state.job_handler_allowlist
+            if entry[0] == "provider_invocation" and entry[1] == handler_id
+        ]
+        if len(handlers) != 1:
+            raise HTTPException(
+                status_code=503,
+                detail="No unique trusted durable-job handler is configured for this provider",
+            )
+        workload_kind, handler_id, handler_version = handlers[0]
+        try:
+            record, created = app.state.execution_jobs.create(
+                tenant_id=principal.tenant_id,
+                subject_id=principal.subject_id,
+                principal_type=principal.principal_type,
+                workload_kind=workload_kind,
+                handler_id=handler_id,
+                handler_version=handler_version,
+                workload_ref=f"{agent_id}@{version}",
+                workload_hash=artifact.content_hash,
+                payload={"input": request.input, "max_output_tokens": request.max_output_tokens},
+                idempotency_key=idempotency_key,
+            )
+        except JobConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        response = dict(record)
+        response["created"] = created
+        return response
+
+    @app.get("/v1/execution-jobs/{job_id}")
+    def get_execution_job(
+        job_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            record = app.state.execution_jobs.get(job_id, principal.tenant_id)
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        agent_id = record["workload_ref"].split("@", 1)[0]
+        enforce_authorization(app, principal, "agent.execution", "execution.read", agent_id)
+        return record
+
+    @app.get("/v1/execution-jobs/{job_id}/events")
+    def list_execution_job_events(
+        job_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            record = app.state.execution_jobs.get(job_id, principal.tenant_id)
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        agent_id = record["workload_ref"].split("@", 1)[0]
+        enforce_authorization(app, principal, "agent.execution", "execution.read", agent_id)
+        return {"items": app.state.execution_jobs.list_events(job_id, principal.tenant_id)}
+
+    @app.post("/v1/execution-jobs/{job_id}/cancel")
+    def cancel_execution_job(
+        job_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            record = app.state.execution_jobs.get(job_id, principal.tenant_id)
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        agent_id = record["workload_ref"].split("@", 1)[0]
+        enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
+        try:
+            return app.state.execution_jobs.request_cancel(
+                job_id, principal.tenant_id, principal.subject_id
+            )
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+
+    @app.post("/internal/v1/execution-jobs/claim")
+    def claim_execution_job(
+        request: WorkerClaimRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        return {"job": app.state.execution_jobs.claim(request.worker_id, request.lease_seconds)}
+
+    @app.post("/internal/v1/execution-jobs/recover")
+    def recover_execution_jobs(
+        request: WorkerRecoveryRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, int]:
+        require_job_worker(authorization)
+        return app.state.execution_jobs.recover_expired_leases(request.supervisor_id)
+
+    @app.post("/internal/v1/execution-jobs/{job_id}/start")
+    def start_execution_job(
+        job_id: str,
+        request: WorkerLeaseRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        try:
+            return app.state.execution_jobs.start(
+                job_id, request.tenant_id, request.worker_id, request.lease_token
+            )
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        except JobLeaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/internal/v1/execution-jobs/{job_id}/heartbeat")
+    def heartbeat_execution_job(
+        job_id: str,
+        request: WorkerLeaseRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        try:
+            expiry = app.state.execution_jobs.heartbeat(
+                job_id, request.tenant_id, request.worker_id, request.lease_token
+            )
+            return {"lease_expires_at": expiry}
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        except JobLeaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/internal/v1/execution-jobs/{job_id}/cancelled")
+    def confirm_execution_job_cancel(
+        job_id: str,
+        request: WorkerCancelConfirmRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        try:
+            return app.state.execution_jobs.confirm_cancel(
+                job_id, request.tenant_id, request.actor_id,
+                request.worker_id, request.lease_token,
+            )
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        except JobLeaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except JobConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/internal/v1/execution-jobs/{job_id}/complete")
+    def complete_execution_job(
+        job_id: str,
+        request: WorkerCompleteRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        try:
+            return app.state.execution_jobs.complete(
+                job_id, request.tenant_id, request.worker_id,
+                request.lease_token, request.result,
+            )
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        except JobLeaseError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/internal/v1/execution-jobs/{job_id}/fail")
+    def fail_execution_job(
+        job_id: str,
+        request: WorkerFailRequest,
+        authorization: str | None = Header(default=None, alias="Authorization"),
+    ) -> dict[str, Any]:
+        require_job_worker(authorization)
+        try:
+            return app.state.execution_jobs.fail(
+                job_id, request.tenant_id, request.worker_id,
+                request.lease_token, request.error_code,
+            )
+        except JobNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Execution job not found") from exc
+        except JobLeaseError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
