@@ -46,4 +46,4 @@ The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js
 
 ## Shared API transport
 
-The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports. Their session ports do not persist or refresh credentials and never send a tenant-authority header.
+The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports. Their session ports do not persist or refresh credentials and never send a tenant-authority header. Both API clients now expose a constructor/factory that accepts the provider-neutral session reader directly; invalid or near-expiry sessions are rejected before a protected request. CI runs session adapter unit tests for both clients.

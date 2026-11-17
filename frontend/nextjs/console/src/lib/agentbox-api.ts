@@ -1,3 +1,4 @@
+import { createAccessTokenProvider, type SessionReader } from "./auth-session.ts";
 export type AccessTokenProvider = () => Promise<string | null>;
 
 export type AgentVersionRecord = {
@@ -18,24 +19,42 @@ export type AgentVersionList = {
 };
 
 export class AgentBoxApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly detail: unknown,
-  ) {
+  readonly status: number;
+  readonly detail: unknown;
+
+  constructor(message: string, status: number, detail: unknown) {
     super(message);
     this.name = "AgentBoxApiError";
+    this.status = status;
+    this.detail = detail;
   }
 }
 
 export class AgentBoxApiClient {
+  static fromSessionReader(
+    baseUrl: string,
+    sessionReader: SessionReader,
+    fetcher: typeof fetch = fetch,
+    now?: () => number,
+  ): AgentBoxApiClient {
+    return new AgentBoxApiClient(
+      baseUrl,
+      createAccessTokenProvider(sessionReader, now),
+      fetcher,
+    );
+  }
+
   private readonly baseUrl: string;
+  private readonly accessTokenProvider: AccessTokenProvider;
+  private readonly fetcher: typeof fetch;
 
   constructor(
     baseUrl: string,
-    private readonly accessTokenProvider: AccessTokenProvider,
-    private readonly fetcher: typeof fetch = fetch,
+    accessTokenProvider: AccessTokenProvider,
+    fetcher: typeof fetch = fetch,
   ) {
+    this.accessTokenProvider = accessTokenProvider;
+    this.fetcher = fetcher;
     const parsed = new URL(baseUrl);
     if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
       throw new Error("AgentBox API must use HTTPS outside localhost development");
