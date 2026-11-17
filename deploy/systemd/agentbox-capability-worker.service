@@ -1,0 +1,47 @@
+[Unit]
+Description=AgentBox trusted capability execution worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=agentbox-worker
+Group=agentbox-worker
+WorkingDirectory=/opt/agentbox/backend
+EnvironmentFile=-/etc/agentbox/worker.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/agentbox/.venv/bin/python -m app.worker
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Apply these restrictions to the worker and every spawned capability child.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Keep SQLite data writable, with all other paths read-only.
+ReadWritePaths=/var/lib/agentbox
+
+# Bound aggregate worker + child resource consumption.
+TasksMax=64
+MemoryMax=1G
+CPUQuota=200%
+TimeoutStopSec=45
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
