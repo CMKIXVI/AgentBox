@@ -406,6 +406,125 @@ class EvaluationService:
             "case_results": case_results,
         }
 
+    def _verify_execution_evidence(
+        self,
+        *,
+        agent_id: str,
+        agent_version: str,
+        tenant_id: str,
+        profile_record: dict[str, Any],
+        submitted_results: list[dict[str, Any]],
+        evidence: dict[str, Any],
+    ) -> None:
+        """Verify every submitted case against a completed server execution record."""
+        if evidence.get("source") != "server_execution_records":
+            raise ValueError("execution evidence source is not trusted")
+        cases = profile_record["profile"]["cases"]
+        workload_definition = {
+            "profile_id": profile_record["profile_id"],
+            "profile_version": profile_record["version"],
+            "profile_content_hash": profile_record["content_hash"],
+            "cases": [{"case_id": case["case_id"], "input": case["input"]} for case in cases],
+        }
+        expected_workload_hash = hashlib.sha256(
+            canonical_json(workload_definition).encode("utf-8")
+        ).hexdigest()
+        if evidence.get("workload_hash") != expected_workload_hash:
+            raise ValueError(
+                "execution evidence workload hash does not match the pinned profile inputs"
+            )
+
+        with self._connection() as connection:
+            agent = connection.execute(
+                "SELECT content_hash FROM agent_versions "
+                "WHERE tenant_id=? AND agent_id=? AND version=?",
+                (tenant_id, agent_id, agent_version),
+            ).fetchone()
+            profile = connection.execute(
+                "SELECT content_hash FROM evaluation_profiles "
+                "WHERE tenant_id=? AND profile_id=? AND version=?",
+                (tenant_id, profile_record["profile_id"], profile_record["version"]),
+            ).fetchone()
+            if agent is None or profile is None:
+                raise ValueError("execution evidence references a missing immutable artifact")
+            if evidence.get("agent_content_hash") != agent["content_hash"]:
+                raise ValueError(
+                    "execution evidence agent hash does not match the immutable registry"
+                )
+            if evidence.get("profile_content_hash") != profile["content_hash"]:
+                raise ValueError(
+                    "execution evidence profile hash does not match the immutable profile"
+                )
+
+            submitted_by_id = {item["case_id"]: item for item in submitted_results}
+            evidence_items = evidence.get("case_executions")
+            if not isinstance(evidence_items, list) or len(evidence_items) != len(cases):
+                raise ValueError(
+                    "execution evidence must contain exactly one record per evaluation case"
+                )
+            evidence_by_id = {
+                item.get("case_id"): item
+                for item in evidence_items
+                if isinstance(item, dict)
+            }
+            expected_case_ids = {case["case_id"] for case in cases}
+            if len(evidence_by_id) != len(cases) or set(evidence_by_id) != expected_case_ids:
+                raise ValueError("execution evidence case IDs do not match the pinned profile")
+            if set(submitted_by_id) != {case["case_id"] for case in cases}:
+                raise ValueError("submitted results do not cover the pinned evaluation profile")
+
+            execution_ids: set[str] = set()
+            for case in cases:
+                case_id = case["case_id"]
+                item = evidence_by_id[case_id]
+                execution_id = item.get("execution_id")
+                if (
+                    not isinstance(execution_id, str)
+                    or not execution_id
+                    or execution_id in execution_ids
+                ):
+                    raise ValueError(
+                        "execution evidence contains a missing or duplicate execution ID"
+                    )
+                execution_ids.add(execution_id)
+                row = connection.execute(
+                    "SELECT agent_id, agent_version, status, result_json FROM executions "
+                    "WHERE tenant_id=? AND execution_id=?",
+                    (tenant_id, execution_id),
+                ).fetchone()
+                if row is None or row["status"] != "completed" or (
+                    row["agent_id"], row["agent_version"]
+                ) != (agent_id, agent_version):
+                    raise ValueError(
+                        "execution evidence does not reference a completed execution "
+                        "for this agent version"
+                    )
+                execution = json.loads(row["result_json"] or "{}")
+                usage = execution.get("usage", {})
+                input_hash = hashlib.sha256(
+                    canonical_json({"input": case["input"]}).encode("utf-8")
+                ).hexdigest()
+                output_hash = hashlib.sha256(
+                    canonical_json({"output": execution.get("output")}).encode("utf-8")
+                ).hexdigest()
+                submitted = submitted_by_id[case_id]
+                if (
+                    execution.get("input_hash") != input_hash
+                    or item.get("input_hash") != input_hash
+                    or item.get("output_hash") != output_hash
+                    or submitted.get("output") != execution.get("output")
+                    or submitted.get("latency_ms") != execution.get("latency_ms")
+                    or submitted.get("cost_usd") != usage.get("cost_usd")
+                    or item.get("latency_ms") != execution.get("latency_ms")
+                    or item.get("cost_usd") != usage.get("cost_usd")
+                    or item.get("provider_id") != execution.get("provider_id")
+                    or item.get("model_id") != execution.get("model_id")
+                ):
+                    raise ValueError(
+                        "Execution evidence for case "
+                        f"{case_id} does not match its persisted execution"
+                    )
+
     def create_run(
         self,
         agent_id: str,
@@ -414,8 +533,23 @@ class EvaluationService:
         profile_version: str,
         submitted_results: list[dict[str, Any]],
         tenant_id: str = LEGACY_TENANT_ID,
+        execution_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if execution_evidence is not None and (
+            not isinstance(execution_evidence, dict)
+            or execution_evidence.get("source") != "server_execution_records"
+        ):
+            raise ValueError("execution_evidence must originate from server execution records")
         profile_record = self.get_profile(profile_id, profile_version, tenant_id)
+        if execution_evidence is not None:
+            self._verify_execution_evidence(
+                agent_id=agent_id,
+                agent_version=agent_version,
+                tenant_id=tenant_id,
+                profile_record=profile_record,
+                submitted_results=submitted_results,
+                evidence=execution_evidence,
+            )
         evaluation = self.score(profile_record["profile"], submitted_results)
         run_id = str(uuid.uuid4())
         created_at = utc_now()
@@ -427,8 +561,13 @@ class EvaluationService:
             "profile_version": profile_version,
             "status": "completed",
             "created_at": created_at,
+            "evidence_status": (
+                "server_recorded" if execution_evidence is not None else "caller_submitted"
+            ),
             **evaluation,
         }
+        if execution_evidence is not None:
+            payload["execution_evidence"] = execution_evidence
         with self._connection() as connection:
             connection.execute(
                 """

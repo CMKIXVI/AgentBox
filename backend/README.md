@@ -94,3 +94,11 @@ A hardened systemd deployment profile is provided at [`deploy/systemd/agentbox-c
 ### Capability-scoped secret access
 
 Capability handlers may request opaque `secret://` references through `CapabilityInvocationContext.resolve_secret`. The request is bound to tenant, subject, capability version and immutable contract hash. The default broker denies all requests. The standalone worker's `CAPABILITY_SECRET_BROKER` defaults to deny-all; production deployments must replace it in reviewed application code with an authenticated remote broker that enforces exact scope, short TTLs and revocation; no concrete Vault/KMS adapter is included yet. Never place secret values in contracts, job payloads, process environment or audit events. See [the worker hardening guide](../docs/deployment/capability-worker-os-hardening.md).
+
+
+## Execution-backed evaluation
+
+- `POST /v1/agents/{agent_id}/versions/{version}/evaluations/execute` — execute every input in an immutable evaluation profile through the server-configured provider, then score the recorded outputs. Requires an `Idempotency-Key` header and separate authorization for agent execution, evaluation creation and profile read.
+- The endpoint caps a run at 100 cases, rejects tool-enabled manifests, derives per-case execution idempotency keys, and fails closed when provider cost or latency evidence is missing.
+- Evaluation records include server-recorded execution IDs, agent/profile content hashes, per-case input/output hashes, provider/model identifiers and a server-derived workload hash. Existing caller-submitted evaluation remains available but is explicitly labelled `caller_submitted`.
+- This is synchronous provider execution with durable per-case execution records, not yet a durable batch-orchestration workflow. A process interruption may leave a partial set of completed case executions; retry with the same idempotency key reuses completed per-case executions. Comparisons remain advisory until the comparison service consumes and verifies these execution evidence records.

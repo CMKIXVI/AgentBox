@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -261,6 +262,7 @@ class ExecutionService:
             user_input=user_input,
             max_output_tokens=max_output_tokens,
         )
+        started_monotonic = time.perf_counter()
         try:
             response = provider.invoke(request, timeout)
             if not isinstance(response, ProviderResponse):
@@ -290,7 +292,11 @@ class ExecutionService:
                 },
                 "provider_id": provider_id,
                 "model_id": request.model_id,
+                "input_hash": hashlib.sha256(
+                    canonical_json({"input": user_input}).encode("utf-8")
+                ).hexdigest(),
                 "steps": 1,
+                "latency_ms": round((time.perf_counter() - started_monotonic) * 1000, 3),
             }
             completed_at = utc_now()
             with self._connect() as connection:
