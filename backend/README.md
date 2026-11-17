@@ -57,3 +57,10 @@ SQLite is currently intended for local development and early tests. It is not ye
 The first vertical slice is intentionally narrow: it performs one provider invocation, records status/result/usage, and ships with a deterministic fake provider for integration tests. The fake provider is the only adapter registered by default. Live providers require an explicitly installed adapter and a separate secret-resolution facility; credential references are never resolved or persisted by this service.
 
 **Security boundary:** manifests with any declared tools are denied (HTTP 403) until a principal-aware tool registry and authorization enforcement exist. Agent instructions are treated as data, never executed as Python, JavaScript, shell, or other host code. The adapter contract requires the adapter itself to enforce the supplied timeout. This initial synchronous request path is not a durable worker queue, cannot guarantee interruption of a misbehaving adapter, and has no authentication or tenant isolation. SQLite remains a single-instance development store.
+
+
+## Enterprise Context Engine foundation
+
+The Enterprise Context Engine is an additive, tenant-scoped metadata and relationship layer over the existing AgentBox SQLite database. It reuses OIDC authentication, active-tenant enforcement and exact-match authorization. Its v1 API supports immutable entity versions, typed relationships, evidence references, bounded queries and append-only context events.
+
+See [Enterprise Context architecture map](../docs/enterprise-context-architecture-map.md) for the existing-module mapping, scope boundaries and implementation sequence. ECE does not yet include external discovery connectors, a natural-language reasoning agent, a workflow interpreter or a production action gateway. The current API routes are under `/v1/enterprise-context`; grants use capability ID `enterprise.context` and explicit context actions.

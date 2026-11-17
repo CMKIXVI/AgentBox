@@ -10,7 +10,10 @@ def configure_test_access(app):
     app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
         "test-user", "user", "test-tenant"
     )
-    resources = ["research.summarizer", "runtime.test", "quality.research-summary"]
+    resources = [
+        "research.summarizer", "runtime.test", "quality.research-summary",
+        "tenant-context", "app.alpha", "db.alpha", "rel.alpha",
+    ]
     grants = [
         ("agent.registry", "agent.create"),
         ("agent.registry", "agent.read"),
@@ -21,6 +24,14 @@ def configure_test_access(app):
         ("evaluation.profile", "profile.read"),
         ("agent.evaluation", "evaluation.create"),
         ("agent.evaluation", "evaluation.read"),
+        ("enterprise.context", "context.entity.create"),
+        ("enterprise.context", "context.entity.update"),
+        ("enterprise.context", "context.entity.read"),
+        ("enterprise.context", "context.relationship.create"),
+        ("enterprise.context", "context.relationship.read"),
+        ("enterprise.context", "context.evidence.create"),
+        ("enterprise.context", "context.evidence.read"),
+        ("enterprise.context", "context.event.read"),
     ]
     created_at = datetime(2026, 11, 12, tzinfo=UTC).isoformat()
     app.state.authorization_policies = [

@@ -53,3 +53,8 @@ agentbox-tenant decommissioned --tenant-id customer-001
 Creation always produces a `pending` tenant. Activation, suspension, reactivation and decommissioning are separate explicit commands governed by the lifecycle transition table. Decommissioning is terminal. Listing and audit inspection are read-only. Invalid metadata, unknown tenants, duplicate tenant IDs, and illegal transitions return a non-zero exit status. Metadata is limited to scalar JSON values and must never contain credentials or secrets.
 
 The command's actor label is audit attribution, not cryptographic proof of an individual's identity. For stronger production governance, run the command through a controlled host-admin process with OS account controls, recorded privileged sessions, and restricted database permissions. No administrator HTTP API, self-service tenant registration, or tenant switching is provided.
+
+
+## Backup and recovery
+
+The local operator CLI also provides encrypted tenant-scoped logical backup and restore. Backups use AES-256-GCM with externally supplied 32-byte keys; AgentBox does not generate or persist key material. Restore requires a pre-provisioned tenant with the same ID, never overwrites its lifecycle state, and applies rows transactionally with conflict detection. See [AGENTBOX_TENANT_BACKUP_RESTORE.md](AGENTBOX_TENANT_BACKUP_RESTORE.md) for key provisioning, rotation, command usage, included data, restore semantics, and operational limitations.
