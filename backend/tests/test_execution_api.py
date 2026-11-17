@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
 from app.execution import DeterministicFakeProvider
@@ -20,7 +21,7 @@ def manifest():
 
 @pytest.fixture
 def client(tmp_path):
-    app = create_app(str(tmp_path / "runtime.sqlite3"))
+    app = configure_test_access(create_app(str(tmp_path / "runtime.sqlite3")))
     app.state.executions.providers["provider.fake"] = DeterministicFakeProvider()
     return TestClient(app)
 

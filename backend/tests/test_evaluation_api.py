@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 
+from auth_helpers import configure_test_access
 from fastapi.testclient import TestClient
 
 from app.main import create_app
@@ -16,7 +17,7 @@ PROFILE = json.loads(
 
 
 def client_for(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(str(tmp_path / "evaluation.sqlite3")))
+    return TestClient(configure_test_access(create_app(str(tmp_path / "evaluation.sqlite3"))))
 
 
 def seed_agent_and_profile(client: TestClient) -> None:
@@ -202,7 +203,7 @@ def test_evaluation_requires_existing_agent_and_profile(tmp_path: Path) -> None:
             "results": [],
         },
     )
-    assert missing_agent.status_code == 404
+    assert missing_agent.status_code == 403
     missing_profile = client.post(
         "/v1/agents/research.summarizer/versions/1.0.0/evaluations",
         json={
@@ -211,7 +212,7 @@ def test_evaluation_requires_existing_agent_and_profile(tmp_path: Path) -> None:
             "results": [],
         },
     )
-    assert missing_profile.status_code == 404
+    assert missing_profile.status_code == 403
 
 
 def test_unknown_evaluation_run_returns_404(tmp_path: Path) -> None:
