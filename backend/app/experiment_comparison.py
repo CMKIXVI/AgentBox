@@ -18,6 +18,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .evaluation import EvaluationService
+
 _HASH = re.compile(r"^[a-fA-F0-9]{64}$")
 
 
@@ -258,6 +260,7 @@ class ExperimentComparisonService:
             return False
 
         execution_ids: set[str] = set()
+        verified_results: list[dict[str, Any]] = []
         for case in cases:
             case_id = case["case_id"]
             item = by_id[case_id]
@@ -288,7 +291,6 @@ class ExperimentComparisonService:
                 result.get("input_hash") != input_hash
                 or item.get("input_hash") != input_hash
                 or item.get("output_hash") != output_hash
-                or evaluation_case.get("output") != output
                 or evaluation_case.get("latency_ms") != result.get("latency_ms")
                 or evaluation_case.get("cost_usd") != usage.get("cost_usd")
                 or item.get("latency_ms") != result.get("latency_ms")
@@ -297,7 +299,19 @@ class ExperimentComparisonService:
                 or item.get("model_id") != result.get("model_id")
             ):
                 return False
-        return True
+            verified_results.append({
+                "case_id": case_id,
+                "output": output,
+                "latency_ms": result["latency_ms"],
+                "cost_usd": usage["cost_usd"],
+            })
+
+        recomputed = EvaluationService.score(profile, verified_results)
+        score_fields = (
+            "score", "passed", "case_pass_rate", "avg_latency_ms", "total_cost_usd",
+            "latency_score", "cost_score", "gate_results", "case_results",
+        )
+        return all(run.get(field) == recomputed.get(field) for field in score_fields)
 
     def compare(
         self,
