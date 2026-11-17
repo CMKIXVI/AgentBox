@@ -20,6 +20,17 @@ abstract interface class AgentBoxSessionReader {
   Future<AgentBoxSession?> readSession();
 }
 
+bool isUsableAgentBoxSession(
+  AgentBoxSession? session, {
+  DateTime Function()? clock,
+}) {
+  final now = (clock ?? DateTime.now)();
+  return session != null &&
+      session.subject.trim().isNotEmpty &&
+      session.accessToken.isNotEmpty &&
+      session.expiresAt.isAfter(now.add(const Duration(seconds: 30)));
+}
+
 typedef AgentBoxAccessTokenProvider = Future<String?> Function();
 
 AgentBoxAccessTokenProvider createAccessTokenProvider(
@@ -29,12 +40,7 @@ AgentBoxAccessTokenProvider createAccessTokenProvider(
   final now = clock ?? DateTime.now;
   return () async {
     final session = await reader.readSession();
-    if (session == null ||
-        session.subject.isEmpty ||
-        session.accessToken.isEmpty ||
-        !session.expiresAt.isAfter(now().add(const Duration(seconds: 30)))) {
-      return null;
-    }
-    return session.accessToken;
+    if (!isUsableAgentBoxSession(session, clock: now)) return null;
+    return session!.accessToken;
   };
 }
