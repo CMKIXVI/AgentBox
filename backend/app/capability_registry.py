@@ -206,4 +206,11 @@ class CapabilityRegistry:
                 ORDER BY capability_id, created_at DESC, version DESC LIMIT ? OFFSET ?""",
                 (tenant_id, limit, offset),
             ).fetchall()
-        return [self._record(row) for row in rows]
+        records = [self._record(row) for row in rows]
+        for record in records:
+            if _digest(record.contract) != record.content_hash:
+                raise CapabilityRegistryError(
+                    f"Stored capability content hash mismatch: "
+                    f"{record.capability_id}@{record.version}"
+                )
+        return records

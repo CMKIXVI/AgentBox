@@ -99,3 +99,20 @@ def test_rejects_missing_tenant(tmp_path):
     with pytest.raises(sqlite3.IntegrityError):
         store.register(contract(), "not-provisioned")
     store.close()
+
+
+
+def test_list_detects_tampered_persisted_contract(tmp_path):
+    from app.capability_registry import CapabilityRegistryError
+
+    store = registry(tmp_path)
+    store.register(contract(), "tenant-a")
+    with store._connection() as connection:
+        connection.execute("DROP TRIGGER capability_versions_no_update")
+        connection.execute(
+            "UPDATE capability_versions SET contract_json=? WHERE tenant_id=?",
+            ('{"capability_id":"tampered"}', "tenant-a"),
+        )
+    with pytest.raises(CapabilityRegistryError, match="content hash mismatch"):
+        store.list("tenant-a")
+    store.close()

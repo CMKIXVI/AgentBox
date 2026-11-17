@@ -69,3 +69,16 @@ def test_capability_api_is_tenant_scoped(tmp_path):
         "other-user", "user", "tenant-other"
     )
     assert client.get("/v1/capabilities/crm.contact.read/versions/1.0.0").status_code == 404
+
+
+
+def test_capability_api_denial_is_audited(tmp_path):
+    app, client = make_client(tmp_path)
+    app.state.authorization_policies = []
+    response = client.get("/v1/capabilities")
+    assert response.status_code == 403
+    events = app.state.authorization_audit.list_events()
+    assert events
+    assert events[0]["capability_id"] == "capability.registry"
+    assert events[0]["action"] == "capability.read"
+    assert events[0]["allowed"] is False
