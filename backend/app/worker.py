@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
+from .capability_process_limits import apply_capability_process_limits
 from .capability_secrets import (
     CapabilitySecretBroker,
     CapabilitySecretRequest,
@@ -80,6 +81,7 @@ def _capability_handler_child(connection: Any, handler: CapabilityHandler,
                               context: CapabilityInvocationContext, value: Any) -> None:
     """Run one importable trusted handler in a disposable spawned process."""
     try:
+        apply_capability_process_limits(context.timeout_seconds)
         context.raise_if_expired()
         result = handler(context, value)
         context.raise_if_expired()
