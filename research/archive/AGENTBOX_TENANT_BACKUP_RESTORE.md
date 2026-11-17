@@ -8,6 +8,7 @@ AgentBox creates tenant-scoped logical backups encrypted with **AES-256-GCM**. T
 - Execution records and results
 - Evaluation profiles and evaluation runs
 - Tenant audit events
+- Enterprise Context Engine entities, relationship versions, evidence references and append-only context events
 
 The envelope exposes the format/version, algorithm, key identifier, and tenant ID. Record contents, metadata, execution results, manifests, and audit actor labels are encrypted. The tenant's lifecycle record is included inside the authenticated payload for provenance, but restore never overwrites the target tenant's lifecycle state, display name, or metadata.
 
@@ -47,7 +48,7 @@ Both operations fail closed if the key ID/key is absent or malformed. Backup cre
 
 Restore requires the destination AgentBox database to be initialized and the same tenant ID to have been provisioned first. It does not create tenants, activate tenants, or change lifecycle state. The target tenant's current status remains authoritative, including if it is suspended or decommissioned.
 
-Restore runs in one SQLite transaction. Existing identical records are skipped, making repeated restores idempotent. If a primary-key identity already exists with different content, restore raises a conflict and rolls back all rows inserted by that restore. Evaluation runs are restored only after their tenant-scoped evaluation profiles, preserving the composite foreign-key constraint. Audit event timestamps and actor labels are preserved; SQLite audit sequence IDs are regenerated when events are imported. Existing audit rows are never updated or deleted.
+Pre-ECE v1 backups containing the original five tenant tables remain restorable; absent ECE tables are treated as empty. New backups include all ECE tables. Restore runs in one SQLite transaction. Existing identical records are skipped, making repeated restores idempotent. If a primary-key identity already exists with different content, restore raises a conflict and rolls back all rows inserted by that restore. Evaluation runs are restored only after their tenant-scoped evaluation profiles, preserving the composite foreign-key constraint. Audit event timestamps and actor labels are preserved; SQLite audit sequence IDs are regenerated when events are imported. Existing audit rows are never updated or deleted.
 
 The encrypted bundle is a logical tenant data export, not a complete system disaster-recovery image. It does not include OIDC configuration, authorization policy files, provider credentials, external secrets, application configuration, global schema files, or data not keyed by tenant ID. Use a separately tested whole-system backup for infrastructure recovery.
 

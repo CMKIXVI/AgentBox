@@ -44,13 +44,40 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "tenant_audit": (
         "tenant_id", "action", "previous_status", "new_status", "actor_id", "occurred_at",
     ),
+    "context_entities": (
+        "tenant_id", "entity_id", "version", "entity_type", "name", "description",
+        "attributes_json", "assertion_class", "confidence", "valid_from", "valid_to",
+        "content_hash", "created_at", "created_by",
+    ),
+    "context_relationships": (
+        "tenant_id", "relationship_id", "version", "relationship_type", "source_entity_id",
+        "source_version", "target_entity_id", "target_version", "attributes_json",
+        "assertion_class", "confidence", "valid_from", "valid_to", "content_hash",
+        "created_at", "created_by",
+    ),
+    "context_evidence": (
+        "tenant_id", "evidence_id", "entity_id", "entity_version", "relationship_id",
+        "relationship_version", "source_kind", "source_ref", "source_hash", "observed_at",
+        "confidence", "validation_status", "metadata_json", "recorded_at", "recorded_by",
+    ),
+    "context_events": (
+        "tenant_id", "event_id", "event_type", "object_type", "object_id", "object_version",
+        "source_ref", "observed_at", "recorded_at", "recorded_by", "payload_json", "content_hash",
+    ),
 }
+BASE_TABLES = frozenset({
+    "agent_versions", "evaluation_profiles", "executions", "evaluation_runs", "tenant_audit",
+})
 TABLE_ORDER: dict[str, str] = {
     "agent_versions": "agent_id, version",
     "evaluation_profiles": "profile_id, version",
     "executions": "created_at, execution_id",
     "evaluation_runs": "created_at, run_id",
     "tenant_audit": "occurred_at, actor_id, action",
+    "context_entities": "entity_id, version",
+    "context_relationships": "relationship_id, version",
+    "context_evidence": "entity_id, observed_at, evidence_id",
+    "context_events": "recorded_at, event_id",
 }
 TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "agent_versions": ("tenant_id", "agent_id", "version"),
@@ -60,6 +87,10 @@ TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "tenant_audit": (
         "tenant_id", "action", "previous_status", "new_status", "actor_id", "occurred_at",
     ),
+    "context_entities": ("tenant_id", "entity_id", "version"),
+    "context_relationships": ("tenant_id", "relationship_id", "version"),
+    "context_evidence": ("tenant_id", "evidence_id"),
+    "context_events": ("tenant_id", "event_id"),
 }
 
 
@@ -280,8 +311,13 @@ class TenantBackupService:
         if tenant.get("status") not in {"pending", "active", "suspended", "decommissioned"}:
             raise BackupFormatError("Backup tenant lifecycle status is invalid")
         tables = payload.get("tables")
-        if not isinstance(tables, dict) or set(tables) != set(TABLE_COLUMNS):
+        if not isinstance(tables, dict) or frozenset(tables) not in {
+            BASE_TABLES, frozenset(TABLE_COLUMNS)
+        }:
             raise BackupFormatError("Backup table set is invalid")
+        # v1 backups created before ECE existed contain only BASE_TABLES.
+        for table in TABLE_COLUMNS:
+            tables.setdefault(table, [])
         for table, rows in tables.items():
             if not isinstance(rows, list):
                 raise BackupFormatError(f"Backup rows are invalid for {table}")
@@ -312,7 +348,11 @@ class TenantBackupService:
             ).fetchone()
             if existing_tenant is None:
                 raise BackupError("Restore target tenant must be provisioned before restore")
-            for table in ("agent_versions", "evaluation_profiles", "executions", "evaluation_runs", "tenant_audit"):
+            for table in (
+                "agent_versions", "evaluation_profiles", "executions", "evaluation_runs",
+                "tenant_audit", "context_entities", "context_relationships",
+                "context_evidence", "context_events",
+            ):
                 columns = TABLE_COLUMNS[table]
                 keys = TABLE_KEYS[table]
                 quoted_columns = ", ".join(f'"{column}"' for column in columns)

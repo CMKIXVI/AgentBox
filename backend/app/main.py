@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,6 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_policy import validate_authorization_policy
+from .enterprise_context import (
+    ContextConflictError,
+    ContextNotFoundError,
+    ContextValidationError,
+    EnterpriseContextService,
+)
 from .evaluation import (
     EvaluationProfileConflictError,
     EvaluationProfileNotFoundError,
@@ -96,6 +102,60 @@ class EvaluationRunRequest(BaseModel):
     profile_id: str = Field(min_length=3, max_length=128)
     profile_version: str = Field(min_length=1, max_length=128)
     results: list[EvaluationCaseSubmission] = Field(max_length=500)
+
+
+class ContextEntityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: str = Field(min_length=2, max_length=128)
+    entity_type: str = Field(min_length=2, max_length=64)
+    name: str = Field(min_length=1, max_length=256)
+    description: str = Field(default="", max_length=2000)
+    attributes: dict[str, Any]
+    assertion_class: Literal["observed_fact", "inferred", "ai_hypothesis", "human_validated"]
+    confidence: float = Field(ge=0, le=1)
+    valid_from: str | None = None
+    valid_to: str | None = None
+
+
+class ContextEntityVersionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1)
+    entity: ContextEntityRequest
+
+
+class ContextRelationshipRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    relationship_id: str = Field(min_length=2, max_length=128)
+    relationship_type: str = Field(min_length=2, max_length=64)
+    source_entity_id: str = Field(min_length=2, max_length=128)
+    source_version: int = Field(ge=1)
+    target_entity_id: str = Field(min_length=2, max_length=128)
+    target_version: int = Field(ge=1)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    assertion_class: Literal["observed_fact", "inferred", "ai_hypothesis", "human_validated"]
+    confidence: float = Field(ge=0, le=1)
+    valid_from: str | None = None
+    valid_to: str | None = None
+
+
+class ContextEvidenceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    evidence_id: str = Field(min_length=2, max_length=128)
+    entity_id: str = Field(min_length=2, max_length=128)
+    entity_version: int = Field(ge=1)
+    relationship_id: str | None = Field(default=None, min_length=2, max_length=128)
+    relationship_version: int | None = Field(default=None, ge=1)
+    source_kind: Literal[
+        "database_metadata", "api_metadata", "repository_metadata",
+        "configuration_metadata", "event_log", "human_attestation",
+        "agent_analysis", "other"
+    ]
+    source_ref: str = Field(min_length=1, max_length=1024)
+    source_hash: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
+    observed_at: str
+    confidence: float = Field(ge=0, le=1)
+    validation_status: Literal["unverified"] = "unverified"
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 MUTABLE_MANIFEST_FIELDS = {
@@ -192,6 +252,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.executions = ExecutionService(
         db_path, app.state.registry, providers=[DeterministicFakeProvider()]
     )
+    app.state.enterprise_context = EnterpriseContextService(db_path)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -429,6 +490,197 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         runs = app.state.evaluations.list_agent_runs(agent_id, version, principal.tenant_id)
         return {"agent_id": agent_id, "agent_version": version, "items": runs}
+
+
+    @app.post("/v1/enterprise-context/entities", status_code=status.HTTP_201_CREATED)
+    def create_context_entity(
+        request: ContextEntityRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.entity.create", request.entity_id
+        )
+        if request.assertion_class == "human_validated":
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.entity.validate", request.entity_id
+            )
+        try:
+            return app.state.enterprise_context.create_entity(
+                request.model_dump(exclude_none=True), principal.tenant_id, principal.subject_id
+            )
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/enterprise-context/entities/{entity_id}/versions",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def version_context_entity(
+        entity_id: str,
+        request: ContextEntityVersionRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.entity.update", entity_id
+        )
+        if request.entity.assertion_class == "human_validated":
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.entity.validate", entity_id
+            )
+        if request.entity.entity_id != entity_id:
+            raise HTTPException(status_code=422, detail="Path entity_id must match entity payload")
+        try:
+            return app.state.enterprise_context.version_entity(
+                request.entity.model_dump(exclude_none=True),
+                principal.tenant_id,
+                principal.subject_id,
+                request.expected_version,
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/enterprise-context/entities")
+    def query_context_entities(
+        entity_type: str | None = None,
+        assertion_class: str | None = None,
+        search: str | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.entity.read", "tenant-context"
+        )
+        try:
+            items = app.state.enterprise_context.query_entities(
+                principal.tenant_id, entity_type, assertion_class, search, limit, offset
+            )
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"items": items, "limit": limit, "offset": offset}
+
+    @app.get("/v1/enterprise-context/entities/{entity_id}")
+    def get_context_entity(
+        entity_id: str,
+        version: int | None = Query(default=None, ge=1),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.entity.read", entity_id
+        )
+        try:
+            return app.state.enterprise_context.get_entity(
+                entity_id, principal.tenant_id, version
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/enterprise-context/relationships", status_code=status.HTTP_201_CREATED)
+    def create_context_relationship(
+        request: ContextRelationshipRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.relationship.create",
+            request.relationship_id,
+        )
+        if request.assertion_class == "human_validated":
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.relationship.validate",
+                request.relationship_id,
+            )
+        try:
+            return app.state.enterprise_context.create_relationship(
+                request.model_dump(exclude_none=True), principal.tenant_id, principal.subject_id
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/enterprise-context/relationships")
+    def query_context_relationships(
+        entity_id: str | None = None,
+        relationship_type: str | None = None,
+        limit: int = Query(default=100, ge=1, le=200),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        resource_id = entity_id or "tenant-context"
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.relationship.read", resource_id
+        )
+        try:
+            items = app.state.enterprise_context.query_relationships(
+                principal.tenant_id, entity_id, relationship_type, limit
+            )
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"items": items}
+
+    @app.post("/v1/enterprise-context/evidence", status_code=status.HTTP_201_CREATED)
+    def create_context_evidence(
+        request: ContextEvidenceRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.evidence.create", request.entity_id
+        )
+        try:
+            return app.state.enterprise_context.create_evidence(
+                request.model_dump(exclude_none=True),
+                principal.tenant_id,
+                principal.subject_id,
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/enterprise-context/entities/{entity_id}/evidence")
+    def query_context_evidence(
+        entity_id: str,
+        limit: int = Query(default=100, ge=1, le=200),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.evidence.read", entity_id
+        )
+        try:
+            return {
+                "items": app.state.enterprise_context.query_evidence(
+                    entity_id, principal.tenant_id, limit
+                )
+            }
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/enterprise-context/events")
+    def query_context_events(
+        since: str | None = None,
+        limit: int = Query(default=100, ge=1, le=200),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.event.read", "tenant-context"
+        )
+        try:
+            return {
+                "items": app.state.enterprise_context.query_events(
+                    principal.tenant_id, since, limit
+                )
+            }
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return app
 

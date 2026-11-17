@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from app.enterprise_context import EnterpriseContextService
 from app.evaluation import EvaluationService
 from app.execution import DeterministicFakeProvider, ExecutionService
 from app.registry import AgentRegistry
@@ -52,6 +53,7 @@ def initialized_database(path: Path, tenant_id: str, *, populate: bool = False):
     tenants = TenantRegistry(path)
     tenants.create(tenant_id, f"Tenant {tenant_id}", "test-operator", {"region": "ap-south"})
     tenants.transition(tenant_id, "active", "test-operator")
+    EnterpriseContextService(path)
     if populate:
         manifest = copy.deepcopy(AGENT)
         manifest["agent_id"] = "backup.agent"
@@ -295,3 +297,109 @@ def test_historical_backup_key_remains_available_during_rotation(tmp_path):
         "tenant-alpha", backup
     )
     assert restored["agent_versions"] == 1
+
+
+
+def test_encrypted_backup_includes_enterprise_context_entities_relationships_evidence_and_events(tmp_path):
+    source = tmp_path / "context-source.sqlite3"
+    target = tmp_path / "context-target.sqlite3"
+    _source_registry, _, _, _ = initialized_database(source, "tenant-alpha")
+    context = EnterpriseContextService(source)
+    first = {
+        "entity_id": "app.backup",
+        "entity_type": "application",
+        "name": "Backup Application",
+        "description": "Application metadata",
+        "attributes": {"environment": "production"},
+        "assertion_class": "observed_fact",
+        "confidence": 1.0,
+    }
+    second = {
+        "entity_id": "db.backup",
+        "entity_type": "database",
+        "name": "Backup Database",
+        "description": "Database metadata",
+        "attributes": {"engine": "postgresql"},
+        "assertion_class": "observed_fact",
+        "confidence": 1.0,
+    }
+    context.create_entity(first, "tenant-alpha", "test-operator")
+    context.create_entity(second, "tenant-alpha", "test-operator")
+    context.create_relationship({
+        "relationship_id": "rel.backup",
+        "relationship_type": "uses_database",
+        "source_entity_id": "app.backup",
+        "source_version": 1,
+        "target_entity_id": "db.backup",
+        "target_version": 1,
+        "attributes": {},
+        "assertion_class": "inferred",
+        "confidence": 0.95,
+    }, "tenant-alpha", "test-operator")
+    context.create_evidence({
+        "evidence_id": "ev.backup",
+        "entity_id": "app.backup",
+        "entity_version": 1,
+        "source_kind": "database_metadata",
+        "source_ref": "postgres://catalog/public/applications",
+        "observed_at": "2026-11-12T00:00:00+00:00",
+        "confidence": 1.0,
+        "metadata": {"collector": "test"},
+    }, "tenant-alpha", "test-operator")
+
+    backup = tmp_path / "tenant-context.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    initialized_database(target, "tenant-alpha")
+    counts = TenantBackupService(target, StaticKeyProvider()).restore_encrypted(
+        "tenant-alpha", backup
+    )
+    restored = EnterpriseContextService(target)
+    assert counts["context_entities"] == 2
+    assert counts["context_relationships"] == 1
+    assert counts["context_evidence"] == 1
+    assert counts["context_events"] == 4
+    assert restored.get_entity("app.backup", "tenant-alpha")["name"] == "Backup Application"
+    assert restored.query_relationships("tenant-alpha", "app.backup")[0][
+        "relationship_type"
+    ] == "uses_database"
+    assert restored.query_evidence("app.backup", "tenant-alpha")[0]["evidence_id"] == "ev.backup"
+    assert len(restored.query_events("tenant-alpha")) == 4
+
+
+
+def test_pre_context_v1_backup_remains_restorable_after_ece_tables_are_added(tmp_path):
+    source = tmp_path / "legacy-source.sqlite3"
+    target = tmp_path / "legacy-target.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "pre-context.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+
+    envelope = json.loads(backup.read_text())
+    key = StaticKeyProvider().key
+    payload = json.loads(AESGCM(key).decrypt(
+        base64.b64decode(envelope["nonce"]),
+        base64.b64decode(envelope["ciphertext"]),
+        _aad(envelope),
+    ))
+    for table in (
+        "context_entities", "context_relationships", "context_evidence", "context_events"
+    ):
+        payload["tables"].pop(table)
+    unsigned = dict(payload)
+    unsigned.pop("sha256")
+    payload["sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+    nonce = os.urandom(12)
+    envelope["nonce"] = base64.b64encode(nonce).decode()
+    envelope["ciphertext"] = base64.b64encode(
+        AESGCM(key).encrypt(nonce, _canonical(payload), _aad(envelope))
+    ).decode()
+    backup.write_text(json.dumps(envelope))
+
+    initialized_database(target, "tenant-alpha")
+    counts = TenantBackupService(target, StaticKeyProvider()).restore_encrypted(
+        "tenant-alpha", backup
+    )
+    assert counts["context_entities"] == 0
+    assert counts["context_relationships"] == 0
+    assert counts["context_evidence"] == 0
+    assert counts["context_events"] == 0
