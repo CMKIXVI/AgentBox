@@ -32,6 +32,7 @@ def configure_test_access(app):
         ("enterprise.context", "context.evidence.create"),
         ("enterprise.context", "context.evidence.read"),
         ("enterprise.context", "context.event.read"),
+        ("enterprise.discovery", "discovery.snapshot.ingest"),
     ]
     created_at = datetime(2026, 11, 12, tzinfo=UTC).isoformat()
     app.state.authorization_policies = [

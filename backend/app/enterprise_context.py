@@ -552,6 +552,39 @@ class EnterpriseContextService:
             ).fetchall()
         return [self._record_relationship(row) for row in rows]
 
+    def get_relationship(
+        self, relationship_id: str, tenant_id: str, version: int | None = None
+    ) -> dict[str, Any]:
+        validate_tenant_id(tenant_id)
+        with self._connection() as connection:
+            if version is None:
+                row = connection.execute(
+                    """SELECT * FROM context_relationships
+                    WHERE tenant_id=? AND relationship_id=?
+                    ORDER BY version DESC LIMIT 1""",
+                    (tenant_id, relationship_id),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """SELECT * FROM context_relationships
+                    WHERE tenant_id=? AND relationship_id=? AND version=?""",
+                    (tenant_id, relationship_id, version),
+                ).fetchone()
+        if row is None:
+            raise ContextNotFoundError(relationship_id)
+        return self._record_relationship(row)
+
+    def get_evidence(self, evidence_id: str, tenant_id: str) -> dict[str, Any]:
+        validate_tenant_id(tenant_id)
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM context_evidence WHERE tenant_id=? AND evidence_id=?",
+                (tenant_id, evidence_id),
+            ).fetchone()
+        if row is None:
+            raise ContextNotFoundError(evidence_id)
+        return self._record_evidence(row)
+
     def create_evidence(
         self, payload: dict[str, Any], tenant_id: str, actor_id: str
     ) -> dict[str, Any]:
