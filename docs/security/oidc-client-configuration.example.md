@@ -26,3 +26,8 @@ Backend verifier environment variables already consumed by AgentBox:
 - Optional: AGENTBOX_OIDC_ALGORITHMS, AGENTBOX_OIDC_LEEWAY_SECONDS, AGENTBOX_OIDC_JWKS_TIMEOUT_SECONDS
 
 The web and native public client registrations are separate from the backend verifier settings. No client secret is required or permitted in Flutter or browser code.
+
+
+## Client registration contract
+
+The separate provider-neutral client registration artifact is defined by `schemas/oidc-client-registration-v1.schema.json` and documented in [the OIDC client registration contract](oidc-client-registration-contract.md). It validates separate web BFF and native public-client registrations, exact redirect allowlists, Authorization Code Flow, and PKCE S256. It stores only server-side secret references, never secret values. It does not register clients with a provider or enable login.

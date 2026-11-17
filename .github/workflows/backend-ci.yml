@@ -7,6 +7,8 @@ on:
       - "frontend/**"
       - "contracts/**"
       - "schemas/agent-manifest-v1.schema.json"
+      - "schemas/oidc-client-registration-v1.schema.json"
+      - "schemas/authentication-config-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
   pull_request:
