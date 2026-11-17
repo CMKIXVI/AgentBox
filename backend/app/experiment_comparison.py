@@ -222,6 +222,20 @@ class ExperimentComparisonService:
         items = evidence.get("case_executions")
         if not isinstance(cases, list) or not isinstance(items, list) or len(cases) != len(items):
             return False
+        workload_definition = {
+            "profile_id": profile_id,
+            "profile_version": profile_version,
+            "profile_content_hash": profile_content_hash,
+            "cases": [
+                {"case_id": case["case_id"], "input": case["input"]}
+                for case in cases
+                if isinstance(case, dict) and "case_id" in case and "input" in case
+            ],
+        }
+        if len(workload_definition["cases"]) != len(cases):
+            return False
+        if _digest(workload_definition) != expected_workload_hash:
+            return False
 
         expected_ids = {case.get("case_id") for case in cases if isinstance(case, dict)}
         by_id = {
