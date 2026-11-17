@@ -38,9 +38,9 @@ Evaluation assertions supported in v1: `exact_match`, `contains`, `required_fiel
 
 ## Evaluation boundary — important
 
-The v1 evaluation service **does not execute an agent or call a model**. A trusted runner must submit each case's output, latency and cost. The service validates and scores those submitted results and persists an immutable run record. Missing case outputs count as failures; duplicate or unknown case IDs are rejected. This avoids presenting caller-supplied results as proof of a live model execution.
+The original `POST /v1/agents/{agent_id}/versions/{version}/evaluations` submission endpoint does **not** execute an agent or call a model; it scores caller-submitted outputs and measurements and labels those runs `caller_submitted`. The separate `/evaluations/execute` endpoint executes pinned profile inputs through the server-configured provider, persists per-case execution records, and labels the run `server_recorded` only after checking the execution evidence. Missing case outputs count as failures; duplicate or unknown case IDs are rejected.
 
-Evaluation success is an eligibility signal, not an automatic publish/deploy action. Authentication, tenant isolation, trusted execution provenance, PostgreSQL migrations and production deployment controls remain future work.
+Evaluation success is an eligibility signal, not an automatic publish/deploy action. Execution-backed evaluation is currently synchronous and limited to agents without declared tools. Durable batch orchestration, production database migration/backup procedures, live provider validation and production deployment controls remain outstanding.
 
 Interactive API documentation is available at `/docs`; the OpenAPI document is at `/openapi.json`.
 
@@ -101,7 +101,7 @@ Capability handlers may request opaque `secret://` references through `Capabilit
 - `POST /v1/agents/{agent_id}/versions/{version}/evaluations/execute` — execute every input in an immutable evaluation profile through the server-configured provider, then score the recorded outputs. Requires an `Idempotency-Key` header and separate authorization for agent execution, evaluation creation and profile read.
 - The endpoint caps a run at 100 cases, rejects tool-enabled manifests, derives per-case execution idempotency keys, and fails closed when provider cost or latency evidence is missing.
 - Evaluation records include server-recorded execution IDs, agent/profile content hashes, per-case input/output hashes, provider/model identifiers and a server-derived workload hash. Existing caller-submitted evaluation remains available but is explicitly labelled `caller_submitted`.
-- This is synchronous provider execution with durable per-case execution records, not yet a durable batch-orchestration workflow. A process interruption may leave a partial set of completed case executions; retry with the same idempotency key reuses completed per-case executions. Comparisons remain advisory until the comparison service consumes and verifies these execution evidence records.
+- This is synchronous provider execution with durable per-case execution records, not yet a durable batch-orchestration workflow. A process interruption may leave a partial set of completed case executions; retry with the same idempotency key reuses completed per-case executions. The comparison service verifies matching parent/candidate execution evidence, but every comparison remains advisory and cannot authorize promotion.
 
 
 ## Parent/candidate comparison evidence
