@@ -147,7 +147,7 @@ Do not manually maintain duplicate API models when they can be generated from th
 
 ## 6. Identity, tenant, and authorization
 
-The existing AgentBox OIDC and authorization foundations remain authoritative.
+The existing AgentBox OIDC and authorization foundations remain authoritative. The backend verifier validates issuer, audience, signature, time claims, and the configured tenant claim. The Next.js and Flutter session ports are provider-neutral adapters only; a maintained OIDC SDK or reviewed BFF must own Authorization Code + PKCE, callback validation, refresh, logout, and secure credential storage. See [the OIDC client/session contract](docs/security/oidc-client-session-contract.md).
 
 Requirements:
 - OIDC authentication and validated server-side principals
@@ -325,6 +325,6 @@ Important limitations remain:
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
 - A genuine code-execution sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
-- Flutter and Next.js are approved architectural strategies; their production applications and shared client contracts are not yet implemented.
+- Flutter and Next.js application shells, shared API transports, and provider-neutral session-reader ports are implemented on feature branches. The ports are not live OIDC login implementations; no provider, callback, token refresh, Next.js BFF, or native secure-storage adapter is configured.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.
