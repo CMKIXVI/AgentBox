@@ -31,6 +31,12 @@ from .execution import (
     ExecutionPolicyError,
     ExecutionService,
 )
+from .experience import (
+    ExecutionExperienceService,
+    ExperienceConflictError,
+    ExperienceNotFoundError,
+    ExperienceValidationError,
+)
 from .postgresql_ingestion import PostgreSQLSnapshotIngestion
 from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
@@ -103,6 +109,24 @@ class EvaluationRunRequest(BaseModel):
     profile_id: str = Field(min_length=3, max_length=128)
     profile_version: str = Field(min_length=1, max_length=128)
     results: list[EvaluationCaseSubmission] = Field(max_length=500)
+
+
+class ExperienceRecordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    execution_id: str = Field(min_length=1, max_length=128)
+    evaluation_run_id: str = Field(min_length=1, max_length=128)
+    workload_ref: str = Field(min_length=1, max_length=512)
+    workload_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+
+
+class LearningLessonRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lesson_type: str = Field(min_length=2, max_length=64)
+    statement: str = Field(min_length=1, max_length=2000)
+    evidence_refs: list[str] = Field(min_length=1, max_length=20)
+    source_kind: Literal["deterministic_rule", "human_review", "model_proposal"]
+    extractor_version: str = Field(min_length=1, max_length=128)
+    confidence: float = Field(ge=0, le=1)
 
 
 class PostgreSQLSnapshotIngestRequest(BaseModel):
@@ -259,6 +283,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.executions = ExecutionService(
         db_path, app.state.registry, providers=[DeterministicFakeProvider()]
     )
+    app.state.experiences = ExecutionExperienceService(db_path)
     app.state.enterprise_context = EnterpriseContextService(db_path)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
 
@@ -499,6 +524,118 @@ def create_app(database_path: str | None = None) -> FastAPI:
         runs = app.state.evaluations.list_agent_runs(agent_id, version, principal.tenant_id)
         return {"agent_id": agent_id, "agent_version": version, "items": runs}
 
+
+
+    @app.post("/v1/agent-experiences", status_code=status.HTTP_201_CREATED)
+    def create_agent_experience(
+        request: ExperienceRecordRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "agent.experience", "experience.create", "tenant-experience"
+        )
+        try:
+            record, created = app.state.experiences.record(
+                request.execution_id, request.evaluation_run_id, request.workload_ref,
+                request.workload_hash, principal.tenant_id, principal.subject_id,
+            )
+            response = dict(record)
+            response["created"] = created
+            return response
+        except ExperienceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExperienceConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ExperienceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/agents/{agent_id}/experiences")
+    def list_agent_experiences(
+        agent_id: str,
+        profile_id: str | None = None,
+        profile_version: str | None = None,
+        limit: int = Query(default=50, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.experience", "experience.read", agent_id)
+        try:
+            items = app.state.experiences.list_for_agent(
+                agent_id, principal.tenant_id, profile_id, profile_version, limit, offset
+            )
+            return {"agent_id": agent_id, "items": items, "limit": limit, "offset": offset}
+        except ExperienceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/agent-experiences/{experience_id}/lessons", status_code=status.HTTP_201_CREATED)
+    def create_learning_lesson(
+        experience_id: str,
+        request: LearningLessonRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            experience = app.state.experiences.get(experience_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.experience", "lesson.create", experience["agent_id"]
+            )
+            record, created = app.state.experiences.create_lesson(
+                experience_id, request.lesson_type, request.statement,
+                request.evidence_refs, request.source_kind, request.extractor_version,
+                request.confidence, principal.tenant_id, principal.subject_id,
+            )
+            response = dict(record)
+            response["created"] = created
+            return response
+        except ExperienceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExperienceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/agent-experiences/{experience_id}/lessons")
+    def list_learning_lessons(
+        experience_id: str,
+        limit: int = Query(default=50, ge=1, le=100),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            experience = app.state.experiences.get(experience_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.experience", "lesson.read", experience["agent_id"]
+            )
+            enforce_authorization(
+                app, principal, "agent.experience", "experience.read", experience["agent_id"]
+            )
+            return {"items": app.state.experiences.list_lessons(
+                experience_id, principal.tenant_id, limit
+            )}
+        except ExperienceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExperienceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/fitness/selection")
+    def select_fitness_candidates(
+        profile_id: str,
+        profile_version: str,
+        min_samples: int = Query(default=3, ge=1, le=1000),
+        limit: int = Query(default=50, ge=1, le=100),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "agent.experience", "fitness.select", profile_id
+        )
+        try:
+            items = app.state.experiences.select_fitness(
+                profile_id, profile_version, principal.tenant_id, min_samples, limit
+            )
+            return {
+                "profile_id": profile_id, "profile_version": profile_version,
+                "min_samples": min_samples, "items": items,
+            }
+        except ExperienceNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExperienceValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/v1/enterprise-discovery/postgresql/snapshots/ingest", status_code=status.HTTP_201_CREATED)
     def ingest_postgresql_snapshot(

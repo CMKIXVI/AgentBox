@@ -96,6 +96,10 @@ Every batch adds unit and integration tests, tenant isolation tests, policy-deni
 Readiness must be reported separately as implemented, unit tested, integration tested, end-to-end tested, security validated, production deployed and production observed. No production-ready claim is made by this architecture map.
 
 
+## Execution experience and autonomous improvement integration
+
+The first runtime slice now persists tenant-scoped execution experience records and proposed lessons, and provides evidence-aware fitness selection for an exact evaluation profile version. These records are minimized, included in encrypted tenant backup/restore, and remain marked caller-asserted/unverified until a trusted runner can attest the workload-to-execution-to-evaluation chain. Fitness selection is not promotion authority.
+
 ## Autonomous improvement integration
 
 The reviewed self-evolving capability platform is adopted as an **AgentBox Autonomous Improvement Controller**, not as a separate product, service namespace or Go runtime. It extends the Agent Evolution Engine and shared evolution contracts.

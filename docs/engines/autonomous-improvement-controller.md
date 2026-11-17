@@ -1,6 +1,6 @@
 # AgentBox Autonomous Improvement Architecture
 
-**Status:** architecture adoption specification; no autonomous evolution runtime is claimed by this document.  
+**Status:** architecture specification with a first runtime slice implemented in PR #19; no autonomous controller or end-to-end evolution runtime is claimed.  
 **Source reviewed:** user-supplied `YNDRA-autonomous-self-evolving-1.0.0.zip`.  
 **Product and namespace:** AgentBox only.
 
@@ -178,7 +178,13 @@ The sequence is additive. A batch is not considered production-ready merely beca
 - No automatic production promotion without independent policy and approval.
 - No blind import of thousands of Go files or their dependencies.
 
-## 12. Readiness and definition of done
+## 12. First runtime slice implemented
+
+PR #19 adds tenant-scoped execution experience records, traceable proposed lessons, profile-version-pinned fitness selection with minimum sample counts, exact authorization and encrypted backup/restore coverage. See [Execution experience and learning records](execution-experience.md).
+
+The current experience-to-execution/evaluation linkage is caller-asserted and marked unverified. The existing evaluation service scores caller-submitted outputs; it does not execute a benchmark suite. Fitness selection is therefore a triage signal only, not a promotion gate. Automated learning, candidate generation, same-workload parent/candidate execution, a durable autonomous controller, sandboxing and governed promotion remain unimplemented.
+
+## 13. Readiness and definition of done
 
 The architecture is adopted as a design direction only. Runtime readiness requires, at minimum:
 

@@ -65,6 +65,22 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "source_ref", "observed_at", "recorded_at", "recorded_by", "payload_json", "content_hash",
     ),
 }
+PRE_EXPERIENCE_TABLES = frozenset(TABLE_COLUMNS)
+TABLE_COLUMNS.update({
+    "agent_experiences": (
+        "tenant_id", "experience_id", "execution_id", "evaluation_run_id", "agent_id",
+        "agent_version", "agent_content_hash", "profile_id", "profile_version",
+        "profile_content_hash", "workload_ref", "workload_hash", "execution_status",
+        "evaluation_score", "evaluation_passed", "case_pass_rate", "avg_latency_ms",
+        "total_cost_usd", "input_tokens", "output_tokens", "linkage_status",
+        "evidence_status", "record_hash", "created_at", "created_by",
+    ),
+    "learning_lessons": (
+        "tenant_id", "lesson_id", "experience_id", "lesson_type", "statement",
+        "evidence_refs_json", "source_kind", "extractor_version", "confidence",
+        "status", "statement_hash", "created_at", "created_by",
+    ),
+})
 BASE_TABLES = frozenset({
     "agent_versions", "evaluation_profiles", "executions", "evaluation_runs", "tenant_audit",
 })
@@ -78,6 +94,8 @@ TABLE_ORDER: dict[str, str] = {
     "context_relationships": "relationship_id, version",
     "context_evidence": "entity_id, observed_at, evidence_id",
     "context_events": "recorded_at, event_id",
+    "agent_experiences": "created_at, experience_id",
+    "learning_lessons": "created_at, lesson_id",
 }
 TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "agent_versions": ("tenant_id", "agent_id", "version"),
@@ -91,6 +109,8 @@ TABLE_KEYS: dict[str, tuple[str, ...]] = {
     "context_relationships": ("tenant_id", "relationship_id", "version"),
     "context_evidence": ("tenant_id", "evidence_id"),
     "context_events": ("tenant_id", "event_id"),
+    "agent_experiences": ("tenant_id", "experience_id"),
+    "learning_lessons": ("tenant_id", "lesson_id"),
 }
 
 
@@ -312,7 +332,7 @@ class TenantBackupService:
             raise BackupFormatError("Backup tenant lifecycle status is invalid")
         tables = payload.get("tables")
         if not isinstance(tables, dict) or frozenset(tables) not in {
-            BASE_TABLES, frozenset(TABLE_COLUMNS)
+            BASE_TABLES, PRE_EXPERIENCE_TABLES, frozenset(TABLE_COLUMNS)
         }:
             raise BackupFormatError("Backup table set is invalid")
         # v1 backups created before ECE existed contain only BASE_TABLES.
@@ -351,7 +371,7 @@ class TenantBackupService:
             for table in (
                 "agent_versions", "evaluation_profiles", "executions", "evaluation_runs",
                 "tenant_audit", "context_entities", "context_relationships",
-                "context_evidence", "context_events",
+                "context_evidence", "context_events", "agent_experiences", "learning_lessons",
             ):
                 columns = TABLE_COLUMNS[table]
                 keys = TABLE_KEYS[table]

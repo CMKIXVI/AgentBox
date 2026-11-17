@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from app.enterprise_context import EnterpriseContextService
 from app.evaluation import EvaluationService
 from app.execution import DeterministicFakeProvider, ExecutionService
+from app.experience import ExecutionExperienceService
 from app.registry import AgentRegistry
 from app.tenant_backup import (
     BackupConflictError,
@@ -54,6 +55,7 @@ def initialized_database(path: Path, tenant_id: str, *, populate: bool = False):
     tenants.create(tenant_id, f"Tenant {tenant_id}", "test-operator", {"region": "ap-south"})
     tenants.transition(tenant_id, "active", "test-operator")
     EnterpriseContextService(path)
+    ExecutionExperienceService(path)
     if populate:
         manifest = copy.deepcopy(AGENT)
         manifest["agent_id"] = "backup.agent"
@@ -62,13 +64,24 @@ def initialized_database(path: Path, tenant_id: str, *, populate: bool = False):
         registry.create(manifest, tenant_id=tenant_id)
         profile = copy.deepcopy(PROFILE)
         evaluations.create_profile(profile, tenant_id=tenant_id)
-        executions.execute(
+        execution = executions.execute(
             manifest["agent_id"], manifest["version"], {"hello": "world"},
             "backup-idempotency", tenant_id=tenant_id,
         )
-        evaluations.create_run(
+        evaluation = evaluations.create_run(
             manifest["agent_id"], manifest["version"], profile["profile_id"],
             profile["version"], [], tenant_id,
+        )
+        experiences = ExecutionExperienceService(path)
+        experience, _ = experiences.record(
+            execution["execution_id"], evaluation["run_id"],
+            "benchmark://backup/fixture", hashlib.sha256(b"backup-workload").hexdigest(),
+            tenant_id, "test-operator",
+        )
+        experiences.create_lesson(
+            experience["experience_id"], "backup.fixture",
+            "A traceable backup fixture lesson.", [experience["experience_id"]],
+            "deterministic_rule", "test-rules/1.0.0", 0.8, tenant_id, "test-operator",
         )
     return registry, evaluations, executions, tenants
 
@@ -99,8 +112,18 @@ def test_encrypted_backup_round_trip_restores_all_tenant_records(tmp_path):
     assert counts["evaluation_profiles"] == 1
     assert counts["executions"] == 1
     assert counts["evaluation_runs"] == 1
+    assert counts["agent_experiences"] == 1
+    assert counts["learning_lessons"] == 1
     assert counts["tenant_audit"] == 2
     assert restored_registry.get("backup.agent", "1.0.0", "tenant-alpha")
+    restored_experiences = ExecutionExperienceService(target)
+    restored_items = restored_experiences.list_for_agent(
+        "backup.agent", "tenant-alpha", PROFILE["profile_id"], PROFILE["version"]
+    )
+    assert len(restored_items) == 1
+    assert restored_experiences.list_lessons(
+        restored_items[0]["experience_id"], "tenant-alpha"
+    )[0]["status"] == "proposed"
     assert restored_evaluations.get_profile(
         PROFILE["profile_id"], PROFILE["version"], "tenant-alpha"
     )
@@ -382,7 +405,8 @@ def test_pre_context_v1_backup_remains_restorable_after_ece_tables_are_added(tmp
         _aad(envelope),
     ))
     for table in (
-        "context_entities", "context_relationships", "context_evidence", "context_events"
+        "context_entities", "context_relationships", "context_evidence", "context_events",
+        "agent_experiences", "learning_lessons"
     ):
         payload["tables"].pop(table)
     unsigned = dict(payload)
