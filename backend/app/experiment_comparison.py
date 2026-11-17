@@ -284,6 +284,13 @@ class ExperimentComparisonService:
             result = json.loads(row["result_json"] or "{}")
             output = result.get("output")
             usage = result.get("usage", {})
+            if not isinstance(usage, dict):
+                return False
+            try:
+                latency = _number(result.get("latency_ms"), "execution latency")
+                cost = _number(usage.get("cost_usd"), "execution cost")
+            except ExperimentComparisonValidationError:
+                return False
             input_hash = _digest({"input": case.get("input")})
             output_hash = _digest({"output": output})
             evaluation_case = submitted[case_id]
@@ -291,10 +298,10 @@ class ExperimentComparisonService:
                 result.get("input_hash") != input_hash
                 or item.get("input_hash") != input_hash
                 or item.get("output_hash") != output_hash
-                or evaluation_case.get("latency_ms") != result.get("latency_ms")
-                or evaluation_case.get("cost_usd") != usage.get("cost_usd")
-                or item.get("latency_ms") != result.get("latency_ms")
-                or item.get("cost_usd") != usage.get("cost_usd")
+                or evaluation_case.get("latency_ms") != latency
+                or evaluation_case.get("cost_usd") != cost
+                or item.get("latency_ms") != latency
+                or item.get("cost_usd") != cost
                 or item.get("provider_id") != result.get("provider_id")
                 or item.get("model_id") != result.get("model_id")
             ):
@@ -302,8 +309,8 @@ class ExperimentComparisonService:
             verified_results.append({
                 "case_id": case_id,
                 "output": output,
-                "latency_ms": result["latency_ms"],
-                "cost_usd": usage["cost_usd"],
+                "latency_ms": latency,
+                "cost_usd": cost,
             })
 
         recomputed = EvaluationService.score(profile, verified_results)
