@@ -183,3 +183,13 @@ def test_public_validation_does_not_require_or_create_tenant(tmp_path):
     response = TestClient(app).post("/v1/agents/validate", json={"manifest": {}})
     assert response.status_code == 200
     assert app.state.tenants.list() == []
+
+
+
+def test_tenant_administration_is_not_exposed_as_public_http_api(tmp_path):
+    schema = TestClient(create_app(str(tmp_path / "no-tenant-admin-api.sqlite3"))).get(
+        "/openapi.json"
+    ).json()
+    paths = schema["paths"]
+    assert not any(path.startswith("/v1/tenants") for path in paths)
+    assert not any("tenant" in path and path != "/health" for path in paths)
