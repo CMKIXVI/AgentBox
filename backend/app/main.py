@@ -12,6 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_policy import validate_authorization_policy
+from .candidate_generation import (
+    CandidateConflictError,
+    CandidateGenerationService,
+    CandidateValidationError,
+)
 from .enterprise_context import (
     ContextConflictError,
     ContextNotFoundError,
@@ -88,6 +93,15 @@ class CloneRequest(BaseModel):
         pattern=r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
     )
     overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class CandidateGenerationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    candidate_version: str = Field(
+        pattern=r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+    )
+    operator_ids: list[str] = Field(min_length=1, max_length=5)
+    seed: int = Field(ge=0, le=4294967295)
 
 
 class ExecutionRequest(BaseModel):
@@ -190,8 +204,8 @@ class ContextEvidenceRequest(BaseModel):
 
 
 MUTABLE_MANIFEST_FIELDS = {
-    "name", "description", "purpose", "behavior", "model_binding", "tools",
-    "workflow_ref", "memory", "knowledge_sources", "permissions", "policy_refs",
+    "name", "description", "purpose", "behavior", "model_binding",
+    "workflow_ref", "memory", "knowledge_sources", "policy_refs",
     "dependencies", "runtime_targets", "evaluation_profile_refs", "tags",
 }
 
@@ -284,6 +298,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         db_path, app.state.registry, providers=[DeterministicFakeProvider()]
     )
     app.state.experiences = ExecutionExperienceService(db_path)
+    app.state.candidate_generation = CandidateGenerationService(app.state.registry)
     app.state.enterprise_context = EnterpriseContextService(db_path)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
 
@@ -389,6 +404,37 @@ def create_app(database_path: str | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         response = record_response(record)
         response["created"] = created
+        return response
+
+    @app.post(
+        "/v1/agents/{agent_id}/versions/{version}/candidates",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def generate_agent_candidate(
+        agent_id: str,
+        version: str,
+        request: CandidateGenerationRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "agent.registry", "agent.clone", agent_id)
+        try:
+            result = app.state.candidate_generation.generate(
+                agent_id,
+                version,
+                request.candidate_version,
+                request.operator_ids,
+                request.seed,
+                principal.tenant_id,
+                principal.subject_id,
+            )
+        except AgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CandidateConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CandidateValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        response = record_response(result["record"])
+        response.update({key: value for key, value in result.items() if key != "record"})
         return response
 
     @app.post(

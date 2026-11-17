@@ -13,6 +13,7 @@ AgentBox has a bounded Python/FastAPI backend with an additive security and ente
 - Encrypted tenant logical backup/restore using AES-256-GCM and externally supplied key material.
 - Enterprise Context Engine v1: tenant-scoped immutable entity versions, typed relationships, evidence references, append-only context events and bounded deterministic query APIs, integrated with existing identity and authorization.
 - Execution experience v1: tenant-scoped minimized links to completed executions and evaluation runs, proposed traceable lessons, and profile-version-pinned fitness selection with minimum sample thresholds. Source linkage remains caller-asserted and unverified.
+- Bounded candidate generation v1: deterministic, registered mutation operators create schema-validated immutable candidate versions while preserving agent identity, tenant, tools and permissions. Candidates remain unverified and cannot be promoted.
 - Workflow and capability contracts are validated, but there is not yet a general workflow interpreter, multi-agent orchestrator, live discovery connector or production tool/action gateway.
 
 The ECE is an additive domain over the existing AgentBox runtime, SQLite database, API, OIDC, policy and tenant foundations. It does not introduce a replacement backend, new database, graph platform or independent microservices.
@@ -28,6 +29,12 @@ Do not infer production readiness from code generation or a green unit-test work
 3. Preserve provenance and distinguish source examples from new implementation.
 4. Keep the first prototype small and independently testable.
 5. Do not execute untrusted agent-generated code without a genuine isolation boundary.
+
+## Autonomous improvement
+
+- [Autonomous Improvement Controller](docs/engines/autonomous-improvement-controller.md) — normalized closed-loop architecture and remaining production gates.
+- [Execution experience and learning records](docs/engines/execution-experience.md) — minimized tenant-scoped experience, proposed lessons and evidence limitations.
+- [Bounded candidate generation](docs/engines/candidate-generation.md) — registered mutation operators, protected boundaries, candidate lineage and API contract.
 
 ## Enterprise Context Engine
 
