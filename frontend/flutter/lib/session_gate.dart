@@ -35,6 +35,7 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
   Timer? _expiryTimer;
   bool _loading = true;
   bool _unauthenticated = false;
+  int _readGeneration = 0;
 
   @override
   void initState() {
@@ -62,6 +63,8 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
   }
 
   Future<void> _loadSession() async {
+    final generation = ++_readGeneration;
+    final reader = widget.sessionReader;
     _expiryTimer?.cancel();
     if (mounted) {
       setState(() {
@@ -71,8 +74,8 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
       });
     }
     try {
-      final session = await widget.sessionReader.readSession();
-      if (!mounted) return;
+      final session = await reader.readSession();
+      if (!mounted || generation != _readGeneration) return;
       if (!_isValid(session)) {
         setState(() {
           _loading = false;
@@ -91,9 +94,12 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
         const Duration(seconds: 30),
       );
       final delay = recheckAt.difference(_now);
-      _expiryTimer = Timer(delay.isNegative ? Duration.zero : delay, _loadSession);
+      _expiryTimer = Timer(
+        delay.isNegative ? Duration.zero : delay,
+        _loadSession,
+      );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _readGeneration) return;
       setState(() {
         _loading = false;
         _session = null;
@@ -104,6 +110,7 @@ class _AgentBoxSessionGateState extends State<AgentBoxSessionGate> {
 
   @override
   void dispose() {
+    _readGeneration++;
     _expiryTimer?.cancel();
     super.dispose();
   }

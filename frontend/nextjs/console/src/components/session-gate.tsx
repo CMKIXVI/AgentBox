@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { SessionReader } from "../lib/auth-session.ts";
 import {
   resolveSessionState,
@@ -26,16 +26,22 @@ export function SessionGate({
   unauthenticatedFallback,
 }: SessionGateProps) {
   const [state, setState] = useState<SessionState | null>(null);
+  const readGeneration = useRef(0);
 
   useEffect(() => {
+    const generation = ++readGeneration.current;
     let active = true;
     setState(null);
     void sessionReader.readSession().then(
       (session) => {
-        if (active) setState(resolveSessionState(session));
+        if (active && generation === readGeneration.current) {
+          setState(resolveSessionState(session));
+        }
       },
       () => {
-        if (active) setState({ status: "unauthenticated" });
+        if (active && generation === readGeneration.current) {
+          setState({ status: "unauthenticated" });
+        }
       },
     );
     return () => {
@@ -48,12 +54,17 @@ export function SessionGate({
     let active = true;
     const delay = sessionRecheckDelayMs(state.session.expiresAt);
     const timer = setTimeout(() => {
+      const generation = ++readGeneration.current;
       void sessionReader.readSession().then(
         (session) => {
-          if (active) setState(resolveSessionState(session));
+          if (active && generation === readGeneration.current) {
+            setState(resolveSessionState(session));
+          }
         },
         () => {
-          if (active) setState({ status: "unauthenticated" });
+          if (active && generation === readGeneration.current) {
+            setState({ status: "unauthenticated" });
+          }
         },
       );
     }, delay);
