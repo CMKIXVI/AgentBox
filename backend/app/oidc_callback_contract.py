@@ -1,7 +1,6 @@
 """Provider-neutral OIDC redirect and callback transaction contracts.
 
-No HTTP callback, token exchange, persistence, or identity-provider SDK is
-implemented here. A production adapter must provide atomic single-use storage.
+No HTTP callback, token exchange, or identity-provider SDK is implemented here.
 """
 from __future__ import annotations
 
@@ -56,20 +55,23 @@ class OidcCallbackTransaction:
 def validate_callback_transaction(
     transaction: OidcCallbackTransaction,
 ) -> list[str]:
-    """Return invariant violations for a callback transaction record."""
+    """Return stable invariant violations for a callback transaction."""
     errors: list[str] = []
-    if not transaction.transaction_id.strip():
-        errors.append("transaction_id is required")
-    if not transaction.client_id.strip():
-        errors.append("client_id is required")
-    if not transaction.redirect_uri.strip():
-        errors.append("redirect_uri is required")
-    if not _SHA256_HEX.fullmatch(transaction.state_hash):
+    for field_name in (
+        "transaction_id", "client_id", "redirect_uri",
+        "state_hash", "nonce_hash", "pkce_verifier_ref",
+    ):
+        value = getattr(transaction, field_name)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{field_name} is required")
+    if isinstance(transaction.state_hash, str) and not _SHA256_HEX.fullmatch(
+        transaction.state_hash
+    ):
         errors.append("state_hash must be a lowercase SHA-256 hex digest")
-    if not _SHA256_HEX.fullmatch(transaction.nonce_hash):
+    if isinstance(transaction.nonce_hash, str) and not _SHA256_HEX.fullmatch(
+        transaction.nonce_hash
+    ):
         errors.append("nonce_hash must be a lowercase SHA-256 hex digest")
-    if not transaction.pkce_verifier_ref.strip():
-        errors.append("pkce_verifier_ref is required")
     if (
         isinstance(transaction.created_at_epoch, bool)
         or not isinstance(transaction.created_at_epoch, int)
@@ -88,12 +90,16 @@ def validate_callback_transaction(
 
 @runtime_checkable
 class OidcCallbackTransactionStore(Protocol):
-    """Persistence port; consume_once must be atomic across all app instances."""
+    """Persistence port for short-lived, single-use callback transactions."""
+
+    def save(self, transaction: OidcCallbackTransaction) -> None:
+        """Persist a validated transaction; reject duplicate transaction IDs."""
+        ...
 
     def consume_once(
         self, transaction_id: str, *, now_epoch: int
     ) -> OidcCallbackTransaction | None:
-        """Atomically return and mark a live record consumed, or return None.
+        """Atomically return and consume a live record, or return None.
 
         Implementations must enforce expiry and one-time use in one transaction.
         A read followed by a separate delete/update is not sufficient.

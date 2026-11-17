@@ -18,7 +18,7 @@ Transactions must expire within 10 minutes. Compare the callback's state hash in
 
 The transaction-store protocol is a persistence port. Its implementation must atomically check existence, expiry and unused status while marking the transaction consumed. This must be safe across multiple backend processes and instances. A read-then-delete sequence is not acceptable. Replays and expired transactions must return no transaction.
 
-The interface deliberately has no SQLite or in-memory production implementation. The current SQLite persistence is not a safe basis for a multi-instance callback replay guarantee without a carefully designed atomic transaction and deployment constraints.
+The SQLite development adapter is documented separately. It uses an immediate write transaction for atomic single-host consumption; it is not a multi-host replay store.
 
 ## Trust boundaries
 
