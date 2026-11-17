@@ -25,6 +25,10 @@ The selected adapter must:
 9. Supply only a short-lived access token to the existing AgentBox API transport.
 10. Never pass tenant authority from the UI. Tenant claim mapping is configured and checked server-side.
 
+## Safe post-authentication return targets
+
+The Next.js client includes `src/lib/safe-return-target.ts`, a standalone navigation helper for a future callback or sign-in flow. It accepts only root-relative same-origin paths and rejects absolute/protocol-relative URLs, backslashes, control characters, encoded path separators, malformed encodings, and dot-segment traversal. It returns a validated fallback when input is unsafe. This helper is not yet wired to a login flow, does not validate OIDC state or nonce, and is not an authorization control. A future provider adapter must use a maintained OIDC SDK/BFF and independently validate the protocol response before using any return target.
+
 ## Client adapter ports
 
 - Next.js: `frontend/nextjs/console/src/lib/auth-session.ts` defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements `SessionReader`.

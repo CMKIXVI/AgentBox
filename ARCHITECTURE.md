@@ -147,7 +147,7 @@ Do not manually maintain duplicate API models when they can be generated from th
 
 ## 6. Identity, tenant, and authorization
 
-The existing AgentBox OIDC and authorization foundations remain authoritative. The backend verifier validates issuer, audience, signature, time claims, and the configured tenant claim. The Next.js and Flutter session ports and UI gates are provider-neutral adapters only; they fail closed for missing or expired sessions and recheck at the 30-second expiry safety boundary, but do not implement login or authorization. A maintained OIDC SDK or reviewed BFF must own Authorization Code + PKCE, callback validation, refresh, logout, and secure credential storage. See [the OIDC client/session contract](docs/security/oidc-client-session-contract.md).
+The existing AgentBox OIDC and authorization foundations remain authoritative. The backend verifier validates issuer, audience, signature, time claims, and the configured tenant claim. The Next.js and Flutter session ports and UI gates are provider-neutral adapters only; they fail closed for missing or expired sessions and recheck at the 30-second expiry safety boundary, but do not implement login or authorization. Next.js includes a standalone root-relative return-target validator for future authentication integration; it is not wired to a callback. A maintained OIDC SDK or reviewed BFF must own Authorization Code + PKCE, callback validation, refresh, logout, and secure credential storage. See [the OIDC client/session contract](docs/security/oidc-client-session-contract.md).
 
 Requirements:
 - OIDC authentication and validated server-side principals
