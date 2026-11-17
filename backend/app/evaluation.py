@@ -18,6 +18,8 @@ from typing import Any
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
+LEGACY_TENANT_ID = "__legacy_unassigned__"
+
 
 class EvaluationProfileConflictError(Exception):
     """An immutable evaluation profile version already exists with other content."""
@@ -109,12 +111,25 @@ class EvaluationService:
                 )
                 """
             )
+            for table in ("evaluation_profiles", "evaluation_runs"):
+                columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+                if "tenant_id" not in columns:
+                    connection.execute(
+                        f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL "
+                        "DEFAULT '__legacy_unassigned__'"
+                    )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_eval_runs_agent "
-                "ON evaluation_runs(agent_id, agent_version, created_at)"
+                "CREATE INDEX IF NOT EXISTS idx_eval_profiles_tenant "
+                "ON evaluation_profiles(tenant_id, profile_id, created_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_eval_runs_tenant_agent "
+                "ON evaluation_runs(tenant_id, agent_id, agent_version, created_at)"
             )
 
-    def create_profile(self, profile: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    def create_profile(
+        self, profile: dict[str, Any], tenant_id: str = LEGACY_TENANT_ID
+    ) -> tuple[dict[str, Any], bool]:
         profile_id = profile["profile_id"]
         version = profile["version"]
         digest = sha256_json(profile)
@@ -123,8 +138,8 @@ class EvaluationService:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
             if existing:
                 if existing["content_hash"] != digest:
@@ -135,14 +150,14 @@ class EvaluationService:
             connection.execute(
                 """
                 INSERT INTO evaluation_profiles
-                    (profile_id, version, content_hash, profile_json, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                    (profile_id, version, content_hash, profile_json, created_at, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (profile_id, version, digest, serialized, created_at),
+                (profile_id, version, digest, serialized, created_at, tenant_id),
             )
             row = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
         return self._profile_record(row), True
 
@@ -156,22 +171,26 @@ class EvaluationService:
             "created_at": row["created_at"],
         }
 
-    def get_profile(self, profile_id: str, version: str) -> dict[str, Any]:
+    def get_profile(
+        self, profile_id: str, version: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> dict[str, Any]:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
         if row is None:
             raise EvaluationProfileNotFoundError(f"{profile_id}@{version} was not found")
         return self._profile_record(row)
 
-    def list_profile_versions(self, profile_id: str) -> list[dict[str, Any]]:
+    def list_profile_versions(
+        self, profile_id: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> list[dict[str, Any]]:
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? "
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? "
                 "ORDER BY created_at DESC, version DESC",
-                (profile_id,),
+                (tenant_id, profile_id),
             ).fetchall()
         return [self._profile_record(row) for row in rows]
 
@@ -320,8 +339,9 @@ class EvaluationService:
         profile_id: str,
         profile_version: str,
         submitted_results: list[dict[str, Any]],
+        tenant_id: str = LEGACY_TENANT_ID,
     ) -> dict[str, Any]:
-        profile_record = self.get_profile(profile_id, profile_version)
+        profile_record = self.get_profile(profile_id, profile_version, tenant_id)
         evaluation = self.score(profile_record["profile"], submitted_results)
         run_id = str(uuid.uuid4())
         created_at = utc_now()
@@ -340,32 +360,36 @@ class EvaluationService:
                 """
                 INSERT INTO evaluation_runs
                     (run_id, agent_id, agent_version, profile_id, profile_version,
-                     status, score, passed, result_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     status, score, passed, result_json, created_at, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id, agent_id, agent_version, profile_id, profile_version,
                     "completed", evaluation["score"], int(evaluation["passed"]),
-                    canonical_json(payload), created_at,
+                    canonical_json(payload), created_at, tenant_id,
                 ),
             )
         return payload
 
-    def get_run(self, run_id: str) -> dict[str, Any]:
+    def get_run(
+        self, run_id: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> dict[str, Any]:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT result_json FROM evaluation_runs WHERE run_id = ?",
-                (run_id,),
+                "SELECT result_json FROM evaluation_runs WHERE run_id = ? AND tenant_id = ?",
+                (run_id, tenant_id),
             ).fetchone()
         if row is None:
             raise EvaluationRunNotFoundError(f"Evaluation run {run_id} was not found")
         return json.loads(row["result_json"])
 
-    def list_agent_runs(self, agent_id: str, agent_version: str) -> list[dict[str, Any]]:
+    def list_agent_runs(
+        self, agent_id: str, agent_version: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> list[dict[str, Any]]:
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT result_json FROM evaluation_runs "
-                "WHERE agent_id = ? AND agent_version = ? ORDER BY created_at DESC",
-                (agent_id, agent_version),
+                "WHERE tenant_id = ? AND agent_id = ? AND agent_version = ? ORDER BY created_at DESC",
+                (tenant_id, agent_id, agent_version),
             ).fetchall()
         return [json.loads(row["result_json"]) for row in rows]

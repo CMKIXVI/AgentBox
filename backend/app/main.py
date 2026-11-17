@@ -187,7 +187,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 detail={"message": "Manifest validation failed", "errors": errors},
             )
         try:
-            record, created = app.state.registry.create(request.manifest)
+            record, created = app.state.registry.create(request.manifest, tenant_id=principal.tenant_id)
         except VersionConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         response = record_response(record)
@@ -202,7 +202,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.read", agent_id)
-        records = app.state.registry.list(agent_id, limit=limit, offset=offset)
+        records = app.state.registry.list(agent_id, limit=limit, offset=offset, tenant_id=principal.tenant_id)
         return {
             "agent_id": agent_id,
             "items": [record_response(item) for item in records],
@@ -217,7 +217,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.read", agent_id)
         try:
-            return record_response(app.state.registry.get(agent_id, version))
+            return record_response(app.state.registry.get(agent_id, version, principal.tenant_id))
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -231,7 +231,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.registry", "agent.clone", agent_id)
         try:
-            source = app.state.registry.get(agent_id, version)
+            source = app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -261,7 +261,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             )
         try:
             record, created = app.state.registry.create(
-                candidate, parent_artifact_id=parent_ref
+                candidate, parent_artifact_id=parent_ref, tenant_id=principal.tenant_id
             )
         except VersionConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -281,7 +281,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         enforce_authorization(app, principal, "agent.execution", "agent.execute", agent_id)
         try:
             return app.state.executions.execute(
-                agent_id, version, request.input, idempotency_key, request.max_output_tokens
+                agent_id, version, request.input, idempotency_key, request.max_output_tokens, principal.tenant_id
             )
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -299,7 +299,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         try:
-            record = app.state.executions.get(execution_id)
+            record = app.state.executions.get(execution_id, principal.tenant_id)
             enforce_authorization(app, principal, "agent.execution", "execution.read", record["agent_id"])
             return record
         except ExecutionNotFoundError as exc:
@@ -323,7 +323,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 detail={"message": "Evaluation profile validation failed", "errors": errors},
             )
         try:
-            record, created = app.state.evaluations.create_profile(request.profile)
+            record, created = app.state.evaluations.create_profile(request.profile, principal.tenant_id)
         except EvaluationProfileConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         record["created"] = created
@@ -335,7 +335,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", profile_id)
-        records = app.state.evaluations.list_profile_versions(profile_id)
+        records = app.state.evaluations.list_profile_versions(profile_id, principal.tenant_id)
         return {"profile_id": profile_id, "items": records}
 
     @app.get("/v1/evaluation-profiles/{profile_id}/versions/{profile_version}")
@@ -345,7 +345,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", profile_id)
         try:
-            return app.state.evaluations.get_profile(profile_id, profile_version)
+            return app.state.evaluations.get_profile(profile_id, profile_version, principal.tenant_id)
         except EvaluationProfileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -360,7 +360,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.create", agent_id)
         enforce_authorization(app, principal, "evaluation.profile", "profile.read", request.profile_id)
         try:
-            app.state.registry.get(agent_id, version)
+            app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         try:
@@ -370,6 +370,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 request.profile_id,
                 request.profile_version,
                 [item.model_dump() for item in request.results],
+                principal.tenant_id,
             )
         except EvaluationProfileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -382,7 +383,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         principal: Principal = AUTHENTICATED_PRINCIPAL,
     ) -> dict[str, Any]:
         try:
-            record = app.state.evaluations.get_run(run_id)
+            record = app.state.evaluations.get_run(run_id, principal.tenant_id)
             enforce_authorization(app, principal, "agent.evaluation", "evaluation.read", record["agent_id"])
             return record
         except EvaluationRunNotFoundError as exc:
@@ -395,10 +396,10 @@ def create_app(database_path: str | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         enforce_authorization(app, principal, "agent.evaluation", "evaluation.read", agent_id)
         try:
-            app.state.registry.get(agent_id, version)
+            app.state.registry.get(agent_id, version, principal.tenant_id)
         except AgentNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        runs = app.state.evaluations.list_agent_runs(agent_id, version)
+        runs = app.state.evaluations.list_agent_runs(agent_id, version, principal.tenant_id)
         return {"agent_id": agent_id, "agent_version": version, "items": runs}
 
     return app
