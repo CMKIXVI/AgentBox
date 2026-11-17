@@ -1,5 +1,7 @@
 # AgentBox
 
+> **Master architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) is the canonical platform architecture, including the Flutter + Next.js dual-frontend strategy and implementation boundaries.
+
 A standalone environment for creating, cloning, testing, evaluating, versioning and evolving AI agents.
 
 ## Current repository status
