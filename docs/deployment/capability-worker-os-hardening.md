@@ -62,3 +62,10 @@ The current capability runtime has no handler-scoped secret broker or per-handle
 3. Per-invocation CPU, memory, process and file-descriptor quotas (not only service-wide limits).
 4. A stronger isolation boundary for any code not fully trusted, such as a dedicated container/VM or microVM runtime with a separately managed identity.
 5. Live deployment verification, including filesystem, process, network and credential-boundary tests.
+## Capability secret broker contract
+
+The worker exposes `CapabilityInvocationContext.resolve_secret(secret_ref, purpose)`. It constructs a broker request containing the authenticated job's tenant and subject, immutable capability ID/version and contract hash, plus the opaque reference and declared purpose. The handler cannot supply or override tenant, subject, capability identity or contract hash.
+
+The default `DenyAllCapabilitySecretBroker` rejects every request. A deployment must replace the static `app.worker.CAPABILITY_SECRET_BROKER` with a reviewed, importable broker client (or inject one into `ExecutionJobWorker`); the implementation must independently authorize the exact tuple, return short-lived material, enforce expiry/revocation, and avoid logging values. Broker implementations are passed into spawned child processes and therefore must be safe to serialize and connect from that process. Do not implement a broker by reading ambient environment variables.
+
+This change defines and tests the broker contract only. It does **not** ship a Vault/KMS/cloud-secret-manager adapter, transport authentication, secret rotation, revocation, per-handler identity, or a live secret store. Until a production broker adapter is deployed and verified, secret resolution remains unavailable and handlers must fail closed.

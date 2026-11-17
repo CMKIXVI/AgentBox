@@ -49,11 +49,12 @@ def submit(client, key="worker-test-job"):
     )
 
 
-def make_worker(client, worker_id="test-worker", capability_handlers=None):
+def make_worker(client, worker_id="test-worker", capability_handlers=None, secret_broker=None):
     state = client.app.state
     return ExecutionJobWorker(
         state.execution_jobs, state.registry, state.executions,
         capabilities=state.capabilities, capability_handlers=capability_handlers,
+        secret_broker=secret_broker,
         worker_id=worker_id, lease_seconds=6, poll_interval_seconds=0.05,
     )
 
@@ -263,6 +264,26 @@ def capability_test_non_json_output(_context, _value):
     return object()
 
 
+class CapabilityTestSecretBroker:
+    def resolve(self, request):
+        if (
+            request.tenant_id != "test-tenant"
+            or request.subject_id != "test-user"
+            or request.capability_id != "crm.contact.read"
+            or request.capability_version != "1.0.0"
+            or request.secret_ref != "secret://crm/contact-reader"
+            or request.purpose != "crm.api.read"
+            or len(request.contract_hash) != 64
+        ):
+            raise PermissionError("secret scope mismatch")
+        return "short-lived-test-secret"
+
+
+def capability_test_secret_handler(context, _value):
+    secret = context.resolve_secret("secret://crm/contact-reader", "crm.api.read")
+    return {"name": "authorized" if secret == "short-lived-test-secret" else "denied"}
+
+
 def test_worker_executes_capability_through_static_handler_and_validates_output(client):
     job = enqueue_capability(client)
     worker = make_worker(
@@ -277,6 +298,35 @@ def test_worker_executes_capability_through_static_handler_and_validates_output(
         "version": "1.0.0",
         "output": {"name": "Ada"},
     }
+
+
+def test_capability_secret_broker_receives_exact_invocation_scope(client):
+    job = enqueue_capability(client, "capability-secret-scope")
+    worker = make_worker(
+        client,
+        capability_handlers={( "provider.fake", "1.0.0"): capability_test_secret_handler},
+        secret_broker=CapabilityTestSecretBroker(),
+    )
+    assert worker.run_once() is True
+    completed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
+    assert completed["state"] == "succeeded"
+    assert completed["result"]["output"] == {"name": "authorized"}
+
+
+def test_capability_secret_resolution_fails_closed_without_broker():
+    context = CapabilityInvocationContext(
+        tenant_id="tenant-a",
+        subject_id="user-a",
+        capability_id="crm.contact.read",
+        version="1.0.0",
+        content_hash="a" * 64,
+        timeout_seconds=5,
+        deadline_monotonic=time.monotonic() + 5,
+    )
+    with pytest.raises(PermissionError, match="not configured"):
+        context.resolve_secret("secret://crm/contact-reader", "crm.api.read")
+    with pytest.raises(ValueError, match="opaque"):
+        context.resolve_secret("not-a-secret-ref", "crm.api.read")
 
 
 def test_worker_fails_capability_job_when_handler_result_is_not_json(client):

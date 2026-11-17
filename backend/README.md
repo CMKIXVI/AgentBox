@@ -89,3 +89,8 @@ This provides a hard process-termination boundary for trusted code, not a securi
 ## Linux capability worker hardening
 
 A hardened systemd deployment profile is provided at [`deploy/systemd/agentbox-capability-worker.service`](../deploy/systemd/agentbox-capability-worker.service), with installation steps and explicit security boundaries in [the worker hardening guide](../docs/deployment/capability-worker-os-hardening.md). The profile applies OS restrictions and aggregate resource limits to the worker and its spawned children. It does **not** provide handler-scoped credentials, destination-level network allowlisting or a hostile-code sandbox. Never place secrets in the worker environment because spawned children inherit it.
+
+
+### Capability-scoped secret access
+
+Capability handlers may request opaque `secret://` references through `CapabilityInvocationContext.resolve_secret`. The request is bound to tenant, subject, capability version and immutable contract hash. The default broker denies all requests. The standalone worker's `CAPABILITY_SECRET_BROKER` defaults to deny-all; production deployments must replace it in reviewed application code with an authenticated remote broker that enforces exact scope, short TTLs and revocation; no concrete Vault/KMS adapter is included yet. Never place secret values in contracts, job payloads, process environment or audit events. See [the worker hardening guide](../docs/deployment/capability-worker-os-hardening.md).

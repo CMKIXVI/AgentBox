@@ -13,8 +13,15 @@ import signal
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
+
+from .capability_secrets import (
+    CapabilitySecretBroker,
+    CapabilitySecretRequest,
+    DenyAllCapabilitySecretBroker,
+    validate_secret_request,
+)
 
 from jsonschema import Draft202012Validator, ValidationError as JSONSchemaValidationError
 
@@ -37,6 +44,24 @@ class CapabilityInvocationContext:
     content_hash: str
     timeout_seconds: int
     deadline_monotonic: float
+    secret_broker: CapabilitySecretBroker = field(default_factory=DenyAllCapabilitySecretBroker, repr=False, compare=False)
+
+    def resolve_secret(self, secret_ref: str, purpose: str) -> str:
+        """Resolve one opaque reference through the scoped broker; never use ambient env secrets."""
+        validate_secret_request(secret_ref, purpose)
+        request = CapabilitySecretRequest(
+            tenant_id=self.tenant_id,
+            subject_id=self.subject_id,
+            capability_id=self.capability_id,
+            capability_version=self.version,
+            contract_hash=self.content_hash,
+            secret_ref=secret_ref,
+            purpose=purpose,
+        )
+        value = self.secret_broker.resolve(request)
+        if not isinstance(value, str) or not value or len(value) > 65536:
+            raise PermissionError("capability secret broker returned an invalid grant")
+        return value
 
     def remaining_seconds(self) -> float:
         """Return the remaining cooperative execution budget in seconds."""
@@ -133,6 +158,8 @@ def _run_capability_handler_isolated(
 # Deployments add reviewed Python callables here. No contract implementation_ref
 # or environment-provided import path is ever loaded.
 CAPABILITY_HANDLERS: dict[tuple[str, str], CapabilityHandler] = {}
+# Deployments may replace this with a reviewed broker client. The default denies all.
+CAPABILITY_SECRET_BROKER: CapabilitySecretBroker = DenyAllCapabilitySecretBroker()
 
 
 class ExecutionJobWorker:
@@ -146,6 +173,7 @@ class ExecutionJobWorker:
         *,
         capabilities: CapabilityRegistry | None = None,
         capability_handlers: Mapping[tuple[str, str], CapabilityHandler] | None = None,
+        secret_broker: CapabilitySecretBroker | None = None,
         worker_id: str | None = None,
         lease_seconds: int = 30,
         poll_interval_seconds: float = 1.0,
@@ -159,6 +187,7 @@ class ExecutionJobWorker:
         self.executions = executions
         self.capabilities = capabilities
         self.capability_handlers = dict(capability_handlers or {})
+        self.secret_broker = secret_broker if secret_broker is not None else DenyAllCapabilitySecretBroker()
         allowed_capability_handlers = {
             (handler_id, handler_version)
             for kind, handler_id, handler_version in self.jobs.allowed_handlers
@@ -357,6 +386,7 @@ class ExecutionJobWorker:
             content_hash=artifact.content_hash,
             timeout_seconds=contract["timeout_seconds"],
             deadline_monotonic=time.monotonic() + contract["timeout_seconds"],
+            secret_broker=self.secret_broker,
         )
         output = _run_capability_handler_isolated(handler, context, payload["input"])
         try:
@@ -394,6 +424,7 @@ def main() -> None:
         app.state.executions,
         capabilities=app.state.capabilities,
         capability_handlers=CAPABILITY_HANDLERS,
+        secret_broker=CAPABILITY_SECRET_BROKER,
         worker_id=os.getenv("AGENTBOX_WORKER_ID") or None,
         lease_seconds=int(os.getenv("AGENTBOX_WORKER_LEASE_SECONDS", "30")),
         poll_interval_seconds=float(os.getenv("AGENTBOX_WORKER_POLL_INTERVAL_SECONDS", "1")),
