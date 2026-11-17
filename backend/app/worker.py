@@ -10,13 +10,36 @@ import os
 import signal
 import threading
 import uuid
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable, Mapping
+
+from jsonschema import Draft202012Validator, ValidationError as JSONSchemaValidationError
 
 from .execution import ExecutionService
 from .execution_jobs import DurableExecutionJobService, JobLeaseError
 from .registry import AgentRegistry
+from .capability_registry import CapabilityRegistry
 
 LOGGER = logging.getLogger("agentbox.worker")
+
+
+@dataclass(frozen=True)
+class CapabilityInvocationContext:
+    """Trusted, immutable metadata supplied to a statically registered handler."""
+
+    tenant_id: str
+    subject_id: str
+    capability_id: str
+    version: str
+    content_hash: str
+    timeout_seconds: int
+
+
+CapabilityHandler = Callable[[CapabilityInvocationContext, Any], Any]
+
+# Deployments add reviewed Python callables here. No contract implementation_ref
+# or environment-provided import path is ever loaded.
+CAPABILITY_HANDLERS: dict[tuple[str, str], CapabilityHandler] = {}
 
 
 class ExecutionJobWorker:
@@ -28,6 +51,8 @@ class ExecutionJobWorker:
         registry: AgentRegistry,
         executions: ExecutionService,
         *,
+        capabilities: CapabilityRegistry | None = None,
+        capability_handlers: Mapping[tuple[str, str], CapabilityHandler] | None = None,
         worker_id: str | None = None,
         lease_seconds: int = 30,
         poll_interval_seconds: float = 1.0,
@@ -39,6 +64,17 @@ class ExecutionJobWorker:
         self.jobs = jobs
         self.registry = registry
         self.executions = executions
+        self.capabilities = capabilities
+        self.capability_handlers = dict(capability_handlers or {})
+        allowed_capability_handlers = {
+            (handler_id, handler_version)
+            for kind, handler_id, handler_version in self.jobs.allowed_handlers
+            if kind == "provider_invocation"
+        }
+        if set(self.capability_handlers) - allowed_capability_handlers:
+            raise ValueError("capability handler registry contains a handler outside the trusted allowlist")
+        if not all(callable(handler) for handler in self.capability_handlers.values()):
+            raise TypeError("capability handlers must be callable")
         self.worker_id = worker_id or f"worker-{uuid.uuid4()}"
         if not self.worker_id or len(self.worker_id) > 128:
             raise ValueError("worker_id must be between 1 and 128 characters")
@@ -146,6 +182,8 @@ class ExecutionJobWorker:
     def _dispatch(self, job: dict[str, Any]) -> dict[str, Any]:
         if job["workload_kind"] != "provider_invocation":
             raise ValueError("worker does not support this workload kind")
+        if isinstance(job.get("workload_ref"), str) and job["workload_ref"].startswith("capability:"):
+            return self._dispatch_capability(job)
         allowed = {
             (provider_id, version)
             for kind, provider_id, version in self.jobs.allowed_handlers
@@ -182,6 +220,61 @@ class ExecutionJobWorker:
             "execution": execution["result"],
         }
 
+
+    def _dispatch_capability(self, job: dict[str, Any]) -> dict[str, Any]:
+        """Execute through a reviewed, statically registered capability callable."""
+        if self.capabilities is None:
+            raise ValueError("capability registry is not configured in this worker")
+        capability_ref = job["workload_ref"][len("capability:"):]
+        capability_id, separator, version = capability_ref.rpartition("@")
+        if not separator or not capability_id or not version:
+            raise ValueError("capability workload reference is invalid")
+        payload = job.get("payload")
+        if not isinstance(payload, dict) or set(payload) != {"capability_id", "version", "input"}:
+            raise ValueError("capability job payload is invalid")
+        if payload["capability_id"] != capability_id or payload["version"] != version:
+            raise ValueError("capability payload does not match its workload reference")
+
+        artifact = self.capabilities.get(capability_id, version, job["tenant_id"])
+        if artifact.content_hash != job["workload_hash"]:
+            raise ValueError("capability contract hash does not match admitted job")
+        contract = artifact.contract
+        try:
+            Draft202012Validator(contract["input_schema"]).validate(payload["input"])
+        except JSONSchemaValidationError as exc:
+            raise ValueError("capability input no longer matches its immutable contract") from exc
+
+        handler_key = (job["handler_id"], job["handler_version"])
+        allowed = {
+            (handler_id, handler_version)
+            for kind, handler_id, handler_version in self.jobs.allowed_handlers
+            if kind == "provider_invocation"
+        }
+        if handler_key not in allowed:
+            raise ValueError("capability handler is not in the trusted allowlist")
+        handler = self.capability_handlers.get(handler_key)
+        if handler is None:
+            raise ValueError("no reviewed capability handler is registered for this handler version")
+
+        context = CapabilityInvocationContext(
+            tenant_id=job["tenant_id"],
+            subject_id=job["subject_id"],
+            capability_id=capability_id,
+            version=version,
+            content_hash=artifact.content_hash,
+            timeout_seconds=contract["timeout_seconds"],
+        )
+        output = handler(context, payload["input"])
+        try:
+            Draft202012Validator(contract["output_schema"]).validate(output)
+        except JSONSchemaValidationError as exc:
+            raise ValueError("capability handler output does not match its immutable contract") from exc
+        return {
+            "capability_id": capability_id,
+            "version": version,
+            "output": output,
+        }
+
     def run_forever(self, stop_event: threading.Event | None = None) -> None:
         """Poll until stopped; in-flight work is allowed to finish."""
         stop = stop_event or threading.Event()
@@ -205,6 +298,8 @@ def main() -> None:
         app.state.execution_jobs,
         app.state.registry,
         app.state.executions,
+        capabilities=app.state.capabilities,
+        capability_handlers=CAPABILITY_HANDLERS,
         worker_id=os.getenv("AGENTBOX_WORKER_ID") or None,
         lease_seconds=int(os.getenv("AGENTBOX_WORKER_LEASE_SECONDS", "30")),
         poll_interval_seconds=float(os.getenv("AGENTBOX_WORKER_POLL_INTERVAL_SECONDS", "1")),

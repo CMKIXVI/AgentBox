@@ -48,10 +48,11 @@ def submit(client, key="worker-test-job"):
     )
 
 
-def make_worker(client, worker_id="test-worker"):
+def make_worker(client, worker_id="test-worker", capability_handlers=None):
     state = client.app.state
     return ExecutionJobWorker(
         state.execution_jobs, state.registry, state.executions,
+        capabilities=state.capabilities, capability_handlers=capability_handlers,
         worker_id=worker_id, lease_seconds=6, poll_interval_seconds=0.05,
     )
 
@@ -183,3 +184,105 @@ def test_worker_waits_for_heartbeat_thread_before_returning(client):
     job = client.get(f"/v1/execution-jobs/{submitted.json()['job_id']}").json()
     assert job["state"] == "succeeded"
 
+
+
+
+def capability_contract():
+    return {
+        "schema_version": "1.0.0",
+        "capability_id": "crm.contact.read",
+        "version": "1.0.0",
+        "name": "Read contact",
+        "description": "Read one tenant-owned contact.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"contact_id": {"type": "string", "minLength": 1}},
+            "required": ["contact_id"],
+            "additionalProperties": False,
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "auth_ref": "policy:crm.contact.read",
+        "permission_profile": {"principal_scope": "user", "actions": ["crm.contact.read"]},
+        "timeout_seconds": 8,
+        "audit": {
+            "required": True,
+            "events": ["requested", "authorized", "completed", "failed"],
+            "record_input": False,
+            "record_output": False,
+        },
+    }
+
+
+def enqueue_capability(client, key="capability-worker-job"):
+    state = client.app.state
+    artifact, _ = state.capabilities.register(capability_contract(), "test-tenant")
+    job, _ = state.execution_jobs.create(
+        tenant_id="test-tenant",
+        subject_id="test-user",
+        principal_type="user",
+        workload_kind="provider_invocation",
+        handler_id="provider.fake",
+        handler_version="1.0.0",
+        workload_ref="capability:crm.contact.read@1.0.0",
+        workload_hash=artifact.content_hash,
+        payload={
+            "capability_id": "crm.contact.read",
+            "version": "1.0.0",
+            "input": {"contact_id": "contact-123"},
+        },
+        idempotency_key=key,
+    )
+    return job
+
+
+def test_worker_executes_capability_through_static_handler_and_validates_output(client):
+    job = enqueue_capability(client)
+    seen = {}
+
+    def read_contact(context, value):
+        seen["tenant_id"] = context.tenant_id
+        seen["subject_id"] = context.subject_id
+        seen["timeout_seconds"] = context.timeout_seconds
+        seen["input"] = value
+        return {"name": "Ada"}
+
+    worker = make_worker(client, capability_handlers={("provider.fake", "1.0.0"): read_contact})
+    assert worker.run_once() is True
+    completed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
+    assert completed["state"] == "succeeded"
+    assert completed["result"] == {
+        "capability_id": "crm.contact.read",
+        "version": "1.0.0",
+        "output": {"name": "Ada"},
+    }
+    assert seen == {
+        "tenant_id": "test-tenant",
+        "subject_id": "test-user",
+        "timeout_seconds": 8,
+        "input": {"contact_id": "contact-123"},
+    }
+
+
+def test_worker_fails_capability_job_without_static_handler(client):
+    job = enqueue_capability(client, "capability-no-handler")
+    assert make_worker(client).run_once() is True
+    failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
+    assert failed["state"] == "failed"
+    assert failed["error_code"] == "provider_execution_failed"
+
+
+def test_worker_fails_capability_job_when_handler_output_violates_contract(client):
+    job = enqueue_capability(client, "capability-invalid-output")
+    worker = make_worker(
+        client,
+        capability_handlers={("provider.fake", "1.0.0"): lambda _context, _value: {"name": 42}},
+    )
+    assert worker.run_once() is True
+    failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
+    assert failed["state"] == "failed"
+    assert failed["error_code"] == "provider_execution_failed"
