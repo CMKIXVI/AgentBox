@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from .authentication import require_authenticated_principal
@@ -27,9 +27,36 @@ from .execution import (
 )
 from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
+from .tenant_registry import TenantNotFoundError, TenantRegistry
 from .validation import validate_evaluation_profile, validate_manifest
 
-AUTHENTICATED_PRINCIPAL = Depends(require_authenticated_principal)
+
+def require_active_tenant_principal(
+    request: Request,
+    principal: Principal = Depends(require_authenticated_principal),  # noqa: B008
+) -> Principal:
+    """Require an OIDC principal whose server-owned tenant is currently active."""
+    if principal.tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Tenant context is required", "reason": "missing_tenant"},
+        )
+    try:
+        tenant = request.app.state.tenants.get(principal.tenant_id)
+    except (TenantNotFoundError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Tenant is not provisioned", "reason": "tenant_not_provisioned"},
+        ) from exc
+    if not tenant.is_accessible:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"message": "Tenant is not active", "reason": "tenant_inactive"},
+        )
+    return principal
+
+
+AUTHENTICATED_PRINCIPAL = Depends(require_active_tenant_principal)
 
 
 class ManifestRequest(BaseModel):
@@ -159,6 +186,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
         str(Path(__file__).resolve().parents[1] / "data" / "agentbox.sqlite3"),
     )
     app.state.authorization_policies = load_authorization_policies()
+    app.state.tenants = TenantRegistry(db_path)
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
     app.state.executions = ExecutionService(

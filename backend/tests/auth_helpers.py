@@ -5,6 +5,8 @@ from app.principal import Principal
 
 
 def configure_test_access(app):
+    app.state.tenants.create("test-tenant", "Test Tenant", "test-bootstrap")
+    app.state.tenants.transition("test-tenant", "active", "test-bootstrap")
     app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
         "test-user", "user", "test-tenant"
     )

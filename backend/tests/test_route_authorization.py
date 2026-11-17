@@ -43,6 +43,8 @@ def test_caller_identity_headers_do_not_bypass_authentication(tmp_path, monkeypa
 
 def test_authenticated_principal_without_policy_is_denied(tmp_path):
     app = create_app(str(tmp_path / "policy.sqlite3"))
+    app.state.tenants.create("tenant-1", "Tenant One", "test-bootstrap")
+    app.state.tenants.transition("tenant-1", "active", "test-bootstrap")
     app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
         "user-1", "user", "tenant-1"
     )
@@ -81,6 +83,8 @@ from auth_helpers import configure_test_access
 
 def test_policy_tenant_mismatch_denies_access(tmp_path):
     app = configure_test_access(create_app(str(tmp_path / "tenant.sqlite3")))
+    app.state.tenants.create("different-tenant", "Different Tenant", "test-bootstrap")
+    app.state.tenants.transition("different-tenant", "active", "test-bootstrap")
     app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
         "test-user", "user", "different-tenant"
     )
@@ -110,3 +114,72 @@ def test_explicit_deny_policy_blocks_previously_allowed_route(tmp_path):
     response = TestClient(app).get("/v1/agents/research.summarizer/versions")
     assert response.status_code == 403
     assert response.json()["detail"]["reason"] == "explicit_deny"
+
+
+
+def test_authenticated_unprovisioned_tenant_is_denied_before_policy(tmp_path):
+    app = create_app(str(tmp_path / "unprovisioned.sqlite3"))
+    app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
+        "user-1", "user", "unknown-tenant"
+    )
+    response = TestClient(app).get("/v1/agents/research.summarizer/versions")
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "tenant_not_provisioned"
+
+
+def test_pending_tenant_cannot_access_protected_routes(tmp_path):
+    app = create_app(str(tmp_path / "pending.sqlite3"))
+    app.state.tenants.create("pending-tenant", "Pending Tenant", "test-bootstrap")
+    app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
+        "user-1", "user", "pending-tenant"
+    )
+    response = TestClient(app).get("/v1/agents/research.summarizer/versions")
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "tenant_inactive"
+
+
+@pytest.mark.parametrize("terminal_or_blocked", ["suspended", "decommissioned"])
+def test_suspended_or_decommissioned_tenant_cannot_access_protected_routes(
+    tmp_path, terminal_or_blocked
+):
+    app = create_app(str(tmp_path / f"{terminal_or_blocked}.sqlite3"))
+    app.state.tenants.create("blocked-tenant", "Blocked Tenant", "test-bootstrap")
+    app.state.tenants.transition("blocked-tenant", "active", "test-bootstrap")
+    app.state.tenants.transition("blocked-tenant", terminal_or_blocked, "test-bootstrap")
+    app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
+        "user-1", "user", "blocked-tenant"
+    )
+    response = TestClient(app).get("/v1/agents/research.summarizer/versions")
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "tenant_inactive"
+
+
+def test_active_tenant_passes_lifecycle_gate_then_requires_policy(tmp_path):
+    app = create_app(str(tmp_path / "active-no-grant.sqlite3"))
+    app.state.tenants.create("active-tenant", "Active Tenant", "test-bootstrap")
+    app.state.tenants.transition("active-tenant", "active", "test-bootstrap")
+    app.dependency_overrides[require_authenticated_principal] = lambda: Principal(
+        "user-1", "user", "active-tenant"
+    )
+    response = TestClient(app).get("/v1/agents/research.summarizer/versions")
+    assert response.status_code == 403
+    assert response.json()["detail"]["reason"] == "no_matching_allow_policy"
+
+
+
+def test_tenant_suspension_takes_effect_on_next_request(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "suspension-live.sqlite3")))
+    client = TestClient(app)
+    first = client.get("/v1/agents/research.summarizer/versions")
+    assert first.status_code == 200
+    app.state.tenants.transition("test-tenant", "suspended", "test-bootstrap")
+    second = client.get("/v1/agents/research.summarizer/versions")
+    assert second.status_code == 403
+    assert second.json()["detail"]["reason"] == "tenant_inactive"
+
+
+def test_public_validation_does_not_require_or_create_tenant(tmp_path):
+    app = create_app(str(tmp_path / "public-validation.sqlite3"))
+    response = TestClient(app).post("/v1/agents/validate", json={"manifest": {}})
+    assert response.status_code == 200
+    assert app.state.tenants.list() == []
