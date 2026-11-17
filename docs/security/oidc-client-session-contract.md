@@ -29,6 +29,16 @@ The selected adapter must:
 
 The Next.js client includes `src/lib/safe-return-target.ts`, a standalone navigation helper for a future callback or sign-in flow. It accepts only root-relative same-origin paths and rejects absolute/protocol-relative URLs, backslashes, control characters, encoded path separators, malformed encodings, and dot-segment traversal. It returns a validated fallback when input is unsafe. This helper is not yet wired to a login flow, does not validate OIDC state or nonce, and is not an authorization control. A future provider adapter must use a maintained OIDC SDK/BFF and independently validate the protocol response before using any return target.
 
+## Provider-neutral Next.js BFF security primitives
+
+`frontend/nextjs/console/src/lib/bff-security.ts` defines testable cookie attributes and a strict CSRF request guard for a future Next.js BFF:
+- Production session cookies use the `__Host-agentbox_session` name, `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, and no Domain attribute. Development uses a separate non-`__Host-` cookie name so local HTTP remains usable.
+- Cookie lifetime is bounded to eight hours; clearing uses the same cookie scope with immediate expiry.
+- The configured public web origin must be an exact HTTPS origin (HTTP is accepted only for localhost development).
+- State-changing requests require an exact `Origin` match and reject `Sec-Fetch-Site: cross-site` or `none`. Safe methods do not require CSRF headers.
+
+These are policy helpers only. No cookie is issued or read, no session identifier is generated or stored, no CSRF token is issued, and no BFF route exists yet. Every future route must authenticate the session, apply this guard before processing mutations, and enforce FastAPI authorization for the underlying operation.
+
 ## Client adapter ports
 
 - Next.js: `frontend/nextjs/console/src/lib/auth-session.ts` defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements `SessionReader`.
