@@ -286,7 +286,7 @@ The frontend strategy is introduced without displacing backend and security work
 | 2 | Frontend workspace foundations | Flutter and Next.js app skeletons, independent CI, documented local run |
 | 3 | Authentication and tenant integration | OIDC login/session flows and negative tenant-isolation tests |
 
-Current progress: route inventory/OpenAPI drift checks and bearer-token-injected transports exist on the stacked frontend branches. Backend OIDC JWT validation is implemented. Client login/session integration is not yet implemented; the provider-neutral contract is documented, and provider selection plus deployment configuration remain rollout prerequisites.
+Current progress: backend OIDC JWT validation is implemented. The Next.js client now has configurable OIDC Authorization Code + PKCE sign-in, state/nonce checks, encrypted server-side JWT session handling, refresh-token renewal, and a same-origin authenticated API proxy. Flutter now has AppAuth Authorization Code + PKCE sign-in and platform-secure token storage with refresh handling. Provider selection, native redirect registration, real issuer/JWKS validation, and deployed client-to-API end-to-end verification remain rollout prerequisites.
 | 4 | Shared client generation | Reproducible Dart/TypeScript clients from the same OpenAPI contract |
 | 5 | Next.js Agent Studio foundation | Agent list, details, version view, and authorized create/clone flow |
 | 6 | Flutter operational foundation | Login, agent inventory, execution status, and notifications |
@@ -327,6 +327,6 @@ Important limitations remain:
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
 - A genuine code-execution sandbox, durable autonomous controller, trusted same-workload experiment runner, and governed promotion/rollback are not complete.
 - SQLite is the current persistence implementation; production multi-instance storage and operations are not established.
-- Flutter and Next.js foundations, bearer-token API transports, route inventory and OpenAPI export are implemented on stacked feature branches, not yet merged to main. Client login/session integration and live end-to-end API use remain incomplete.
+- Flutter and Next.js foundations, bearer-token API transports, route inventory, OpenAPI export, and provider-configurable client OIDC flows are implemented on stacked feature branches, not yet merged to main. No identity provider is selected or deployed. Native redirect registration, real token validation against a deployed issuer/JWKS, client-to-API end-to-end tests, and production session/revocation operations remain incomplete.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.

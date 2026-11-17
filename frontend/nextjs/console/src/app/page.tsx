@@ -1,3 +1,5 @@
+import { auth, oidcConfigured, signOut } from "@/auth";
+
 const workspaces = [
   {
     title: "Agent Studio",
@@ -21,7 +23,9 @@ const workspaces = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth();
+
   return (
     <main className="shell">
       <header className="topbar">
@@ -29,7 +33,23 @@ export default function Home() {
           <span className="brand-mark">A</span>
           <span>AgentBox</span>
         </a>
-        <span className="environment">Platform workspace · Preview</span>
+        <div className="environment">
+          {session?.user?.email ?? "Platform workspace · Preview"}
+          {session ? (
+            <form
+              action={async () => {
+                "use server";
+                await signOut({ redirectTo: "/signin" });
+              }}
+            >
+              <button className="signin-button" type="submit">Sign out</button>
+            </form>
+          ) : (
+            <a className="signin-link" href="/signin">
+              {oidcConfigured ? "Sign in" : "Identity setup required"}
+            </a>
+          )}
+        </div>
       </header>
 
       <section className="hero">
@@ -65,7 +85,11 @@ export default function Home() {
 
       <footer>
         <span>AgentBox · Web Console</span>
-        <span>API integration and OIDC authentication are not yet enabled.</span>
+        <span>
+          {session
+            ? "Authenticated web session · API operations are routed server-side."
+            : "Preview mode · Sign in to establish an authenticated session."}
+        </span>
       </footer>
     </main>
   );

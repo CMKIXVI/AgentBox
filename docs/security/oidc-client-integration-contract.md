@@ -19,11 +19,11 @@ Use Authorization Code Flow with PKCE. Prefer a backend-for-frontend (BFF) sessi
 1. Browser navigates to the configured provider authorization endpoint.
 2. Next.js creates and validates state, nonce, and PKCE verifier; callback URI is registered exactly at the provider.
 3. The callback exchanges the authorization code server-side.
-4. Next.js creates an opaque, server-managed session and sets only a session identifier in a Secure, HttpOnly, appropriately SameSite cookie.
-5. Server-side route handlers obtain a short-lived API access token from the session and call AgentBox FastAPI with an Authorization: Bearer header.
-6. Logout invalidates the local session and follows the provider's supported logout behavior.
+4. Auth.js stores an encrypted session token in a Secure, HttpOnly, appropriately SameSite cookie. Session callbacks must never return access or refresh tokens to browser JavaScript.
+5. Server-side route handlers obtain the API access token from the protected session and call AgentBox FastAPI with an Authorization: Bearer header through the same-origin BFF proxy.
+6. Logout clears the local session cookie. Provider-side token revocation and global logout remain provider-specific deployment controls.
 
-Access tokens, refresh tokens, client secrets, and PKCE verifiers must not be exposed to browser JavaScript, placed in local/session storage, or embedded in the Next.js client bundle. Never use an ID token as the API access token.
+Access tokens, refresh tokens, client secrets, and PKCE verifiers must not be exposed to browser JavaScript, placed in local/session storage, or embedded in the Next.js client bundle. The current Auth.js JWT session is encrypted and carried in an HttpOnly cookie; this is not a separate database-backed opaque session store, so cookie size, rotation, revocation and key-rotation behavior require deployment validation. Never use an ID token as the API access token.
 
 ### Flutter mobile client
 
@@ -111,9 +111,9 @@ Do not assume that the default OIDC sub claim is a tenant identifier. Do not ass
 1. Select provider and complete the onboarding checklist.
 2. Configure a non-production realm/tenant and test clients.
 3. Validate real access tokens against the backend using provider-issued JWKS.
-4. Implement Next.js BFF session and Flutter AppAuth integration.
+4. Configure and validate the Next.js encrypted-cookie BFF session and Flutter AppAuth integration.
 5. Run protocol, session, tenant-isolation, and authorization tests.
 6. Exercise both clients against a deployed non-production API.
 7. Enable production login only after security review, monitoring, key-rotation and recovery procedures are approved.
 
-A green unit-test workflow is not proof of provider integration or production authentication readiness.
+Current feature-branch implementation includes Next.js Auth.js OIDC sign-in with PKCE/state/nonce, an encrypted HttpOnly session cookie, server-side refresh logic and a same-origin API proxy, plus Flutter AppAuth and secure-storage token refresh. Native redirect registration, real provider/JWKS validation, cookie/session lifecycle review, and deployed client-to-API end-to-end tests remain mandatory. A green unit-test workflow is not proof of provider integration or production authentication readiness.

@@ -96,3 +96,60 @@ export class AgentBoxApiClient {
     return this.request(`/v1/executions/${encodeURIComponent(executionId)}`);
   }
 }
+
+/**
+ * Browser transport for the Next.js BFF. It relies on the HttpOnly Auth.js
+ * session cookie and never reads or handles API bearer tokens in JavaScript.
+ */
+export class AgentBoxBffClient {
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const headers = new Headers(init.headers);
+    headers.set("Accept", "application/json");
+    if (init.body !== undefined) headers.set("Content-Type", "application/json");
+
+    const response = await fetch(`/api/agentbox${path}`, {
+      ...init,
+      headers,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      let detail: unknown = null;
+      try {
+        detail = await response.json();
+      } catch {
+        detail = await response.text();
+      }
+      throw new AgentBoxApiError(
+        `AgentBox API request failed (${response.status})`,
+        response.status,
+        detail,
+      );
+    }
+    if (response.status === 204) return undefined as T;
+    return (await response.json()) as T;
+  }
+
+  listAgentVersions(agentId: string, limit = 50, offset = 0): Promise<AgentVersionList> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions?limit=${limit}&offset=${offset}`,
+    );
+  }
+
+  getAgentVersion(agentId: string, version: string): Promise<AgentVersionRecord> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}`,
+    );
+  }
+
+  createAgent(manifest: Record<string, unknown>): Promise<AgentVersionRecord & { created: boolean }> {
+    return this.request("/v1/agents", {
+      method: "POST",
+      body: JSON.stringify({ manifest }),
+    });
+  }
+
+  getExecution(executionId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/executions/${encodeURIComponent(executionId)}`);
+  }
+}

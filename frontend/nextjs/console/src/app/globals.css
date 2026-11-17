@@ -69,3 +69,12 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 42px
   footer { flex-direction: column; }
   .environment { max-width: 130px; text-align: right; }
 }
+
+.environment { display: flex; align-items: center; gap: 16px; }
+.signin-link, .signin-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 38px; padding: 0 15px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--surface-raised); color: var(--text);
+  font: inherit; font-size: 13px; cursor: pointer;
+}
+.signin-link:hover, .signin-button:hover { border-color: var(--accent); }
