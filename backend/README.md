@@ -102,3 +102,11 @@ Capability handlers may request opaque `secret://` references through `Capabilit
 - The endpoint caps a run at 100 cases, rejects tool-enabled manifests, derives per-case execution idempotency keys, and fails closed when provider cost or latency evidence is missing.
 - Evaluation records include server-recorded execution IDs, agent/profile content hashes, per-case input/output hashes, provider/model identifiers and a server-derived workload hash. Existing caller-submitted evaluation remains available but is explicitly labelled `caller_submitted`.
 - This is synchronous provider execution with durable per-case execution records, not yet a durable batch-orchestration workflow. A process interruption may leave a partial set of completed case executions; retry with the same idempotency key reuses completed per-case executions. Comparisons remain advisory until the comparison service consumes and verifies these execution evidence records.
+
+
+## Parent/candidate comparison evidence
+
+- The existing parent/candidate comparison endpoint now rechecks both evaluation runs against the tenant-scoped immutable agent versions, pinned evaluation profile, workload hash, and completed execution records.
+- A comparison is labelled `verified` only when both runs are `server_recorded`, their profile-derived workload hashes match the submitted workload hash, and every case's execution ID, input/output hash, provider/model, latency, and cost match the persisted execution record.
+- Caller-submitted runs and mismatched evidence remain `unverified`; they are never upgraded based on a caller assertion. Existing comparison rows are migrated with `evidence_verified=0` and remain unverified.
+- Verified evidence does not grant promotion authority. Every comparison remains `promotion_eligible=false` and `decision_authority=advisory_only` pending a separate reviewed promotion gate.
