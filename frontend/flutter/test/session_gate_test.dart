@@ -22,10 +22,11 @@ void main() {
     expiresAt: DateTime.now().add(const Duration(minutes: 5)),
   );
 
-  Widget gate(FixedSessionReader reader) => MaterialApp(
+  Widget gate(FixedSessionReader reader, {DateTime Function()? clock}) => MaterialApp(
         home: AgentBoxSessionGate(
           sessionReader: reader,
           loadingBuilder: (_) => const Text('Loading session'),
+          clock: clock,
           unauthenticatedBuilder: (_) => const Text('Sign-in required'),
           authenticatedBuilder: (_, session) => Text('Welcome ${session.subject}'),
         ),
@@ -56,6 +57,25 @@ void main() {
 
   testWidgets('fails closed when session reader throws', (tester) async {
     await tester.pumpWidget(gate(FixedSessionReader(null, error: Exception('offline'))));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign-in required'), findsOneWidget);
+  });
+
+  testWidgets('rechecks and closes protected UI at the expiry safety boundary', (tester) async {
+    var now = DateTime.now();
+    final nearExpiry = AgentBoxSession(
+      subject: 'user-1',
+      accessToken: 'short-lived-token',
+      expiresAt: now.add(const Duration(seconds: 31)),
+    );
+    await tester.pumpWidget(
+      gate(FixedSessionReader(nearExpiry), clock: () => now),
+    );
+    await tester.pump();
+    expect(find.text('Welcome user-1'), findsOneWidget);
+
+    now = now.add(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
     expect(find.text('Sign-in required'), findsOneWidget);
   });
