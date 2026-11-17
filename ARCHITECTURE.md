@@ -220,7 +220,7 @@ The current SQLite persistence layer remains the initial implementation. Its lim
 Evolution path:
 - Preserve repository/service interfaces and migration discipline.
 - Define and test the supported production database target before multi-instance deployment.
-- Use durable queues and worker ownership for long-running jobs before relying on multi-process execution.
+- Use durable queues and worker ownership for long-running jobs before relying on multi-process execution. The durable job state machine, lease, cancellation, recovery, idempotency, tenant isolation, and audit requirements are specified in [the execution-job lifecycle contract](docs/runtime/durable-execution-job-lifecycle.md). This job service remains separate from synchronous provider invocation.
 - Keep tenant backup/restore inventories synchronized with every new tenant-owned table.
 - Encrypt backups and define key custody, rotation, restore drills, and recovery objectives.
 - Add structured logs, metrics, traces, audit events, health/readiness checks, and operational alerts.
