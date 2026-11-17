@@ -21,6 +21,8 @@ class Principal:
             raise ValueError("Unsupported principal_type")
         if self.tenant_id is not None and (not self.tenant_id or len(self.tenant_id) > 256):
             raise ValueError("tenant_id must contain 1 to 256 characters")
+        if self.tenant_id == "__legacy_unassigned__":
+            raise ValueError("Reserved tenant ID cannot identify an authenticated principal")
         if self.principal_type == "tenant" and self.tenant_id != self.subject_id:
             raise ValueError("A tenant principal must use its tenant ID as both subject_id and tenant_id")
         if not isinstance(self.active, bool):
