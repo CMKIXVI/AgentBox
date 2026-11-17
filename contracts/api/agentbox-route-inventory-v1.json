@@ -1,0 +1,316 @@
+{
+  "contract_version": "1.0.0",
+  "service": "AgentBox API",
+  "api_version": "0.2.0",
+  "source_of_truth": "FastAPI-generated OpenAPI document at /openapi.json",
+  "purpose": "Route and authentication inventory used to verify frontend API client coverage. This file is not a replacement for the generated OpenAPI schemas.",
+  "authentication": {
+    "scheme": "Bearer",
+    "authority": "OIDC JWT verified by AgentBox backend",
+    "tenant_context": "Server-derived from the configured verified OIDC tenant claim; clients must not send or select tenant authority in headers.",
+    "token_storage": "The client transport accepts an injected short-lived access-token provider. It does not persist credentials.",
+    "public_operations": [
+      "GET /health",
+      "POST /v1/agents/validate",
+      "POST /v1/evaluation-profiles/validate"
+    ],
+    "internal_worker": {
+      "scheme": "Bearer",
+      "authority": "Dedicated AGENTBOX_JOB_WORKER_TOKEN configured only in the trusted worker environment",
+      "note": "Internal execution-job endpoints are not public OIDC client routes. They fail closed when the worker secret is absent."
+    }
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "auth_required": false
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/validate",
+      "auth_required": false
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agents/{agent_id}/versions",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agents/{agent_id}/versions/{version}",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/versions/{version}/clone",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/versions/{version}/candidates",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/versions/{version}/executions",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/executions/{execution_id}",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/evaluation-profiles/validate",
+      "auth_required": false
+    },
+    {
+      "method": "POST",
+      "path": "/v1/evaluation-profiles",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/evaluation-profiles/{profile_id}/versions",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/evaluation-profiles/{profile_id}/versions/{profile_version}",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/versions/{version}/evaluations",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/evaluations/{run_id}",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agents/{agent_id}/versions/{version}/evaluations",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agent-experiences",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agents/{agent_id}/experiences",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agent-experiences/{experience_id}/lessons",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agent-experiences/{experience_id}/lessons",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agent-experiment-comparisons",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/agent-experiment-comparisons/{comparison_id}",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/fitness/selection",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/snapshots/ingest",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-context/entities",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-context/entities/{entity_id}/versions",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-context/entities",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-context/entities/{entity_id}",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-context/relationships",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-context/relationships",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-context/evidence",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-context/evidence/{evidence_id}/reviews",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-context/entities/{entity_id}/evidence",
+      "auth_required": true
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-context/events",
+      "auth_required": true
+    },
+    {
+      "method": "POST",
+      "path": "/v1/agents/{agent_id}/versions/{version}/jobs",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/execution-jobs/{job_id}",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/execution-jobs/{job_id}/events",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/execution-jobs/{job_id}/cancel",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/claim",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/recover",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/start",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/heartbeat",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/cancelled",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/complete",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/internal/v1/execution-jobs/{job_id}/fail",
+      "auth_required": true,
+      "auth_type": "worker_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/cognitive-runs",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/cognitive-runs/{run_id}",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/cognitive-runs/{run_id}/events",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/cognitive-runs/{run_id}/events",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/cognitive-runs/{run_id}/context",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/connectors",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "GET",
+      "path": "/v1/enterprise-discovery/postgresql/connectors",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys/{key_id}/revoke",
+      "auth_required": true,
+      "auth_type": "oidc_bearer"
+    }
+  ]
+}

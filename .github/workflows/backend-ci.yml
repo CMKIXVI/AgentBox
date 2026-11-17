@@ -1,21 +1,38 @@
-name: AgentBox backend CI
+name: AgentBox CI
 
 on:
+  # Keep automatic push validation on the protected integration branch only.
+  # Feature branches use local checks and an explicit workflow_dispatch run.
   push:
+    branches:
+      - main
     paths:
       - "backend/**"
+      - "frontend/**"
+      - "contracts/**"
       - "schemas/agent-manifest-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+  # Validate when a PR is opened/returned to review; do not rerun on every
+  # synchronize event. Latest-head validation is dispatched manually per batch.
   pull_request:
+    types: [opened, reopened, ready_for_review]
     paths:
       - "backend/**"
+      - "frontend/**"
+      - "contracts/**"
       - "schemas/agent-manifest-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  backend:
+    name: Backend (Ruff + pytest + OpenAPI export)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -32,6 +49,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Lint
-        run: ruff check app tests
+        run: ruff check app tests scripts
       - name: Test
         run: pytest
+      - name: Export generated OpenAPI contract
+        run: python scripts/export_openapi.py --output ../contracts/openapi/agentbox-openapi.json
+      - name: Upload generated OpenAPI contract
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentbox-openapi-contract
+          path: contracts/openapi/agentbox-openapi.json
+          if-no-files-found: error
+
+  nextjs-console:
+    name: Next.js console
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/nextjs/console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Type check
+        run: npm run typecheck
+      - name: Production build
+        run: npm run build
+
+  flutter-client:
+    name: Flutter client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/flutter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Static analysis
+        run: flutter analyze
+      - name: Widget tests
+        run: flutter test

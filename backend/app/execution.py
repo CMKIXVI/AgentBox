@@ -8,18 +8,30 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from .registry import AgentRegistry, canonical_json
+from .registry import LEGACY_TENANT_ID, AgentRegistry, canonical_json
 
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve sqlite transaction context semantics and always release the handle."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
 
 
 class ExecutionError(Exception):
@@ -56,7 +68,7 @@ class ProviderResponse:
     output: Any
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: float | None = None
 
 
 class ProviderAdapter(Protocol):
@@ -103,10 +115,24 @@ class ExecutionService:
             self._uri = False
             self._keeper = None
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        self._closed = False
         self._initialize()
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._dsn, uri=self._uri, timeout=10)
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
+        connection = sqlite3.connect(
+            self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
@@ -129,9 +155,27 @@ class ExecutionService:
                 )
                 """
             )
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(executions)")}
+            if "tenant_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE executions ADD COLUMN tenant_id TEXT NOT NULL "
+                    "DEFAULT '__legacy_unassigned__'"
+                )
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_executions_agent "
-                "ON executions(agent_id, agent_version, created_at)"
+                "CREATE INDEX IF NOT EXISTS idx_executions_tenant_agent "
+                "ON executions(tenant_id, agent_id, agent_version, created_at)"
+            )
+            # A synchronous provider call may be interrupted by process termination.
+            # Never replay it automatically: the provider may already have completed
+            # the request and charged for it. The SQLite runtime is single-instance;
+            # on exclusive process startup, fence leftover running records as ambiguous.
+            connection.execute(
+                """UPDATE executions
+                SET status='interrupted',
+                    error_code='execution_interrupted_ambiguous_outcome',
+                    completed_at=?
+                WHERE status='running'""",
+                (utc_now(),),
             )
 
     def _record(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -146,10 +190,13 @@ class ExecutionService:
             "completed_at": row["completed_at"],
         }
 
-    def get(self, execution_id: str) -> dict[str, Any]:
+    def get(
+        self, execution_id: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> dict[str, Any]:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM executions WHERE execution_id = ?", (execution_id,)
+                "SELECT * FROM executions WHERE execution_id = ? AND tenant_id = ?",
+                (execution_id, tenant_id),
             ).fetchone()
         if row is None:
             raise ExecutionNotFoundError(execution_id)
@@ -162,12 +209,13 @@ class ExecutionService:
         user_input: Any,
         idempotency_key: str,
         max_output_tokens: int = 1024,
+        tenant_id: str = LEGACY_TENANT_ID,
     ) -> dict[str, Any]:
         if not idempotency_key or len(idempotency_key) > 128:
             raise ValueError("A non-empty idempotency key of at most 128 characters is required")
         if not 1 <= max_output_tokens <= 8192:
             raise ValueError("max_output_tokens must be between 1 and 8192")
-        agent = self.registry.get(agent_id, version)
+        agent = self.registry.get(agent_id, version, tenant_id)
         manifest = agent.manifest
         # This vertical slice does not yet possess a tool registry or authorization
         # principal. Deny any manifest that requests tools rather than silently ignoring them.
@@ -184,10 +232,14 @@ class ExecutionService:
             "max_output_tokens": max_output_tokens,
         }
         request_hash = hashlib.sha256(canonical_json(request_payload).encode()).hexdigest()
+        tenant_idempotency_key = hashlib.sha256(
+            canonical_json({"tenant_id": tenant_id, "idempotency_key": idempotency_key}).encode()
+        ).hexdigest()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM executions WHERE idempotency_key = ?", (idempotency_key,)
+                "SELECT * FROM executions WHERE idempotency_key = ? AND tenant_id = ?",
+                (tenant_idempotency_key, tenant_id),
             ).fetchone()
             if existing:
                 if existing["request_hash"] != request_hash:
@@ -198,8 +250,8 @@ class ExecutionService:
             connection.execute(
                 """INSERT INTO executions
                 (execution_id, agent_id, agent_version, idempotency_key, request_hash,
-                 status, created_at) VALUES (?, ?, ?, ?, ?, 'running', ?)""",
-                (execution_id, agent_id, version, idempotency_key, request_hash, created_at),
+                 status, created_at, tenant_id) VALUES (?, ?, ?, ?, ?, 'running', ?, ?)""",
+                (execution_id, agent_id, version, tenant_idempotency_key, request_hash, created_at, tenant_id),
             )
 
         timeout = min(manifest["behavior"]["timeout_seconds"], 3600)
@@ -210,11 +262,26 @@ class ExecutionService:
             user_input=user_input,
             max_output_tokens=max_output_tokens,
         )
+        started_monotonic = time.perf_counter()
         try:
             response = provider.invoke(request, timeout)
             if not isinstance(response, ProviderResponse):
                 raise ProviderError("Provider returned an invalid response envelope")
-            if response.cost_usd < 0 or response.input_tokens < 0 or response.output_tokens < 0:
+            if (
+                type(response.input_tokens) is not int
+                or type(response.output_tokens) is not int
+                or response.input_tokens < 0
+                or response.output_tokens < 0
+                or (
+                    response.cost_usd is not None
+                    and (
+                        isinstance(response.cost_usd, bool)
+                        or not isinstance(response.cost_usd, (int, float))
+                        or not math.isfinite(response.cost_usd)
+                        or response.cost_usd < 0
+                    )
+                )
+            ):
                 raise ProviderError("Provider returned invalid usage metrics")
             result = {
                 "output": response.output,
@@ -225,7 +292,11 @@ class ExecutionService:
                 },
                 "provider_id": provider_id,
                 "model_id": request.model_id,
+                "input_hash": hashlib.sha256(
+                    canonical_json({"input": user_input}).encode("utf-8")
+                ).hexdigest(),
                 "steps": 1,
+                "latency_ms": round((time.perf_counter() - started_monotonic) * 1000, 3),
             }
             completed_at = utc_now()
             with self._connect() as connection:
@@ -246,4 +317,4 @@ class ExecutionService:
             if isinstance(exc, ExecutionError):
                 raise
             raise ProviderError("Provider invocation failed") from exc
-        return self.get(execution_id)
+        return self.get(execution_id, tenant_id)

@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentbox.example/schemas/capability-v1.schema.json",
+  "title": "AgentBox Capability v1",
+  "description": "A declarative, versioned capability contract. It does not contain executable code or credentials.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "capability_id", "version", "name", "description", "input_schema", "output_schema", "auth_ref", "permission_profile", "timeout_seconds", "audit"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "capability_id": {"type": "string", "minLength": 3, "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9._-]+$"},
+    "version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 120},
+    "description": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "input_schema": {"$ref": "#/$defs/payload_schema"},
+    "output_schema": {"$ref": "#/$defs/payload_schema"},
+    "auth_ref": {"type": "string", "minLength": 3, "maxLength": 512, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:/@-]*$"},
+    "permission_profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["principal_scope", "actions"],
+      "properties": {
+        "principal_scope": {"type": "string", "enum": ["user", "tenant", "service", "system"]},
+        "actions": {"type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+        "resource_scope": {"type": "string", "maxLength": 512}
+      }
+    },
+    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+    "audit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["required", "events", "record_input", "record_output"],
+      "properties": {
+        "required": {"const": true},
+        "events": {"type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": {"type": "string", "enum": ["requested", "authorized", "denied", "started", "completed", "failed", "timed_out"]}},
+        "record_input": {"type": "boolean"},
+        "record_output": {"type": "boolean"},
+        "redaction_profile_ref": {"type": "string", "minLength": 3, "maxLength": 512}
+      }
+    },
+    "implementation_ref": {"type": "string", "minLength": 3, "maxLength": 512},
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["origin", "created_at"],
+      "properties": {
+        "origin": {"type": "string", "enum": ["authored", "imported", "derived", "generated"]},
+        "source_refs": {"type": "array", "maxItems": 100, "items": {"type": "string", "minLength": 1}},
+        "created_at": {"type": "string", "format": "date-time"},
+        "license_ref": {"type": "string", "minLength": 3, "maxLength": 512}
+      }
+    },
+    "tags": {"type": "array", "maxItems": 50, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64}}
+  },
+  "$defs": {
+    "payload_schema": {
+      "type": "object",
+      "description": "Embedded JSON Schema for capability input or output.",
+      "required": ["type"],
+      "properties": {
+        "$schema": {"type": "string"},
+        "type": {"type": "string", "enum": ["object", "array", "string", "number", "integer", "boolean"]},
+        "title": {"type": "string", "maxLength": 120},
+        "description": {"type": "string", "maxLength": 1000},
+        "properties": {"type": "object"},
+        "required": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "additionalProperties": {"type": "boolean"},
+        "items": {"type": "object"},
+        "enum": {"type": "array", "maxItems": 100},
+        "minimum": {"type": "number"},
+        "maximum": {"type": "number"},
+        "minLength": {"type": "integer", "minimum": 0},
+        "maxLength": {"type": "integer", "minimum": 0},
+        "minItems": {"type": "integer", "minimum": 0},
+        "maxItems": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": true
+    }
+  }
+}

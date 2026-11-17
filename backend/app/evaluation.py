@@ -18,6 +18,8 @@ from typing import Any
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
+LEGACY_TENANT_ID = "__legacy_unassigned__"
+
 
 class EvaluationProfileConflictError(Exception):
     """An immutable evaluation profile version already exists with other content."""
@@ -57,9 +59,21 @@ class EvaluationService:
         )
         if not self._use_uri:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        self._closed = False
         self._initialize()
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
         connection = sqlite3.connect(self._dsn, uri=self._use_uri, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -77,6 +91,7 @@ class EvaluationService:
 
     def _initialize(self) -> None:
         with self._connection() as connection:
+            connection.execute("PRAGMA foreign_keys = OFF")
             if not self._use_uri:
                 connection.execute("PRAGMA journal_mode = WAL")
             connection.execute(
@@ -109,12 +124,86 @@ class EvaluationService:
                 )
                 """
             )
+            for table in ("evaluation_profiles", "evaluation_runs"):
+                columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+                if "tenant_id" not in columns:
+                    connection.execute(
+                        f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL "
+                        "DEFAULT '__legacy_unassigned__'"
+                    )
+            profile_pk = [
+                row["name"] for row in sorted(
+                    (item for item in connection.execute("PRAGMA table_info(evaluation_profiles)") if item["pk"]),
+                    key=lambda item: item["pk"],
+                )
+            ]
+            if profile_pk != ["tenant_id", "profile_id", "version"]:
+                connection.execute(
+                    """
+                    CREATE TABLE evaluation_profiles_tenant_new (
+                        tenant_id TEXT NOT NULL,
+                        profile_id TEXT NOT NULL,
+                        version TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        profile_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY (tenant_id, profile_id, version)
+                    )
+                    """
+                )
+                connection.execute(
+                    """INSERT INTO evaluation_profiles_tenant_new
+                    (tenant_id, profile_id, version, content_hash, profile_json, created_at)
+                    SELECT tenant_id, profile_id, version, content_hash, profile_json, created_at
+                    FROM evaluation_profiles"""
+                )
+                connection.execute(
+                    """
+                    CREATE TABLE evaluation_runs_tenant_new (
+                        run_id TEXT PRIMARY KEY,
+                        tenant_id TEXT NOT NULL,
+                        agent_id TEXT NOT NULL,
+                        agent_version TEXT NOT NULL,
+                        profile_id TEXT NOT NULL,
+                        profile_version TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        score REAL NOT NULL,
+                        passed INTEGER NOT NULL,
+                        result_json TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (tenant_id, profile_id, profile_version)
+                            REFERENCES evaluation_profiles_tenant_new(tenant_id, profile_id, version)
+                    )
+                    """
+                )
+                connection.execute(
+                    """INSERT INTO evaluation_runs_tenant_new
+                    (run_id, tenant_id, agent_id, agent_version, profile_id, profile_version,
+                     status, score, passed, result_json, created_at)
+                    SELECT run_id, tenant_id, agent_id, agent_version, profile_id, profile_version,
+                           status, score, passed, result_json, created_at FROM evaluation_runs"""
+                )
+                connection.execute("DROP TABLE evaluation_runs")
+                connection.execute("DROP TABLE evaluation_profiles")
+                connection.execute(
+                    "ALTER TABLE evaluation_profiles_tenant_new RENAME TO evaluation_profiles"
+                )
+                connection.execute(
+                    "ALTER TABLE evaluation_runs_tenant_new RENAME TO evaluation_runs"
+                )
+            connection.execute("PRAGMA foreign_keys = ON")
             connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_eval_runs_agent "
-                "ON evaluation_runs(agent_id, agent_version, created_at)"
+                "CREATE INDEX IF NOT EXISTS idx_eval_profiles_tenant "
+                "ON evaluation_profiles(tenant_id, profile_id, created_at)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_eval_runs_tenant_agent "
+                "ON evaluation_runs(tenant_id, agent_id, agent_version, created_at)"
             )
 
-    def create_profile(self, profile: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    def create_profile(
+        self, profile: dict[str, Any], tenant_id: str = LEGACY_TENANT_ID
+    ) -> tuple[dict[str, Any], bool]:
         profile_id = profile["profile_id"]
         version = profile["version"]
         digest = sha256_json(profile)
@@ -123,8 +212,8 @@ class EvaluationService:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
             if existing:
                 if existing["content_hash"] != digest:
@@ -135,14 +224,14 @@ class EvaluationService:
             connection.execute(
                 """
                 INSERT INTO evaluation_profiles
-                    (profile_id, version, content_hash, profile_json, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                    (profile_id, version, content_hash, profile_json, created_at, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (profile_id, version, digest, serialized, created_at),
+                (profile_id, version, digest, serialized, created_at, tenant_id),
             )
             row = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
         return self._profile_record(row), True
 
@@ -156,22 +245,26 @@ class EvaluationService:
             "created_at": row["created_at"],
         }
 
-    def get_profile(self, profile_id: str, version: str) -> dict[str, Any]:
+    def get_profile(
+        self, profile_id: str, version: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> dict[str, Any]:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? AND version = ?",
-                (profile_id, version),
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? AND version = ?",
+                (tenant_id, profile_id, version),
             ).fetchone()
         if row is None:
             raise EvaluationProfileNotFoundError(f"{profile_id}@{version} was not found")
         return self._profile_record(row)
 
-    def list_profile_versions(self, profile_id: str) -> list[dict[str, Any]]:
+    def list_profile_versions(
+        self, profile_id: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> list[dict[str, Any]]:
         with self._connection() as connection:
             rows = connection.execute(
-                "SELECT * FROM evaluation_profiles WHERE profile_id = ? "
+                "SELECT * FROM evaluation_profiles WHERE tenant_id = ? AND profile_id = ? "
                 "ORDER BY created_at DESC, version DESC",
-                (profile_id,),
+                (tenant_id, profile_id),
             ).fetchall()
         return [self._profile_record(row) for row in rows]
 
@@ -313,6 +406,125 @@ class EvaluationService:
             "case_results": case_results,
         }
 
+    def _verify_execution_evidence(
+        self,
+        *,
+        agent_id: str,
+        agent_version: str,
+        tenant_id: str,
+        profile_record: dict[str, Any],
+        submitted_results: list[dict[str, Any]],
+        evidence: dict[str, Any],
+    ) -> None:
+        """Verify every submitted case against a completed server execution record."""
+        if evidence.get("source") != "server_execution_records":
+            raise ValueError("execution evidence source is not trusted")
+        cases = profile_record["profile"]["cases"]
+        workload_definition = {
+            "profile_id": profile_record["profile_id"],
+            "profile_version": profile_record["version"],
+            "profile_content_hash": profile_record["content_hash"],
+            "cases": [{"case_id": case["case_id"], "input": case["input"]} for case in cases],
+        }
+        expected_workload_hash = hashlib.sha256(
+            canonical_json(workload_definition).encode("utf-8")
+        ).hexdigest()
+        if evidence.get("workload_hash") != expected_workload_hash:
+            raise ValueError(
+                "execution evidence workload hash does not match the pinned profile inputs"
+            )
+
+        with self._connection() as connection:
+            agent = connection.execute(
+                "SELECT content_hash FROM agent_versions "
+                "WHERE tenant_id=? AND agent_id=? AND version=?",
+                (tenant_id, agent_id, agent_version),
+            ).fetchone()
+            profile = connection.execute(
+                "SELECT content_hash FROM evaluation_profiles "
+                "WHERE tenant_id=? AND profile_id=? AND version=?",
+                (tenant_id, profile_record["profile_id"], profile_record["version"]),
+            ).fetchone()
+            if agent is None or profile is None:
+                raise ValueError("execution evidence references a missing immutable artifact")
+            if evidence.get("agent_content_hash") != agent["content_hash"]:
+                raise ValueError(
+                    "execution evidence agent hash does not match the immutable registry"
+                )
+            if evidence.get("profile_content_hash") != profile["content_hash"]:
+                raise ValueError(
+                    "execution evidence profile hash does not match the immutable profile"
+                )
+
+            submitted_by_id = {item["case_id"]: item for item in submitted_results}
+            evidence_items = evidence.get("case_executions")
+            if not isinstance(evidence_items, list) or len(evidence_items) != len(cases):
+                raise ValueError(
+                    "execution evidence must contain exactly one record per evaluation case"
+                )
+            evidence_by_id = {
+                item.get("case_id"): item
+                for item in evidence_items
+                if isinstance(item, dict)
+            }
+            expected_case_ids = {case["case_id"] for case in cases}
+            if len(evidence_by_id) != len(cases) or set(evidence_by_id) != expected_case_ids:
+                raise ValueError("execution evidence case IDs do not match the pinned profile")
+            if set(submitted_by_id) != {case["case_id"] for case in cases}:
+                raise ValueError("submitted results do not cover the pinned evaluation profile")
+
+            execution_ids: set[str] = set()
+            for case in cases:
+                case_id = case["case_id"]
+                item = evidence_by_id[case_id]
+                execution_id = item.get("execution_id")
+                if (
+                    not isinstance(execution_id, str)
+                    or not execution_id
+                    or execution_id in execution_ids
+                ):
+                    raise ValueError(
+                        "execution evidence contains a missing or duplicate execution ID"
+                    )
+                execution_ids.add(execution_id)
+                row = connection.execute(
+                    "SELECT agent_id, agent_version, status, result_json FROM executions "
+                    "WHERE tenant_id=? AND execution_id=?",
+                    (tenant_id, execution_id),
+                ).fetchone()
+                if row is None or row["status"] != "completed" or (
+                    row["agent_id"], row["agent_version"]
+                ) != (agent_id, agent_version):
+                    raise ValueError(
+                        "execution evidence does not reference a completed execution "
+                        "for this agent version"
+                    )
+                execution = json.loads(row["result_json"] or "{}")
+                usage = execution.get("usage", {})
+                input_hash = hashlib.sha256(
+                    canonical_json({"input": case["input"]}).encode("utf-8")
+                ).hexdigest()
+                output_hash = hashlib.sha256(
+                    canonical_json({"output": execution.get("output")}).encode("utf-8")
+                ).hexdigest()
+                submitted = submitted_by_id[case_id]
+                if (
+                    execution.get("input_hash") != input_hash
+                    or item.get("input_hash") != input_hash
+                    or item.get("output_hash") != output_hash
+                    or submitted.get("output") != execution.get("output")
+                    or submitted.get("latency_ms") != execution.get("latency_ms")
+                    or submitted.get("cost_usd") != usage.get("cost_usd")
+                    or item.get("latency_ms") != execution.get("latency_ms")
+                    or item.get("cost_usd") != usage.get("cost_usd")
+                    or item.get("provider_id") != execution.get("provider_id")
+                    or item.get("model_id") != execution.get("model_id")
+                ):
+                    raise ValueError(
+                        "Execution evidence for case "
+                        f"{case_id} does not match its persisted execution"
+                    )
+
     def create_run(
         self,
         agent_id: str,
@@ -320,8 +532,24 @@ class EvaluationService:
         profile_id: str,
         profile_version: str,
         submitted_results: list[dict[str, Any]],
+        tenant_id: str = LEGACY_TENANT_ID,
+        execution_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        profile_record = self.get_profile(profile_id, profile_version)
+        if execution_evidence is not None and (
+            not isinstance(execution_evidence, dict)
+            or execution_evidence.get("source") != "server_execution_records"
+        ):
+            raise ValueError("execution_evidence must originate from server execution records")
+        profile_record = self.get_profile(profile_id, profile_version, tenant_id)
+        if execution_evidence is not None:
+            self._verify_execution_evidence(
+                agent_id=agent_id,
+                agent_version=agent_version,
+                tenant_id=tenant_id,
+                profile_record=profile_record,
+                submitted_results=submitted_results,
+                evidence=execution_evidence,
+            )
         evaluation = self.score(profile_record["profile"], submitted_results)
         run_id = str(uuid.uuid4())
         created_at = utc_now()
@@ -333,39 +561,48 @@ class EvaluationService:
             "profile_version": profile_version,
             "status": "completed",
             "created_at": created_at,
+            "evidence_status": (
+                "server_recorded" if execution_evidence is not None else "caller_submitted"
+            ),
             **evaluation,
         }
+        if execution_evidence is not None:
+            payload["execution_evidence"] = execution_evidence
         with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO evaluation_runs
                     (run_id, agent_id, agent_version, profile_id, profile_version,
-                     status, score, passed, result_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     status, score, passed, result_json, created_at, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id, agent_id, agent_version, profile_id, profile_version,
                     "completed", evaluation["score"], int(evaluation["passed"]),
-                    canonical_json(payload), created_at,
+                    canonical_json(payload), created_at, tenant_id,
                 ),
             )
         return payload
 
-    def get_run(self, run_id: str) -> dict[str, Any]:
+    def get_run(
+        self, run_id: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> dict[str, Any]:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT result_json FROM evaluation_runs WHERE run_id = ?",
-                (run_id,),
+                "SELECT result_json FROM evaluation_runs WHERE run_id = ? AND tenant_id = ?",
+                (run_id, tenant_id),
             ).fetchone()
         if row is None:
             raise EvaluationRunNotFoundError(f"Evaluation run {run_id} was not found")
         return json.loads(row["result_json"])
 
-    def list_agent_runs(self, agent_id: str, agent_version: str) -> list[dict[str, Any]]:
+    def list_agent_runs(
+        self, agent_id: str, agent_version: str, tenant_id: str = LEGACY_TENANT_ID
+    ) -> list[dict[str, Any]]:
         with self._connection() as connection:
             rows = connection.execute(
                 "SELECT result_json FROM evaluation_runs "
-                "WHERE agent_id = ? AND agent_version = ? ORDER BY created_at DESC",
-                (agent_id, agent_version),
+                "WHERE tenant_id = ? AND agent_id = ? AND agent_version = ? ORDER BY created_at DESC",
+                (tenant_id, agent_id, agent_version),
             ).fetchall()
         return [json.loads(row["result_json"]) for row in rows]

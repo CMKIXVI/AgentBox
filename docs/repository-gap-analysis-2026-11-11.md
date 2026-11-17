@@ -1,4 +1,4 @@
-# AgentBox repository gap analysis — 2026-11-11
+> **Historical snapshot (2026-11-11):** This gap analysis predates the current FastAPI backend, OIDC/tenant services, execution jobs, sandbox adapter and dual frontend foundations. Do not use it as the current implementation inventory; see `docs/architecture-conformance-audit-2026-11-14.md` and `ARCHITECTURE.md`.\n\n# AgentBox repository gap analysis — 2026-11-11
 
 > **Evidence basis:** GitHub tree for `CMKIXVI/AgentBox` at commit `54c9579fe954d0b74e17aab1b6dcf0576e579c90`, plus fetched README, design documents, engine contracts and legacy extracts. This is a repository-content assessment, not a CI run or runtime test.
 
