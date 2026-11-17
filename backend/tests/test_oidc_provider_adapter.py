@@ -1,0 +1,491 @@
+import json
+import time
+from urllib.parse import parse_qs
+
+import httpx
+import jwt
+import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+from app.oidc_authorization_flow import OidcAuthorizationError
+from app.oidc_provider_adapter import HttpOidcProviderAdapter
+
+ISSUER = "https://identity.example.test/"
+NOW = int(time.time())
+CLIENT_ID = "agentbox-web"
+DEFAULT_CLIENT_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+
+def _registration(**overrides):
+    client = {
+        "client_id": CLIENT_ID,
+        "platform": "web",
+        "client_type": "confidential",
+        "token_endpoint_auth_method": "private_key_jwt",
+        "client_secret_ref": "vault://agentbox/oidc/web-signing-key",
+        "redirect_uris": ["https://console.example.test/auth/callback"],
+        "response_type": "code",
+        "pkce_method": "S256",
+    }
+    client.update(overrides)
+    if client["platform"] == "native":
+        client.pop("client_secret_ref", None)
+    return {"schema_version": "1.0", "protocol": "oidc", "clients": [client]}
+
+
+def _metadata(**overrides):
+    value = {
+        "issuer": ISSUER,
+        "authorization_endpoint": "https://identity.example.test/authorize",
+        "token_endpoint": "https://identity.example.test/token",
+        "jwks_uri": "https://identity.example.test/jwks",
+        "response_types_supported": ["code"],
+        "code_challenge_methods_supported": ["S256"],
+        "scopes_supported": ["openid", "profile"],
+        "token_endpoint_auth_methods_supported": ["private_key_jwt", "none"],
+    }
+    value.update(overrides)
+    return value
+
+
+def _signed_id_token(private_key, *, kid="signing-key", **overrides):
+    claims = {
+        "iss": ISSUER,
+        "sub": "user-42",
+        "aud": CLIENT_ID,
+        "iat": NOW,
+        "exp": NOW + 600,
+        "nonce": "nonce-value",
+    }
+    claims.update(overrides)
+    return jwt.encode(
+        claims, private_key, algorithm="RS256", headers={"kid": kid, "typ": "JWT"}
+    )
+
+
+def _jwks(public_key, *, kid="signing-key"):
+    return {
+        "keys": [{
+            **json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(public_key)),
+            "kid": kid,
+            "use": "sig",
+            "alg": "RS256",
+        }]
+    }
+
+
+class MemoryPrivateKeys:
+    def __init__(self, key):
+        self.key = key
+        self.references = []
+
+    def resolve(self, reference):
+        self.references.append(reference)
+        return self.key, "client-key-1"
+
+
+def _make_adapter(handler, *, registration=None, key_resolver=None, follow_redirects=False):
+    selected_registration = registration or _registration()
+    auth_method = selected_registration["clients"][0]["token_endpoint_auth_method"]
+    if key_resolver is None and auth_method == "private_key_jwt":
+        key_resolver = MemoryPrivateKeys(DEFAULT_CLIENT_KEY)
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=follow_redirects,
+    )
+    return HttpOidcProviderAdapter(
+        issuer=ISSUER,
+        registration=selected_registration,
+        private_key_resolver=key_resolver,
+        http_client=client,
+    )
+
+
+def test_discovery_and_token_exchange_verify_signature_and_pkce():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "access_token": "opaque-access-token",
+                "token_type": "Bearer",
+                "id_token": _signed_id_token(signing_key),
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        assert adapter.authorization_endpoint == "https://identity.example.test/authorize"
+        claims = adapter.exchange_and_validate(
+            code="one-time-code",
+            client_id=CLIENT_ID,
+            redirect_uri="https://console.example.test/auth/callback",
+            code_verifier="v" * 43,
+            now_epoch=NOW + 1,
+        )
+    finally:
+        adapter.close()
+
+    assert claims["sub"] == "user-42"
+    assert [request.url.path for request in requests] == [
+        "/.well-known/openid-configuration", "/token", "/jwks"
+    ]
+    token_form = parse_qs(requests[1].content.decode())
+    assert token_form["grant_type"] == ["authorization_code"]
+    assert token_form["code"] == ["one-time-code"]
+    assert token_form["code_verifier"] == ["v" * 43]
+
+
+def test_private_key_jwt_assertion_is_signed_for_token_endpoint():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    client_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    resolver = MemoryPrivateKeys(
+        client_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    assertion_headers = {}
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            form = parse_qs(request.content.decode())
+            assertion = form["client_assertion"][0]
+            assertion_headers.update(jwt.get_unverified_header(assertion))
+            claims = jwt.decode(
+                assertion, client_key.public_key(), algorithms=["RS256"],
+                audience="https://identity.example.test/token",
+                issuer=CLIENT_ID, subject=CLIENT_ID,
+            )
+            assert claims["exp"] - claims["iat"] <= 60
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(signing_key)
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler, key_resolver=resolver)
+    try:
+        adapter.exchange_and_validate(
+            code="code", client_id=CLIENT_ID,
+            redirect_uri="https://console.example.test/auth/callback",
+            code_verifier="v" * 43, now_epoch=NOW + 1,
+        )
+    finally:
+        adapter.close()
+    assert resolver.references == ["vault://agentbox/oidc/web-signing-key"]
+    assert assertion_headers["kid"] == "client-key-1"
+
+
+@pytest.mark.parametrize("metadata", [
+    _metadata(issuer="https://attacker.example/"),
+    _metadata(token_endpoint="http://identity.example.test/token"),
+    _metadata(code_challenge_methods_supported=["plain"]),
+    _metadata(response_types_supported=["token"]),
+])
+def test_discovery_rejects_untrusted_or_unsupported_metadata(metadata):
+    def handler(request):
+        return httpx.Response(200, json=metadata)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError):
+            _ = adapter.authorization_endpoint
+    finally:
+        adapter.close()
+
+
+def test_id_token_with_unknown_kid_is_rejected():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(signing_key, kid="unknown-key")
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="signing key"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_hmac_signed_id_token_is_rejected():
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            token = jwt.encode(
+                {"iss": ISSUER, "sub": "u", "aud": CLIENT_ID, "iat": NOW, "exp": NOW + 600},
+                "shared-secret", algorithm="HS256",
+            )
+            return httpx.Response(200, json={"id_token": token})
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json={"keys": []})
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="unsupported signing algorithm"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_token_endpoint_redirect_is_rejected():
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        return httpx.Response(302, headers={"Location": "https://attacker.example/token"})
+
+    adapter = _make_adapter(handler, follow_redirects=True)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="exchange failed"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_public_client_uses_no_client_assertion():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_registration = _registration(
+        platform="native",
+        client_type="public",
+        token_endpoint_auth_method="none",
+        redirect_uris=["com.agentbox.app://callback"],
+    )
+    token_fields = {}
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            token_fields.update(parse_qs(request.content.decode()))
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(signing_key)
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler, registration=public_registration)
+    try:
+        adapter.exchange_and_validate(
+            code="code", client_id=CLIENT_ID,
+            redirect_uri="com.agentbox.app://callback",
+            code_verifier="v" * 43, now_epoch=NOW + 1,
+        )
+    finally:
+        adapter.close()
+    assert "client_assertion" not in token_fields
+    assert token_fields["client_id"] == [CLIENT_ID]
+
+
+def test_jwks_key_rotation_is_observed_between_exchanges():
+    key_a = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key_b = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwks_calls = 0
+
+    def handler(request):
+        nonlocal jwks_calls
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            token_key = key_a if jwks_calls == 0 else key_b
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(token_key, kid="rotating-key")
+            })
+        if request.url.path == "/jwks":
+            jwks_calls += 1
+            current = key_a if jwks_calls == 1 else key_b
+            return httpx.Response(200, json=_jwks(current.public_key(), kid="rotating-key"))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        for _ in range(2):
+            claims = adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+            assert claims["sub"] == "user-42"
+    finally:
+        adapter.close()
+    assert jwks_calls == 2
+
+
+def test_jwks_redirect_is_rejected():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(signing_key)
+            })
+        return httpx.Response(302, headers={"Location": "https://attacker.example/jwks"})
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="signing keys"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_adapter_rejects_invalid_client_registration():
+    with pytest.raises(ValueError, match="Invalid OIDC client registration"):
+        HttpOidcProviderAdapter(
+            issuer=ISSUER,
+            registration={"clients": []},
+            http_client=httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(200))),
+        )
+
+
+def test_metadata_response_size_is_bounded():
+    def handler(_request):
+        return httpx.Response(
+            200, content=b" " * (1_048_577),
+            headers={"Content-Type": "application/json"},
+        )
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="discovery could not be loaded"):
+            _ = adapter.authorization_endpoint
+    finally:
+        adapter.close()
+
+
+def test_signed_token_with_wrong_issuer_is_rejected():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(
+                    signing_key, iss="https://attacker.example/"
+                )
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="cryptographic validation"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_expired_id_token_is_rejected_against_supplied_clock():
+    signing_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata())
+        if request.url.path == "/token":
+            return httpx.Response(200, json={
+                "id_token": _signed_id_token(
+                    signing_key, exp=NOW, iat=NOW - 100
+                )
+            })
+        if request.url.path == "/jwks":
+            return httpx.Response(200, json=_jwks(signing_key.public_key()))
+        return httpx.Response(404)
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="time claims"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+
+
+def test_unregistered_redirect_is_rejected_before_network_exchange():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json=_metadata())
+
+    adapter = _make_adapter(handler)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="Redirect URI"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://attacker.example/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
+    assert requests == []
+
+
+def test_client_secret_basic_is_not_silently_accepted():
+    registration = _registration(token_endpoint_auth_method="client_secret_basic")
+
+    def handler(request):
+        if request.url.path.endswith("openid-configuration"):
+            return httpx.Response(200, json=_metadata(
+                token_endpoint_auth_methods_supported=["client_secret_basic"]
+            ))
+        return httpx.Response(200, json={})
+
+    adapter = _make_adapter(handler, registration=registration)
+    try:
+        with pytest.raises(OidcAuthorizationError, match="supports only none and private_key_jwt"):
+            adapter.exchange_and_validate(
+                code="code", client_id=CLIENT_ID,
+                redirect_uri="https://console.example.test/auth/callback",
+                code_verifier="v" * 43, now_epoch=NOW + 1,
+            )
+    finally:
+        adapter.close()
