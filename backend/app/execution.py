@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -20,6 +21,16 @@ from .registry import LEGACY_TENANT_ID, AgentRegistry, canonical_json
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve sqlite transaction context semantics and always release the handle."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
 
 
 class ExecutionError(Exception):
@@ -56,7 +67,7 @@ class ProviderResponse:
     output: Any
     input_tokens: int = 0
     output_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: float | None = None
 
 
 class ProviderAdapter(Protocol):
@@ -103,10 +114,24 @@ class ExecutionService:
             self._uri = False
             self._keeper = None
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        self._closed = False
         self._initialize()
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._dsn, uri=self._uri, timeout=10)
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
+        connection = sqlite3.connect(
+            self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
@@ -138,6 +163,18 @@ class ExecutionService:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_executions_tenant_agent "
                 "ON executions(tenant_id, agent_id, agent_version, created_at)"
+            )
+            # A synchronous provider call may be interrupted by process termination.
+            # Never replay it automatically: the provider may already have completed
+            # the request and charged for it. The SQLite runtime is single-instance;
+            # on exclusive process startup, fence leftover running records as ambiguous.
+            connection.execute(
+                """UPDATE executions
+                SET status='interrupted',
+                    error_code='execution_interrupted_ambiguous_outcome',
+                    completed_at=?
+                WHERE status='running'""",
+                (utc_now(),),
             )
 
     def _record(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -228,7 +265,21 @@ class ExecutionService:
             response = provider.invoke(request, timeout)
             if not isinstance(response, ProviderResponse):
                 raise ProviderError("Provider returned an invalid response envelope")
-            if response.cost_usd < 0 or response.input_tokens < 0 or response.output_tokens < 0:
+            if (
+                type(response.input_tokens) is not int
+                or type(response.output_tokens) is not int
+                or response.input_tokens < 0
+                or response.output_tokens < 0
+                or (
+                    response.cost_usd is not None
+                    and (
+                        isinstance(response.cost_usd, bool)
+                        or not isinstance(response.cost_usd, (int, float))
+                        or not math.isfinite(response.cost_usd)
+                        or response.cost_usd < 0
+                    )
+                )
+            ):
                 raise ProviderError("Provider returned invalid usage metrics")
             result = {
                 "output": response.output,

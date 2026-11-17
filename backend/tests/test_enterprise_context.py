@@ -300,3 +300,103 @@ def test_evidence_cannot_self_assert_validated_status(tmp_path):
     payload["validation_status"] = "validated"
     with pytest.raises(ContextValidationError, match="must remain unverified"):
         service.create_evidence(payload, "tenant-alpha", "test-user")
+
+
+
+def test_evidence_review_requires_independent_reviewer_and_matching_source_hash(tmp_path):
+    path = tmp_path / "evidence-governance.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "submitter")
+    recorded = service.create_evidence(evidence(), "tenant-alpha", "submitter")
+    source_hash = recorded["source_hash"]
+
+    with pytest.raises(ContextValidationError, match="cannot review their own"):
+        service.review_evidence(
+            "evidence.alpha", "tenant-alpha", "submitter", "validated",
+            "Reviewed source and provenance", source_hash,
+        )
+    with pytest.raises(ContextValidationError, match="does not match"):
+        service.review_evidence(
+            "evidence.alpha", "tenant-alpha", "independent-reviewer", "validated",
+            "Reviewed source and provenance", "0" * 64,
+        )
+
+    reviewed = service.review_evidence(
+        "evidence.alpha", "tenant-alpha", "independent-reviewer", "validated",
+        "Reviewed source and provenance", source_hash,
+    )
+    assert reviewed["created"] is True
+    effective = service.get_evidence("evidence.alpha", "tenant-alpha")
+    assert effective["validation_status"] == "validated"
+    assert effective["review"]["reviewed_by"] == "independent-reviewer"
+    replay = service.review_evidence(
+        "evidence.alpha", "tenant-alpha", "independent-reviewer", "validated",
+        "Reviewed source and provenance", source_hash,
+    )
+    assert replay["created"] is False
+    with pytest.raises(ContextConflictError, match="terminal review"):
+        service.review_evidence(
+            "evidence.alpha", "tenant-alpha", "another-reviewer", "rejected",
+            "A different reviewer rejects this record",
+        )
+    events = service.query_events("tenant-alpha")
+    assert events[-1]["event_type"] == "context.evidence.validated"
+
+
+def test_rejected_evidence_is_terminal_and_never_appears_as_validated(tmp_path):
+    path = tmp_path / "evidence-rejected.sqlite3"
+    create_tenant(path, "tenant-alpha")
+    service = EnterpriseContextService(path)
+    service.create_entity(entity(), "tenant-alpha", "submitter")
+    service.create_evidence(evidence(), "tenant-alpha", "submitter")
+    result = service.review_evidence(
+        "evidence.alpha", "tenant-alpha", "reviewer", "rejected",
+        "Source cannot be independently corroborated",
+    )
+    assert result["decision"] == "rejected"
+    assert service.query_evidence("app.alpha", "tenant-alpha")[0]["validation_status"] == "rejected"
+    assert service.query_evidence("app.alpha", "tenant-alpha")[0]["review"]["reviewed_by"] == "reviewer"
+
+
+
+def test_evidence_review_api_uses_authenticated_reviewer_and_returns_effective_status(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "evidence-review-api.sqlite3")))
+    client = TestClient(app)
+    app.state.enterprise_context.create_entity(entity(), "test-tenant", "ingestion-service")
+    app.state.enterprise_context.create_evidence(
+        evidence(), "test-tenant", "ingestion-service"
+    )
+    source_hash = evidence()["source_hash"]
+    response = client.post(
+        "/v1/enterprise-context/evidence/evidence.alpha/reviews",
+        json={
+            "decision": "validated",
+            "reason": "Source provenance checked against the immutable ingestion digest",
+            "confirmed_source_hash": source_hash,
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["reviewed_by"] == "test-user"
+    listed = client.get("/v1/enterprise-context/entities/app.alpha/evidence")
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["validation_status"] == "validated"
+
+
+def test_evidence_review_api_denies_missing_review_capability(tmp_path):
+    app = configure_test_access(create_app(str(tmp_path / "evidence-review-deny.sqlite3")))
+    client = TestClient(app)
+    app.state.enterprise_context.create_entity(entity(), "test-tenant", "ingestion-service")
+    app.state.enterprise_context.create_evidence(
+        evidence(), "test-tenant", "ingestion-service"
+    )
+    policies = app.state.authorization_policies
+    app.state.authorization_policies = [
+        policy for policy in policies
+        if policy["actions"] != ["context.evidence.review"]
+    ]
+    response = client.post(
+        "/v1/enterprise-context/evidence/evidence.alpha/reviews",
+        json={"decision": "rejected", "reason": "Insufficient corroborating source"},
+    )
+    assert response.status_code == 403

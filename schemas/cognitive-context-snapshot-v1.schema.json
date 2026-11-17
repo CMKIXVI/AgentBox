@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentbox.example/schemas/cognitive-context-snapshot-v1.schema.json",
+  "title": "AgentBox Cognitive Context Snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy",
+    "entities",
+    "relationships",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertion_classes",
+        "evidence_status",
+        "rejected_evidence_included",
+        "raw_attributes_included"
+      ],
+      "properties": {
+        "assertion_classes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "observed_fact",
+              "human_validated",
+              "inferred"
+            ]
+          }
+        },
+        "evidence_status": {
+          "const": "validated_only"
+        },
+        "rejected_evidence_included": {
+          "const": false
+        },
+        "raw_attributes_included": {
+          "const": false
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity_id",
+          "version",
+          "entity_type",
+          "name",
+          "description",
+          "assertion_class",
+          "confidence",
+          "content_hash"
+        ],
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 128
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "entity_type": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "assertion_class": {
+            "enum": [
+              "observed_fact",
+              "human_validated",
+              "inferred"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "valid_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "valid_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relationship_id",
+          "version",
+          "relationship_type",
+          "source_entity_id",
+          "source_version",
+          "target_entity_id",
+          "target_version",
+          "assertion_class",
+          "confidence",
+          "content_hash"
+        ],
+        "properties": {
+          "relationship_id": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 128
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "relationship_type": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "source_entity_id": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 128
+          },
+          "source_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "target_entity_id": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 128
+          },
+          "target_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "assertion_class": {
+            "enum": [
+              "observed_fact",
+              "human_validated",
+              "inferred"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{64}$"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 36,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "evidence_id",
+          "entity_id",
+          "entity_version",
+          "source_kind",
+          "source_ref",
+          "source_hash",
+          "observed_at",
+          "confidence",
+          "validation_status"
+        ],
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 128
+          },
+          "entity_id": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 128
+          },
+          "entity_version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "source_kind": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "source_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "source_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-fA-F0-9]{64}$"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "validation_status": {
+            "const": "validated"
+          }
+        }
+      }
+    }
+  }
+}

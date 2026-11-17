@@ -135,8 +135,18 @@ class PostgreSQLSnapshotIngestion:
             raise ContextConflictError(f"Discovered evidence ID conflicts with existing context: {payload['evidence_id']}")
         return False
 
-    def ingest(self, snapshot: dict[str, Any], tenant_id: str, actor_id: str, source_ref: str) -> dict[str, Any]:
+    def ingest(
+        self, snapshot: dict[str, Any], tenant_id: str, actor_id: str, source_ref: str,
+        provenance: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         data = self._validate_snapshot(snapshot)
+        if provenance is not None and (
+            not isinstance(provenance, dict)
+            or provenance.get("verified_snapshot_hash") != data["snapshot_hash"]
+            or provenance.get("algorithm") != "Ed25519"
+            or not isinstance(provenance.get("key_id"), str)
+        ):
+            raise ContextValidationError("provenance verification result does not match the snapshot")
         source_ref = self._validate_source_ref(source_ref)
         snapshot_hash, observed_at = data["snapshot_hash"], data["discovered_at"]
         entity_payloads: list[dict[str, Any]] = []
@@ -217,13 +227,25 @@ class PostgreSQLSnapshotIngestion:
                 created_entities += 1
             else:
                 reused_entities += 1
+            evidence_metadata = {
+                "snapshot_hash": snapshot_hash,
+                "entity_type": payload["entity_type"],
+                "entity_attributes_hash": _digest(payload["attributes"]),
+            }
+            if provenance is not None:
+                evidence_metadata["connector_attestation"] = provenance
             evidence_payload = {
-                "evidence_id": _identifier("evidence", source_ref, snapshot_hash, payload["entity_id"]),
+                "evidence_id": _identifier(
+                    "evidence-attested" if provenance else "evidence",
+                    source_ref, snapshot_hash,
+                    provenance["key_id"] if provenance else "",
+                    payload["entity_id"],
+                ),
                 "entity_id": payload["entity_id"], "entity_version": entity_version,
                 "source_kind": "database_metadata", "source_ref": source_ref,
                 "source_hash": snapshot_hash, "observed_at": observed_at, "confidence": 0.85,
                 "validation_status": "unverified",
-                "metadata": {"snapshot_hash": snapshot_hash, "entity_type": payload["entity_type"], "entity_attributes_hash": _digest(payload["attributes"])},
+                "metadata": evidence_metadata,
             }
             if self._create_or_reuse_evidence(evidence_payload, tenant_id, actor_id):
                 created_evidence += 1
@@ -283,4 +305,6 @@ class PostgreSQLSnapshotIngestion:
             "evidence": {"created": created_evidence, "reused": reused_evidence},
             "source_rows_read": 0, "source_writes_performed": 0,
             "validation_status": "unverified",
+            "provenance_status": "cryptographically_verified" if provenance else "unverified",
+            "provenance_key_id": provenance["key_id"] if provenance else None,
         }

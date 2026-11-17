@@ -1,7 +1,11 @@
 name: AgentBox CI
 
 on:
+  # Keep automatic push validation on the protected integration branch only.
+  # Feature branches use local checks and an explicit workflow_dispatch run.
   push:
+    branches:
+      - main
     paths:
       - "backend/**"
       - "frontend/**"
@@ -9,7 +13,12 @@ on:
       - "schemas/agent-manifest-v1.schema.json"
       - "examples/agent-manifest-v1.json"
       - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+  # Validate when a PR is opened/returned to review; do not rerun on every
+  # synchronize event. Latest-head validation is dispatched manually per batch.
   pull_request:
+    types: [opened, reopened, ready_for_review]
     paths:
       - "backend/**"
       - "frontend/**"

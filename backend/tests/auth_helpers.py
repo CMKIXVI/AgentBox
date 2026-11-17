@@ -12,7 +12,7 @@ def configure_test_access(app):
     )
     resources = [
         "research.summarizer", "runtime.test", "quality.research-summary",
-        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha",
+        "tenant-context", "tenant-experience", "app.alpha", "db.alpha", "rel.alpha", "evidence.alpha", "tenant-connectors", "connector.alpha", "warehouse-prod", "research.summarizer", "crm.contact.read", "*",
     ]
     grants = [
         ("agent.registry", "agent.create"),
@@ -31,13 +31,24 @@ def configure_test_access(app):
         ("enterprise.context", "context.relationship.read"),
         ("enterprise.context", "context.evidence.create"),
         ("enterprise.context", "context.evidence.read"),
+        ("enterprise.context", "context.evidence.review"),
         ("enterprise.context", "context.event.read"),
         ("enterprise.discovery", "discovery.snapshot.ingest"),
+        ("enterprise.discovery", "connector.register"),
+        ("enterprise.discovery", "connector.read"),
+        ("enterprise.discovery", "connector.rotate_key"),
+        ("enterprise.discovery", "connector.revoke_key"),
         ("agent.experience", "experience.create"),
         ("agent.experience", "experience.read"),
         ("agent.experience", "lesson.create"),
         ("agent.experience", "lesson.read"),
         ("agent.experience", "fitness.select"),
+        ("agent.experiment", "experiment.compare"),
+        ("agent.experiment", "experiment.read"),
+        ("agent.cognition", "cognition.run.create"),
+        ("agent.cognition", "cognition.run.read"),
+        ("agent.cognition", "cognition.event.append"),
+        ("agent.cognition", "cognition.context.assemble"),\n        ("capability.registry", "capability.register"),\n        ("capability.registry", "capability.read"),
     ]
     created_at = datetime(2026, 11, 12, tzinfo=UTC).isoformat()
     app.state.authorization_policies = [

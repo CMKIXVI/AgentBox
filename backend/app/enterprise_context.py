@@ -6,6 +6,7 @@ It stores metadata and source references, never source credentials or raw source
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import sqlite3
@@ -56,6 +57,11 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()
 
 
+def hmac_compare(left: str, right: str) -> bool:
+    """Constant-time comparison for reviewer-confirmed provenance digests."""
+    return hmac.compare_digest(left.lower(), right.lower())
+
+
 def _validate_actor(actor_id: str) -> None:
     if not isinstance(actor_id, str) or not actor_id.strip() or len(actor_id) > 256:
         raise ContextValidationError("actor_id must contain 1 to 256 characters")
@@ -101,9 +107,21 @@ class EnterpriseContextService:
             "enterprise-context-evidence-v1.schema.json"
         )
         self._event_validator = _schema_validator("enterprise-context-event-v1.schema.json")
+        self._closed = False
         self._initialize()
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
         connection = sqlite3.connect(self._dsn, uri=self._memory, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -213,6 +231,34 @@ class EnterpriseContextService:
             connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_context_evidence_entity
                 ON context_evidence(tenant_id, entity_id, entity_version, observed_at)
+            """)
+            connection.execute("""
+                CREATE TABLE IF NOT EXISTS context_evidence_reviews (
+                    tenant_id TEXT NOT NULL,
+                    review_id TEXT NOT NULL,
+                    evidence_id TEXT NOT NULL,
+                    decision TEXT NOT NULL CHECK(decision IN ('validated','rejected')),
+                    reason TEXT NOT NULL,
+                    confirmed_source_hash TEXT,
+                    reviewed_at TEXT NOT NULL,
+                    reviewed_by TEXT NOT NULL,
+                    PRIMARY KEY (tenant_id, review_id),
+                    UNIQUE (tenant_id, evidence_id),
+                    FOREIGN KEY (tenant_id, evidence_id)
+                        REFERENCES context_evidence(tenant_id, evidence_id)
+                )
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS context_evidence_reviews_no_update
+                BEFORE UPDATE ON context_evidence_reviews BEGIN
+                    SELECT RAISE(ABORT, 'Evidence reviews are append-only');
+                END
+            """)
+            connection.execute("""
+                CREATE TRIGGER IF NOT EXISTS context_evidence_reviews_no_delete
+                BEFORE DELETE ON context_evidence_reviews BEGIN
+                    SELECT RAISE(ABORT, 'Evidence reviews are append-only');
+                END
             """)
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS context_events (
@@ -578,12 +624,116 @@ class EnterpriseContextService:
         validate_tenant_id(tenant_id)
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT * FROM context_evidence WHERE tenant_id=? AND evidence_id=?",
+                """SELECT e.*, COALESCE(r.decision, 'unverified') AS effective_status,
+                r.review_id, r.reason AS review_reason, r.reviewed_at, r.reviewed_by,
+                r.confirmed_source_hash
+                FROM context_evidence e LEFT JOIN context_evidence_reviews r
+                ON r.tenant_id=e.tenant_id AND r.evidence_id=e.evidence_id
+                WHERE e.tenant_id=? AND e.evidence_id=?""",
                 (tenant_id, evidence_id),
             ).fetchone()
         if row is None:
             raise ContextNotFoundError(evidence_id)
-        return self._record_evidence(row)
+        item = self._record_evidence(row)
+        item["validation_status"] = item.pop("effective_status")
+        review_id = item.pop("review_id")
+        if review_id:
+            item["review"] = {
+                "review_id": review_id,
+                "decision": item["validation_status"],
+                "reason": item.pop("review_reason"),
+                "reviewed_at": item.pop("reviewed_at"),
+                "reviewed_by": item.pop("reviewed_by"),
+                "confirmed_source_hash": item.pop("confirmed_source_hash"),
+            }
+        else:
+            item.pop("review_reason")
+            item.pop("reviewed_at")
+            item.pop("reviewed_by")
+            item.pop("confirmed_source_hash")
+            item["review"] = None
+        return item
+
+    def review_evidence(
+        self,
+        evidence_id: str,
+        tenant_id: str,
+        reviewer_id: str,
+        decision: str,
+        reason: str,
+        confirmed_source_hash: str | None = None,
+    ) -> dict[str, Any]:
+        validate_tenant_id(tenant_id)
+        _validate_actor(reviewer_id)
+        if decision not in {"validated", "rejected"}:
+            raise ContextValidationError("decision must be validated or rejected")
+        if not isinstance(reason, str) or len(reason.strip()) < 10 or len(reason) > 2000:
+            raise ContextValidationError("reason must contain 10-2000 characters")
+        if confirmed_source_hash is not None and not HASH_PATTERN.fullmatch(confirmed_source_hash):
+            raise ContextValidationError("confirmed_source_hash must be a SHA-256 hex digest")
+        now = _now()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            evidence = connection.execute(
+                "SELECT * FROM context_evidence WHERE tenant_id=? AND evidence_id=?",
+                (tenant_id, evidence_id),
+            ).fetchone()
+            if evidence is None:
+                raise ContextNotFoundError(evidence_id)
+            if evidence["recorded_by"] == reviewer_id:
+                raise ContextValidationError("Evidence submitters cannot review their own evidence")
+            if decision == "validated":
+                if not evidence["source_hash"]:
+                    raise ContextValidationError("Evidence without a source hash cannot be validated")
+                if confirmed_source_hash is None or not hmac_compare(
+                    evidence["source_hash"], confirmed_source_hash
+                ):
+                    raise ContextValidationError("Confirmed source hash does not match recorded provenance")
+            existing = connection.execute(
+                """SELECT * FROM context_evidence_reviews
+                WHERE tenant_id=? AND evidence_id=?""",
+                (tenant_id, evidence_id),
+            ).fetchone()
+            if existing is not None:
+                same = (
+                    existing["reviewed_by"] == reviewer_id
+                    and existing["decision"] == decision
+                    and existing["reason"] == reason.strip()
+                    and existing["confirmed_source_hash"] == confirmed_source_hash
+                )
+                if same:
+                    return {
+                        "review_id": existing["review_id"], "evidence_id": evidence_id,
+                        "decision": existing["decision"], "reason": existing["reason"],
+                        "confirmed_source_hash": existing["confirmed_source_hash"],
+                        "reviewed_at": existing["reviewed_at"],
+                        "reviewed_by": existing["reviewed_by"], "created": False,
+                    }
+                raise ContextConflictError("Evidence already has a terminal review")
+            review_id = uuid.uuid4().hex
+            normalized_reason = reason.strip()
+            connection.execute(
+                """INSERT INTO context_evidence_reviews
+                (tenant_id,review_id,evidence_id,decision,reason,confirmed_source_hash,
+                 reviewed_at,reviewed_by) VALUES (?,?,?,?,?,?,?,?)""",
+                (tenant_id, review_id, evidence_id, decision, normalized_reason,
+                 confirmed_source_hash, now, reviewer_id),
+            )
+            self._append_event(
+                connection, tenant_id, f"context.evidence.{decision}", "evidence",
+                evidence_id, None, reviewer_id,
+                {
+                    "review_id": review_id, "reason": normalized_reason,
+                    "source_hash": evidence["source_hash"],
+                    "confirmed_source_hash": confirmed_source_hash,
+                },
+                source_ref=evidence["source_ref"], observed_at=now,
+            )
+        return {
+            "review_id": review_id, "evidence_id": evidence_id, "decision": decision,
+            "reason": normalized_reason, "confirmed_source_hash": confirmed_source_hash,
+            "reviewed_at": now, "reviewed_by": reviewer_id, "created": True,
+        }
 
     def create_evidence(
         self, payload: dict[str, Any], tenant_id: str, actor_id: str
@@ -660,11 +810,28 @@ class EnterpriseContextService:
             raise ContextValidationError("limit must be 1-200")
         with self._connection() as connection:
             rows = connection.execute(
-                """SELECT * FROM context_evidence WHERE tenant_id=? AND entity_id=?
-                ORDER BY observed_at DESC,evidence_id LIMIT ?""",
+                """SELECT e.*, COALESCE(r.decision, 'unverified') AS effective_status,
+                r.review_id, r.reason AS review_reason, r.reviewed_at, r.reviewed_by,
+                r.confirmed_source_hash
+                FROM context_evidence e LEFT JOIN context_evidence_reviews r
+                ON r.tenant_id=e.tenant_id AND r.evidence_id=e.evidence_id
+                WHERE e.tenant_id=? AND e.entity_id=?
+                ORDER BY e.observed_at DESC,e.evidence_id LIMIT ?""",
                 (tenant_id, entity_id, limit),
             ).fetchall()
-        return [self._record_evidence(row) for row in rows]
+        result = []
+        for row in rows:
+            item = self._record_evidence(row)
+            item["validation_status"] = item.pop("effective_status")
+            review_id = item.pop("review_id")
+            item["review"] = ({
+                "review_id": review_id, "decision": item["validation_status"],
+                "reason": item.pop("review_reason"), "reviewed_at": item.pop("reviewed_at"),
+                "reviewed_by": item.pop("reviewed_by"),
+                "confirmed_source_hash": item.pop("confirmed_source_hash"),
+            } if review_id else None)
+            result.append(item)
+        return result
 
     def query_events(
         self, tenant_id: str, since: str | None = None, limit: int = 100

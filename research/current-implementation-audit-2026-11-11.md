@@ -1,4 +1,4 @@
-# AgentBox current implementation audit — 2026-11-11
+> **Historical snapshot (2026-11-11):** This audit is retained as dated evidence and is superseded for current repository status by `docs/architecture-conformance-audit-2026-11-14.md` and `ARCHITECTURE.md`.\n\n# AgentBox current implementation audit — 2026-11-11
 
 Repository: `CMKIXVI/AgentBox`  
 Default branch: `main`  

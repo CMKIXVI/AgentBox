@@ -95,6 +95,37 @@ export class AgentBoxApiClient {
   getExecution(executionId: string): Promise<Record<string, unknown>> {
     return this.request(`/v1/executions/${encodeURIComponent(executionId)}`);
   }
+
+  submitExecutionJob(
+    agentId: string,
+    version: string,
+    input: unknown,
+    maxOutputTokens: number,
+    idempotencyKey: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}/jobs`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ input, max_output_tokens: maxOutputTokens }),
+      },
+    );
+  }
+
+  getExecutionJob(jobId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/execution-jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  listExecutionJobEvents(jobId: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/execution-jobs/${encodeURIComponent(jobId)}/events`);
+  }
+
+  cancelExecutionJob(jobId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/execution-jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: "POST",
+    });
+  }
 }
 
 /**
@@ -151,5 +182,121 @@ export class AgentBoxBffClient {
 
   getExecution(executionId: string): Promise<Record<string, unknown>> {
     return this.request(`/v1/executions/${encodeURIComponent(executionId)}`);
+  }
+
+  createEvaluationProfile(profile: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request("/v1/evaluation-profiles", {
+      method: "POST",
+      body: JSON.stringify({ profile }),
+    });
+  }
+
+  listEvaluationProfileVersions(profileId: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/evaluation-profiles/${encodeURIComponent(profileId)}/versions`);
+  }
+
+  getEvaluationProfile(profileId: string, version: string): Promise<Record<string, unknown>> {
+    return this.request(
+      `/v1/evaluation-profiles/${encodeURIComponent(profileId)}/versions/${encodeURIComponent(version)}`,
+    );
+  }
+
+  submitEvaluation(
+    agentId: string,
+    version: string,
+    profileId: string,
+    profileVersion: string,
+    results: unknown[],
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}/evaluations`,
+      {
+        method: "POST",
+        body: JSON.stringify({ profile_id: profileId, profile_version: profileVersion, results }),
+      },
+    );
+  }
+
+  listEvaluations(agentId: string, version: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(
+      `/v1/agents/${encodeURIComponent(agentId)}/versions/${encodeURIComponent(version)}/evaluations`,
+    );
+  }
+
+  getEvaluation(runId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/evaluations/${encodeURIComponent(runId)}`);
+  }
+
+  createCognitiveRun(goalRef: string, agentRef: string, idempotencyKey: string): Promise<Record<string, unknown>> {
+    return this.request("/v1/cognitive-runs", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify({ goal_ref: goalRef, agent_ref: agentRef }),
+    });
+  }
+
+  getCognitiveRun(runId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/cognitive-runs/${encodeURIComponent(runId)}`);
+  }
+
+  listCognitiveRunEvents(runId: string, afterSequence = 0, limit = 200): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/cognitive-runs/${encodeURIComponent(runId)}/events?after_sequence=${afterSequence}&limit=${limit}`);
+  }
+
+  assembleCognitiveContext(
+    runId: string,
+    request: Record<string, unknown>,
+    idempotencyKey: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(`/v1/cognitive-runs/${encodeURIComponent(runId)}/context`, {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
+      body: JSON.stringify(request),
+    });
+  }
+
+  createExperience(input: {
+    execution_id: string; evaluation_run_id: string; workload_ref: string; workload_hash: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request("/v1/agent-experiences", { method: "POST", body: JSON.stringify(input) });
+  }
+
+  listExperiences(agentId: string, profileId?: string, profileVersion?: string): Promise<{ items: Record<string, unknown>[] }> {
+    const query = new URLSearchParams();
+    if (profileId && profileVersion) {
+      query.set("profile_id", profileId);
+      query.set("profile_version", profileVersion);
+    }
+    const queryString = query.toString();
+    return this.request(`/v1/agents/${encodeURIComponent(agentId)}/experiences${queryString ? `?${queryString}` : ""}`);
+  }
+
+  createLearningLesson(experienceId: string, input: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request(`/v1/agent-experiences/${encodeURIComponent(experienceId)}/lessons`, {
+      method: "POST", body: JSON.stringify(input),
+    });
+  }
+
+  listLearningLessons(experienceId: string): Promise<{ items: Record<string, unknown>[] }> {
+    return this.request(`/v1/agent-experiences/${encodeURIComponent(experienceId)}/lessons`);
+  }
+
+  selectFitness(profileId: string, profileVersion: string, minSamples = 3): Promise<{ items: Record<string, unknown>[] }> {
+    const query = new URLSearchParams({ profile_id: profileId, profile_version: profileVersion, min_samples: String(minSamples) });
+    return this.request(`/v1/fitness/selection?${query}`);
+  }
+
+  compareAgentExperiment(input: {
+    agent_id: string; parent_version: string; candidate_version: string;
+    parent_evaluation_run_id: string; candidate_evaluation_run_id: string;
+    workload_ref: string; workload_hash: string;
+  }): Promise<Record<string, unknown>> {
+    return this.request("/v1/agent-experiment-comparisons", {
+      method: "POST", body: JSON.stringify(input),
+    });
+  }
+
+  getAgentExperimentComparison(comparisonId: string): Promise<Record<string, unknown>> {
+    return this.request(`/v1/agent-experiment-comparisons/${encodeURIComponent(comparisonId)}`);
   }
 }

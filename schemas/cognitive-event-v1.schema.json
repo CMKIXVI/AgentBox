@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentbox.example/schemas/cognitive-event-v1.schema.json",
+  "title": "AgentBox Cognitive Lifecycle Event v1",
+  "description": "A typed, tenant-scoped event in the AgentBox agent lifecycle. Events describe work; they never contain executable code or confer authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "run_id",
+    "trace_id",
+    "tenant_id",
+    "sequence",
+    "stage",
+    "event_type",
+    "actor",
+    "occurred_at",
+    "evidence_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "trace_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 128
+    },
+    "agent_ref": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 512
+    },
+    "agent_content_hash": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{64}$"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "stage": {
+      "enum": [
+        "intent",
+        "context",
+        "cognition",
+        "capability",
+        "responsibility",
+        "execution",
+        "observation",
+        "verification",
+        "memory"
+      ]
+    },
+    "event_type": {
+      "enum": [
+        "intent.accepted",
+        "intent.rejected",
+        "context.assembled",
+        "context.insufficient",
+        "cognition.started",
+        "cognition.completed",
+        "cognition.deferred",
+        "capability.selected",
+        "capability.rejected",
+        "responsibility.authorized",
+        "responsibility.denied",
+        "execution.started",
+        "execution.completed",
+        "execution.failed",
+        "execution.cancelled",
+        "observation.recorded",
+        "verification.passed",
+        "verification.failed",
+        "verification.inconclusive",
+        "memory.proposed",
+        "memory.accepted",
+        "memory.rejected"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "user",
+            "agent",
+            "service",
+            "system"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "causation_event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "input_refs": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
+    "output_refs": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1024
+      }
+    },
+    "evidence_status": {
+      "enum": [
+        "unverified",
+        "verified",
+        "not_applicable"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "maxProperties": 64
+    },
+    "error_code": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_.-]{1,127}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "intent"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "intent.accepted",
+              "intent.rejected"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "context"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "context.assembled",
+              "context.insufficient"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "cognition"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "cognition.started",
+              "cognition.completed",
+              "cognition.deferred"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "capability"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "capability.selected",
+              "capability.rejected"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "responsibility"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "responsibility.authorized",
+              "responsibility.denied"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "execution"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "execution.started",
+              "execution.completed",
+              "execution.failed",
+              "execution.cancelled"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "observation"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "const": "observation.recorded"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "verification"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "verification.passed",
+              "verification.failed",
+              "verification.inconclusive"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "stage": {
+            "const": "memory"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "event_type": {
+            "enum": [
+              "memory.proposed",
+              "memory.accepted",
+              "memory.rejected"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

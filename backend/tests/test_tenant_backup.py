@@ -427,3 +427,100 @@ def test_pre_context_v1_backup_remains_restorable_after_ece_tables_are_added(tmp
     assert counts["context_relationships"] == 0
     assert counts["context_evidence"] == 0
     assert counts["context_events"] == 0
+
+
+def test_restore_rejects_symlinked_backup_source(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    link = tmp_path / "tenant-link.agb"
+    link.symlink_to(backup)
+    with pytest.raises(BackupError, match="regular file"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", link
+        )
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are unavailable")
+def test_restore_rejects_fifo_backup_source_without_blocking(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    fifo = tmp_path / "tenant-backup.fifo"
+    os.mkfifo(fifo)
+    with pytest.raises(BackupError, match="regular file"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", fifo
+        )
+
+
+def test_restore_rejects_boolean_backup_version(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    envelope = json.loads(backup.read_text())
+    envelope["version"] = True
+    backup.write_text(json.dumps(envelope))
+    with pytest.raises(BackupFormatError, match="envelope"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", backup
+        )
+
+
+def test_restore_rejects_boolean_payload_version(tmp_path):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha")
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    envelope = json.loads(backup.read_text())
+    key = StaticKeyProvider().key
+    payload = json.loads(AESGCM(key).decrypt(
+        base64.b64decode(envelope["nonce"]),
+        base64.b64decode(envelope["ciphertext"]),
+        _aad(envelope),
+    ))
+    payload["version"] = True
+    unsigned = dict(payload)
+    unsigned.pop("sha256")
+    payload["sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+    nonce = os.urandom(12)
+    envelope["nonce"] = base64.b64encode(nonce).decode()
+    envelope["ciphertext"] = base64.b64encode(
+        AESGCM(key).encrypt(nonce, _canonical(payload), _aad(envelope))
+    ).decode()
+    backup.write_text(json.dumps(envelope))
+    with pytest.raises(BackupFormatError, match="payload"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", backup
+        )
+
+
+@pytest.mark.parametrize("invalid_value", [float("nan"), float("inf"), {"nested": "value"}, 2**80])
+def test_restore_rejects_non_sqlite_row_values(tmp_path, invalid_value):
+    source = tmp_path / "source.sqlite3"
+    initialized_database(source, "tenant-alpha", populate=True)
+    backup = tmp_path / "tenant.agb"
+    TenantBackupService(source, StaticKeyProvider()).export_encrypted("tenant-alpha", backup)
+    envelope = json.loads(backup.read_text())
+    key = StaticKeyProvider().key
+    payload = json.loads(AESGCM(key).decrypt(
+        base64.b64decode(envelope["nonce"]),
+        base64.b64decode(envelope["ciphertext"]),
+        _aad(envelope),
+    ))
+    row = payload["tables"]["agent_versions"][0]
+    row["version"] = invalid_value
+    unsigned = dict(payload)
+    unsigned.pop("sha256")
+    payload["sha256"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+    nonce = os.urandom(12)
+    envelope["nonce"] = base64.b64encode(nonce).decode()
+    envelope["ciphertext"] = base64.b64encode(
+        AESGCM(key).encrypt(nonce, _canonical(payload), _aad(envelope))
+    ).decode()
+    backup.write_text(json.dumps(envelope, allow_nan=True))
+    with pytest.raises(BackupFormatError, match="row|number|integer"):
+        TenantBackupService(source, StaticKeyProvider()).restore_encrypted(
+            "tenant-alpha", backup
+        )

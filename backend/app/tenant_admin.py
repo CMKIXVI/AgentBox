@@ -78,13 +78,16 @@ def _require_agentbox_database(database_path: str) -> None:
     if not path.is_file():
         raise ValueError(f"AgentBox database does not exist: {path}")
     uri = f"{path.resolve().as_uri()}?mode=ro"
-    with sqlite3.connect(uri, uri=True) as connection:
+    connection = sqlite3.connect(uri, uri=True)
+    try:
         tables = {
             row[0]
             for row in connection.execute(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
+    finally:
+        connection.close()
     required = {"agent_versions", "executions", "evaluation_profiles", "evaluation_runs", "tenants", "tenant_audit"}
     missing = sorted(required - tables)
     if missing:
@@ -101,6 +104,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     actor_id = local_operator_actor_id()
+    registry: TenantRegistry | None = None
     try:
         _require_agentbox_database(args.database)
         registry = TenantRegistry(args.database)
@@ -132,6 +136,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ValueError, BackupError, TenantConflictError, TenantNotFoundError, sqlite3.Error, OSError) as exc:
         print(f"agentbox-tenant: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if registry is not None:
+            registry.close()
 
 
 if __name__ == "__main__":

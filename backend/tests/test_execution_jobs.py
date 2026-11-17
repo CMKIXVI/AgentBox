@@ -32,6 +32,28 @@ def create(jobs, key="job-1", tenant="tenant-a"):
     )
 
 
+def test_job_database_connections_close_after_context(jobs):
+    connection = jobs._connect()
+    with connection:
+        connection.execute("SELECT 1")
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        connection.execute("SELECT 1")
+
+
+def test_close_releases_memory_keeper_and_is_idempotent():
+    service = DurableExecutionJobService(":memory:")
+    keeper = service._keeper
+    assert keeper is not None
+
+    service.close()
+    service.close()
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+        keeper.execute("SELECT 1")
+    with pytest.raises(RuntimeError, match="service is closed"):
+        service._connect()
+
+
 def test_unregistered_handler_is_denied(jobs):
     with pytest.raises(JobConflictError):
         jobs.create(

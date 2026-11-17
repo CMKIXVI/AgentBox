@@ -1,8 +1,8 @@
 # AgentBox Master Architecture
 
 **Document status:** Canonical architecture authority  
-**Version:** 1.4  
-**Updated:** 2026-11-14  
+**Version:** 1.5  
+**Updated:** 2026-11-16  
 **Scope:** AgentBox platform, backend, runtime, security, data, and dual frontend strategy
 
 > This document defines the intended architecture and decision boundaries for AgentBox. It does not claim that every described capability is implemented. The repository's implementation status, CI results, and production-readiness evidence must be reported separately from target architecture.
@@ -29,6 +29,68 @@ Autonomous improvement is evidence-driven and bounded. An agent or candidate mus
 6. **Immutable artifacts.** Agent versions, evaluation profiles, candidates, and evidence records preserve version identity and lineage.
 7. **Evidence before autonomy.** Caller-asserted or synthetic evidence is not production proof. Promotion requires trusted execution, reproducible workloads, independent evaluation, mandatory gates, and an auditable approval decision.
 8. **Portable deployment.** Keep the core runtime deployable on a modest Linux host first; scale-out infrastructure is introduced only when supported by workload and operational requirements.
+
+## 2.1 Five architectural pillars and lifecycle authority
+
+AgentBox implementation is governed by five connected pillars. These are architectural boundaries, not five separate products or deployable services.
+
+1. **AI Intelligence** — intent interpretation, context assembly, cognition, reasoning, planning, decision, reflection, memory and learning.
+2. **Agent Factory** — agent genomes and manifests, immutable versions, composition, mutation, lineage, evaluation, promotion and rollback.
+3. **Application Factory** — capability composition, workflow interpretation, application assembly, packaging, deployment and lifecycle governance.
+4. **Execution Engine** — bounded agent loops, orchestration, capability/tool invocation, multi-agent delegation, checkpoints, observation and recovery.
+5. **Platform Foundation** — identity, tenancy, authorization, persistence, audit, provider/secret adapters, sandboxing, observability, deployment and both frontend clients.
+
+The Platform Foundation supports and governs the other four pillars; it is not the product's primary purpose. Infrastructure work must be prioritized by the higher-level agent/intelligence flow it enables.
+
+The canonical agent lifecycle is:
+
+`Intent → Context → Cognition → Capability → Responsibility → Execution → Observation → Verification → Memory`
+
+Each transition must have a typed contract, durable state where required, explicit provenance, server-side authorization, bounded failure semantics and observable evidence. The lifecycle is an end-to-end target; the existence of a schema or isolated service does not mean its stage is operational.
+
+### Engine boundaries
+
+Keep these domains distinct while reusing shared artifact, lineage, evaluation, policy, audit and approval services:
+
+- **Cognition Engine:** reasoning, planning, decision and reflection; distinct from a provider HTTP adapter.
+- **Agent Evolution Engine (AEE):** evolves immutable agent configuration/genomes; does not mutate foundation-model weights.
+- **Retrieval Evolution Engine (REE):** evolves retrieval, ranking and query strategy against versioned corpus/query-set benchmarks.
+- **Model Genetics Engine (MGE):** tracks model genomes, ancestry and compatibility; neural-weight reproduction remains experimental until independently implemented and validated.
+- **Cognitive Evolution:** evolves bounded cognitive strategies or configurations under dedicated evaluation; it is not synonymous with manifest mutation.
+- **Knowledge Evolution:** governs evolution of knowledge representations and retrieval/curation strategies while preserving source provenance and immutable source evidence.
+- **Autonomous Improvement Controller:** coordinates the evidence loop across eligible engines; it is not an evaluator, policy authority, credential broker or promotion authority.
+
+The detailed repository conformance and implementation gaps are tracked in [the 2026-11-14 architecture audit](docs/architecture-conformance-audit-2026-11-14.md). That audit is a snapshot; this master document remains the canonical target.
+
+## 2.1.1 Cognitive Runtime Explorer
+
+The Next.js and Flutter clients expose the existing tenant-scoped cognitive run APIs without creating a second runtime authority. The explorer supports run creation against an immutable `agent-id@version` reference, run inspection, ordered event retrieval, and explicit context snapshot assembly. Its nine-stage timeline is derived from persisted events:
+
+`intent → context → cognition → capability → responsibility → execution → observation → verification → memory`
+
+The event view is read-only. Cognitive event records are evidence/state records and cannot grant permissions, invoke capabilities, or execute agents. Context assembly is a separate authorized backend operation; by default it includes only currently valid observed facts and human-validated entities, validated evidence, and a minimized snapshot. Inferences remain disabled unless explicitly requested through the backend contract. A visible event or stage does not prove that the corresponding operational subsystem is implemented or that an agent executed successfully.
+
+## 2.1.3 Parent–Candidate Experiment Comparison
+
+AgentBox now persists an immutable, tenant-scoped comparison record for one parent and one directly derived candidate. The service verifies both immutable registry versions, the candidate's exact parent artifact reference, tenant ownership, completed evaluation-run ownership/version, and exact evaluation profile ID/version plus profile content hash. It records score, pass-state, latency and cost deltas together with the caller-supplied workload reference/hash. Replays of the same immutable evaluation pair are idempotent; conflicting replays are rejected.
+
+**Trust boundary:** the evaluation service scores caller-submitted outputs and does not execute a benchmark. The workload identity supplied to this comparison is also caller-asserted and is not cryptographically linked to either evaluation run. The comparison is therefore marked `unverified`, carries `decision_authority=advisory_only`, and always reports `promotion_eligible=false`. It is not a hard-gate evaluator, trusted same-workload experiment runner, approval decision, or active-version mutation. The new APIs are `POST /v1/agent-experiment-comparisons` and `GET /v1/agent-experiment-comparisons/{comparison_id}`.
+
+## 2.1.2 Experience, Learning and Fitness Explorer
+
+The Next.js and Flutter clients expose the existing tenant-scoped experience, lesson and fitness-selection APIs. Experience records retain minimized references and aggregate measurements, not raw prompts or outputs. Current API linkage is explicitly `caller_asserted` and `unverified`; the frontend labels this boundary and does not present the record as trusted execution evidence. Learning lessons are immutable, source-linked proposals. A lesson cannot mutate an agent manifest, change permissions or authorize execution. Fitness selection aggregates repeated samples for one exact evaluation profile version and applies a minimum sample threshold. These historical aggregates are prioritization signals only: they are not same-workload parent/candidate comparisons, trusted benchmark results, mandatory-gate decisions or promotion approvals. The route inventory is unchanged.
+
+## 2.2 Evidence validation and provenance governance
+
+Enterprise Context evidence submission is untrusted by default. Evidence records are immutable and begin as `unverified`; submitters cannot set a validated or rejected state. A separately authorized reviewer must be distinct from the recorded submitter. Each evidence record receives at most one terminal review (`validated` or `rejected`), stored in an append-only review table and represented by an append-only context event. Review decisions are tenant-scoped and cannot be edited or reversed in place; corrected evidence must be submitted as a new record with new provenance.
+
+Validation requires a source SHA-256 digest and an independent reviewer confirmation matching that digest. For PostgreSQL catalog snapshots, an optional Ed25519 connector attestation now cryptographically binds the authenticated tenant, exact source locator, snapshot digest, discovery time, key ID and signing time to a server-provisioned trusted public key. Unsigned ingestion remains unverified. A valid connector signature establishes key possession and snapshot integrity, not database truth, least-privilege source-role configuration or human acceptance; evidence remains unverified until the separate reviewer decision. Tenant-scoped connector registration and immutable public-key records are now persisted in the existing AgentBox database. Key rotation supports overlap and explicit revocation events; revoked key IDs fail closed. Private signing keys remain outside AgentBox. Hardware-backed key custody, connector secret resolution, live source E2E and distributed persistence/HA remain production gates. Context assembly exposes only evidence whose effective review status is `validated`; unverified and rejected records remain excluded.
+
+## 2.3 Cognitive runtime contract baseline
+
+The cognitive runtime now has a typed lifecycle event envelope (`schemas/cognitive-event-v1.schema.json`), deterministic validator (`backend/app/cognitive_contract.py`), and a tenant-scoped SQLite run journal (`backend/app/cognitive_runtime.py`). Authenticated APIs create runs bound to an existing immutable agent version, append ordered events, and read tenant-scoped run/event history. Events are append-only, idempotent, bounded, stage-validated, and tied to server-derived tenant/actor identity. Idempotency keys are stored only as SHA-256 digests; event payloads reject reserved authority, credential and executable-field names. Verification and accepted memory require verified evidence references; capability selection and responsibility decisions require explicit references.
+
+This remains a state/journal foundation, not a cognitive engine. It does not reason, plan, invoke capabilities, execute agents, attest evidence, consolidate memory, or provide distributed persistence. Existing identity, tenant, registry, authorization, execution, experience, enterprise-context and audit services remain the authorities. See [Cognitive Runtime Contracts](docs/runtime/cognitive-runtime-contracts.md).
 
 ## 3. Platform topology
 
@@ -302,8 +364,6 @@ The frontend strategy is introduced without displacing backend and security work
 | 1 | Canonical architecture and API contract inventory | Reviewed master architecture and endpoint/schema inventory |
 | 2 | Frontend workspace foundations | Flutter and Next.js app skeletons, independent CI, documented local run |
 | 3 | Authentication and tenant integration | OIDC login/session flows and negative tenant-isolation tests |
-
-Current progress: backend OIDC JWT validation is implemented. The Next.js client now has configurable OIDC Authorization Code + PKCE sign-in, state/nonce checks, encrypted server-side JWT session handling, refresh-token renewal, and a same-origin authenticated API proxy. Flutter now has AppAuth Authorization Code + PKCE sign-in and platform-secure token storage with refresh handling. Provider selection, native redirect registration, real issuer/JWKS validation, and deployed client-to-API end-to-end verification remain rollout prerequisites.
 | 4 | Shared client generation | Reproducible Dart/TypeScript clients from the same OpenAPI contract |
 | 5 | Next.js Agent Studio foundation | Agent list, details, version view, and authorized create/clone flow |
 | 6 | Flutter operational foundation | Login, agent inventory, execution status, and notifications |
@@ -335,10 +395,10 @@ Report main-branch capability separately from open feature-branch work. Do not c
 
 ## 15. Current implementation reality (2026-11-14)
 
-The repository currently has a bounded Python/FastAPI backend and meaningful registry, evaluation, execution-record, OIDC/tenant/authorization, encrypted backup, ECE, execution-experience, and bounded candidate-generation work across the main branch and stacked feature branches.
+The repository currently has a bounded Python/FastAPI backend and meaningful registry, evaluation, execution-record, OIDC/tenant/authorization, encrypted backup, ECE, execution-experience, and bounded candidate-generation work across the main branch and stacked feature branches. The provider/runtime feature branch includes bounded OpenAI-compatible chat-completions integration, strict request/response structure and usage validation, finite JSON serialization, request/response size limits, timeout and pricing type checks, sanitized failures, and redirect-safe bearer credential handling. CI evidence is commit-specific: the provider branch had a fully green backend, Flutter, and Next.js run before the latest hardening; a later Ruff failure for boolean pricing validation was corrected, and CI is running again on the corrected head. This is branch-level CI evidence, not a production deployment.
 
 Important limitations remain:
-- The current execution API registers a deterministic fake provider; no production real-model provider is established.
+- The execution API retains a deterministic fake provider for tests and includes an optional environment-configured OpenAI-compatible chat-completions adapter on the unmerged provider feature branch. Adapter and worker integration tests use mocked HTTP only; no live credentials, live model call, provider billing, pricing verification, production latency, retry semantics, or production real-model operation is established. The provider adapter rejects malformed usage metrics and only reports cost when both explicit token rates are configured.
 - The evaluation service scores submitted outputs; it does not execute benchmark workloads.
 - Execution-experience linkage is caller-asserted and remains unverified.
 - Candidate generation creates unverified immutable candidates; it does not execute, approve, or promote them.
@@ -347,3 +407,118 @@ Important limitations remain:
 - Flutter and Next.js foundations, bearer-token API transports, route inventory, OpenAPI export, and provider-configurable client OIDC flows are implemented on stacked feature branches, not yet merged to main. No identity provider is selected or deployed. Native redirect registration, real token validation against a deployed issuer/JWKS, client-to-API end-to-end tests, and production session/revocation operations remain incomplete.
 
 This status must be refreshed against the exact repository commit and CI evidence during each readiness assessment.
+
+
+## CI execution policy
+
+- GitHub Actions runs automatically on pushes to `main` and when a pull request is opened, reopened, or marked ready for review (subject to workflow path filters). It does not run on every PR synchronize/push event.
+- Feature-branch pushes do not start CI automatically; use the workflow's manual `workflow_dispatch` action for consolidated latest-head validation (the working cadence is one run after each 10 implementation batches, and before merge).
+- Run the repository's local backend, Next.js, and Flutter checks during implementation batches. Record which checks were actually run; local checks do not replace the required PR CI run.
+- This policy reduces redundant per-commit CI while preserving integration-branch and pull-request validation.
+
+
+## Synchronous execution crash recovery
+
+The SQLite synchronous execution service now fences leftover `running` records as `interrupted` on exclusive process startup, using error code `execution_interrupted_ambiguous_outcome`. Same-key replay returns that terminal ambiguous record and never silently invokes a provider again. This avoids duplicate external calls/charges after a crash, but requires operator reconciliation and a new idempotency key for a deliberate retry. The recovery assumes one API process owns this SQLite store; multi-instance execution requires a database-backed lease/ownership design first.
+
+
+## SQLite connection lifecycle
+
+The synchronous execution store now uses a connection subclass that retains SQLite transaction commit/rollback behavior while closing each short-lived connection on context exit. The shared in-memory database keeper remains intentionally open for the service lifetime. This change reduces descriptor/connection leakage under repeated API calls; it does not alter the documented single-instance SQLite deployment boundary.
+
+
+## Durable-job SQLite connection lifecycle
+
+The durable execution-job store now closes each short-lived SQLite connection after its transaction context exits, while preserving commit/rollback semantics. Its shared in-memory database keeper remains open for the service lifetime. This is connection-resource hardening only; the durable queue remains single-instance SQLite and is not a distributed worker backend.
+
+
+## Authorization-audit SQLite connection lifecycle
+
+The append-only authorization audit store closes each short-lived SQLite connection after its transaction context exits, retaining commit/rollback semantics. Its shared in-memory keeper remains open for the store lifetime. Audit immutability and persistence semantics are unchanged; this hardening does not provide atomic coupling with other service transactions.
+
+
+## Durable-job store shutdown lifecycle
+
+The durable execution-job service exposes an idempotent `close()` operation. It releases the shared in-memory SQLite keeper and rejects subsequent connections after shutdown; callers owning the service must invoke it during application shutdown. File-backed stores also enter the closed state, preventing accidental reuse after lifecycle termination.
+
+
+## Durable-job shutdown integration
+
+The API registers the durable execution-job store's idempotent close operation with its FastAPI shutdown event. The standalone worker also closes the store in a `finally` block after polling stops or raises. This ensures the shared in-memory SQLite keeper is released by both supported process entry points; it does not close unrelated stores or alter the single-instance deployment constraint.
+
+
+## Worker heartbeat shutdown ordering
+
+A worker now waits for its heartbeat thread to exit before returning from a claimed job. This prevents the process shutdown path from closing the durable-job store while a heartbeat database operation is still in flight. The wait is intentionally bounded by the heartbeat operation's own SQLite busy timeout rather than a shorter arbitrary thread-join timeout.
+
+
+## API-owned SQLite store shutdown
+
+The API shutdown callback now closes all owned SQLite stores: durable jobs, synchronous executions, experience, enterprise context, evaluation, agent registry, tenant registry, and authorization audit. Each store exposes an idempotent close operation, releases its shared in-memory keeper when present, and rejects new connections after closure. The standalone worker invokes the same aggregate cleanup after its polling loop exits. This is process-resource cleanup, not a multi-process database ownership or coordination mechanism.
+
+
+The lifecycle regression suite also constructs each store against a shared-cache in-memory SQLite database, verifies that repeated shutdown closes the keeper exactly once, and confirms that post-shutdown connection attempts fail closed.
+
+
+Tenant backup restore opens the source with no-follow semantics where supported, verifies the opened descriptor is a regular file without blocking on special files, and enforces the 512 MiB limit while reading. This avoids the prior check-then-open symlink race and bounds the bytes parsed as an envelope.
+
+
+The offline tenant administration CLI closes its `TenantRegistry` in a `finally` block after every command, including command failures. This releases its shared in-memory keeper and prevents repeated in-process CLI invocations from retaining SQLite resources.
+
+
+Tenant CLI database preflight uses an explicit `try/finally` close for its read-only SQLite connection; connection context managers alone do not close SQLite handles. A regression test verifies cleanup even when the database is rejected as uninitialized.
+
+
+Tenant backup restore validates exact integer version fields (excluding booleans), key identifier syntax, encoded-field types, and the complete payload top-level field set before applying data. This prevents Python's `True == 1` coercion from accepting malformed version markers.
+
+Backup payload validation also restricts every table cell to SQLite-bindable scalar values, rejects non-finite floats, and bounds integers to SQLite's signed 64-bit range before opening the restore transaction.
+
+
+## Cognitive context assembly
+
+The cognitive runtime includes a deterministic context assembly service backed exclusively by the existing tenant-scoped Enterprise Context authority. The service produces a schema-validated, content-addressed snapshot, binds graph edges to exact selected entity versions, excludes expired entities and relationships, and defaults to observed/human-validated assertions. Inferred assertions require explicit opt-in; AI hypotheses are excluded. Raw attributes are not copied into the snapshot.
+
+Only validated evidence can be included. Since the current context evidence API records evidence as unverified and has no authorized validation path, the assembled snapshot does not yet contain validated evidence. Context snapshots are bounded to 48 KiB and embedded in an append-only lifecycle event. The authenticated endpoint requires `cognition.context.assemble` and the existing tenant-context entity, relationship and evidence read grants; tenant identity remains server-derived. Snapshot references are tenant-bound.
+
+This adds context packaging, not reasoning or retrieval-augmented generation. It does not attest sources, invoke capabilities, or execute an agent.
+
+
+## PostgreSQL connector provenance attestation
+
+The catalog ingestion path optionally verifies Ed25519 attestations against the tenant-scoped connector registry, which stores immutable public-key records. The signature binds tenant identity from the authenticated principal, source locator, snapshot hash, discovery timestamp, key ID and signing time. Unknown keys, malformed signatures, altered snapshots, tenant/source mismatch and signatures older than 15 minutes fail closed. Private keys remain with the connector. This cryptographic layer is separate from human evidence review and does not assert source database correctness or replace source-role verification. See [PostgreSQL snapshot ingestion](docs/postgresql-discovery-context-ingestion.md).
+
+
+## PostgreSQL connector key lifecycle
+
+The PostgreSQL discovery integration now has tenant-scoped connector registration, source-locator binding, immutable Ed25519 public-key records, overlap rotation, explicit revocation events and append-only lifecycle audit. All management operations require separate server-side authorization grants; tenant and actor identity come from the authenticated principal. A signed ingestion must identify a registered connector and use an active key for that tenant and exact source locator. Key revocation takes effect immediately for subsequent ingestions. This is public-key trust management, not private-key storage or connector secret management. The registry uses the existing SQLite persistence boundary and does not yet provide distributed key propagation, hardware-backed private key custody or live source connection verification.
+
+
+## Source-side PostgreSQL catalog connector
+
+The source-side connector package provides a DB-API-agnostic catalog reader, bounded statement timeout, explicit read-only transaction, schema allowlist, metadata-only extraction, canonical snapshot hashing and an Ed25519 attestor. Signing is delegated through a `SigningKeyProvider` protocol so a deployment can bind a KMS/HSM or OS keyring without exporting private key material into AgentBox. The collector never reads application rows or performs writes. This package is not a deployed connector agent and does not include a concrete cloud KMS/HSM adapter, database secret resolver, or live PostgreSQL E2E environment; those remain deployment gates.
+
+
+## PostgreSQL source connection security boundary
+
+The source-side PostgreSQL connector now has a secret-backed connection-factory contract. A deployment injects a `DatabaseSecretProvider`; opaque secret references are resolved just in time for each connection and the DSN is never persisted in AgentBox connector records, API requests, snapshots or logs. The factory enforces TLS certificate and hostname verification (`sslmode=verify-full`), a bounded connect timeout and an optional explicit CA bundle. Psycopg 3 remains an optional, lazily loaded driver. Driver and secret-manager exception text is sanitized to prevent accidental credential disclosure.
+
+This is an adapter boundary with deterministic injected tests, not a bundled cloud-vault integration. No production secret-provider implementation, deployed CA trust configuration, live TLS handshake, source-role audit or live PostgreSQL end-to-end verification is claimed. These remain deployment acceptance gates.
+
+
+## PostgreSQL catalog extraction bounds
+
+The source-side reader applies server-side `LIMIT maximum + 1` to every catalog query. The additional row acts as an overflow sentinel and causes a fail-closed error; the collector never silently returns a partial catalogue. This bounds rows materialized for schema, relation, column, index and constraint metadata before snapshot assembly. Per-category, aggregate entity and serialized snapshot limits remain enforced, and overflow/error paths roll back and close the connection. This is a resource-safety boundary, not a substitute for database statement timeout, network limits or operational monitoring.
+
+
+## Dual-client operational UI implementation
+
+The Next.js console and Flutter client now expose a shared operational foundation aligned to the five pillars. Both clients support the existing backend operations for immutable agent-version registration, tenant-scoped version listing and version inspection, durable execution-job submission with idempotency keys, job status and append-only event inspection, cancellation requests, and synchronous execution-record lookup. The Next.js browser uses the Auth.js BFF proxy; Flutter uses AppAuth and platform-secure token storage. The clients display actual API responses and do not seed synthetic agent or execution records. Job admission remains conditional on a trusted worker and matching server-side handler allowlist; a queued job is not evidence that a worker is deployed or that a model call completed.
+
+The backend currently exposes version listing only when an `agent_id` is already known; it does not yet expose a tenant-scoped agent catalogue endpoint. Accordingly, neither client claims to implement a global agent inventory. Execution inspection is read-only; the UI does not add execution submission, evaluation execution, candidate promotion, workflow authoring, or approval actions until their complete API contracts, policy checks, and operational evidence are available.
+
+The UI implementation is not a production release. Remaining gates include executing the Next.js typecheck and production build, Flutter analysis and widget tests, browser/device accessibility review, live OIDC issuer/JWKS and native redirect validation, real client-to-API end-to-end tests, deployment configuration, and security review. UI capability completion must be reported separately from backend runtime and production readiness.
+
+
+### Evaluation Explorer UI
+
+Both Next.js and Flutter clients expose the existing tenant-scoped evaluation-profile and evaluation-run APIs. Users can register immutable declarative profiles, inspect profile versions, submit case outputs with measured latency/cost, inspect deterministic scoring and gate results, and retrieve prior runs. The evaluation service scores submitted outputs; it does not execute agents, generate benchmark outputs, or independently attest caller-supplied latency and cost. UI wording and controls must preserve this distinction. Evaluation gates are evidence for review, not automatic authorization to promote a candidate.

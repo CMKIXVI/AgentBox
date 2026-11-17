@@ -15,6 +15,19 @@ from .authentication import require_authenticated_principal
 from .authorization import authorize_capability
 from .authorization_audit import AuthorizationAuditStore
 from .authorization_policy import validate_authorization_policy
+from .context_assembly import ContextAssemblyService, ContextAssemblyValidationError
+from .cognitive_runtime import (
+    CognitiveRunConflictError,
+    CognitiveRunNotFoundError,
+    CognitiveRunService,
+    CognitiveRunValidationError,
+)
+from .capability_registry import (
+    CapabilityConflictError,
+    CapabilityNotFoundError,
+    CapabilityRegistry,
+    CapabilityValidationError,
+)
 from .candidate_generation import (
     CandidateConflictError,
     CandidateGenerationService,
@@ -31,6 +44,12 @@ from .evaluation import (
     EvaluationProfileNotFoundError,
     EvaluationRunNotFoundError,
     EvaluationService,
+)
+from .experiment_comparison import (
+    ExperimentComparisonConflictError,
+    ExperimentComparisonNotFoundError,
+    ExperimentComparisonService,
+    ExperimentComparisonValidationError,
 )
 from .execution import (
     DeterministicFakeProvider,
@@ -51,7 +70,10 @@ from .experience import (
     ExperienceNotFoundError,
     ExperienceValidationError,
 )
+from .openai_provider import OpenAICompatibleProvider
 from .postgresql_ingestion import PostgreSQLSnapshotIngestion
+from .postgresql_provenance import PostgreSQLProvenanceVerifier
+from .postgresql_connectors import PostgreSQLConnectorRegistry
 from .principal import Principal
 from .registry import AgentNotFoundError, AgentRegistry, VersionConflictError
 from .tenant_registry import TenantNotFoundError, TenantRegistry
@@ -84,6 +106,11 @@ def require_active_tenant_principal(
 
 
 AUTHENTICATED_PRINCIPAL = Depends(require_active_tenant_principal)
+
+
+class CapabilityContractRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contract: dict[str, Any]
 
 
 class ManifestRequest(BaseModel):
@@ -192,10 +219,73 @@ class LearningLessonRequest(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class ExperimentComparisonRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    agent_id: str = Field(min_length=1, max_length=128)
+    parent_version: str = Field(min_length=1, max_length=128)
+    candidate_version: str = Field(min_length=1, max_length=128)
+    parent_evaluation_run_id: str = Field(min_length=1, max_length=128)
+    candidate_evaluation_run_id: str = Field(min_length=1, max_length=128)
+    workload_ref: str = Field(min_length=1, max_length=512)
+    workload_hash: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
+
+
+class CognitiveRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    goal_ref: str = Field(min_length=1, max_length=1024)
+    agent_ref: str = Field(min_length=3, max_length=512)
+
+
+class CognitiveEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    stage: str = Field(min_length=1, max_length=32)
+    event_type: str = Field(min_length=3, max_length=64)
+    evidence_status: Literal["unverified", "verified", "not_applicable"] = "unverified"
+    input_refs: list[str] = Field(default_factory=list, max_length=100)
+    output_refs: list[str] = Field(default_factory=list, max_length=100)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=100)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    error_code: str | None = Field(default=None, min_length=2, max_length=128)
+    causation_event_id: str | None = None
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class CognitiveContextRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_ids: list[str] | None = Field(default=None, min_length=1, max_length=12)
+    search: str | None = Field(default=None, min_length=1, max_length=128)
+    include_inferences: bool = False
+    limit: int = Field(default=8, ge=1, le=12)
+
+
+class PostgreSQLConnectorRegistrationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connector_id: str = Field(min_length=2, max_length=128)
+    source_ref: str = Field(min_length=1, max_length=1024)
+    key_id: str = Field(min_length=2, max_length=128)
+    public_key: str = Field(min_length=40, max_length=64)
+
+
+class PostgreSQLConnectorKeyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    key_id: str = Field(min_length=2, max_length=128)
+    public_key: str = Field(min_length=40, max_length=64)
+
+
+class PostgreSQLConnectorAttestationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    algorithm: Literal["Ed25519"]
+    key_id: str = Field(min_length=1, max_length=128)
+    signed_at: str = Field(min_length=20, max_length=40)
+    signature: str = Field(min_length=80, max_length=128)
+
+
 class PostgreSQLSnapshotIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     source_ref: str = Field(min_length=1, max_length=1024)
     snapshot: dict[str, Any]
+    connector_id: str | None = Field(default=None, min_length=2, max_length=128)
+    attestation: PostgreSQLConnectorAttestationRequest | None = None
 
 
 class ContextEntityRequest(BaseModel):
@@ -250,6 +340,14 @@ class ContextEvidenceRequest(BaseModel):
     confidence: float = Field(ge=0, le=1)
     validation_status: Literal["unverified"] = "unverified"
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+
+class ContextEvidenceReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["validated", "rejected"]
+    reason: str = Field(min_length=10, max_length=2000)
+    confirmed_source_hash: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{64}$")
 
 
 MUTABLE_MANIFEST_FIELDS = {
@@ -391,6 +489,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     )
     app.state.authorization_policies = load_authorization_policies()
     app.state.authorization_audit = AuthorizationAuditStore(db_path)
+    app.state.capabilities = CapabilityRegistry(db_path)
     app.state.job_handler_allowlist = load_job_handler_allowlist()
     app.state.execution_jobs = DurableExecutionJobService(
         db_path, allowed_handlers=app.state.job_handler_allowlist
@@ -398,17 +497,98 @@ def create_app(database_path: str | None = None) -> FastAPI:
     app.state.tenants = TenantRegistry(db_path)
     app.state.registry = AgentRegistry(db_path)
     app.state.evaluations = EvaluationService(db_path)
+    configured_providers = [DeterministicFakeProvider()]
+    openai_provider = OpenAICompatibleProvider.from_environment()
+    if openai_provider is not None:
+        configured_providers.append(openai_provider)
     app.state.executions = ExecutionService(
-        db_path, app.state.registry, providers=[DeterministicFakeProvider()]
+        db_path, app.state.registry, providers=configured_providers
     )
     app.state.experiences = ExecutionExperienceService(db_path)
+    app.state.cognitive_runs = CognitiveRunService(db_path)
     app.state.candidate_generation = CandidateGenerationService(app.state.registry)
+    app.state.experiment_comparisons = ExperimentComparisonService(db_path)
     app.state.enterprise_context = EnterpriseContextService(db_path)
+    app.state.context_assembly = ContextAssemblyService(app.state.enterprise_context)
     app.state.postgresql_ingestion = PostgreSQLSnapshotIngestion(app.state.enterprise_context)
+    app.state.postgresql_connectors = PostgreSQLConnectorRegistry(db_path)
+
+    def close_stores() -> None:
+        """Close every API-owned SQLite store during process shutdown."""
+        for store in (
+            app.state.execution_jobs,
+            app.state.executions,
+            app.state.experiences,
+            app.state.experiment_comparisons,
+            app.state.cognitive_runs,
+            app.state.enterprise_context,
+            app.state.evaluations,
+            app.state.registry,
+            app.state.tenants,
+            app.state.authorization_audit,
+            app.state.capabilities,
+            app.state.postgresql_connectors,
+        ):
+            store.close()
+
+    app.state.close_stores = close_stores
+    app.add_event_handler("shutdown", close_stores)
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "agentbox-api"}
+
+    @app.post("/v1/capabilities", status_code=status.HTTP_201_CREATED)
+    def register_capability(
+        request: CapabilityContractRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        capability_id = request.contract.get("capability_id", "")
+        enforce_authorization(app, principal, "capability.registry", "capability.register", capability_id)
+        try:
+            record, created = app.state.capabilities.register(request.contract, principal.tenant_id)
+        except CapabilityValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except CapabilityConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "capability_id": record.capability_id, "version": record.version,
+            "content_hash": record.content_hash, "contract": record.contract,
+            "created_at": record.created_at, "created": created,
+        }
+
+    @app.get("/v1/capabilities")
+    def list_capabilities(
+        limit: int = Query(default=50, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "capability.registry", "capability.read", "*")
+        records = app.state.capabilities.list(principal.tenant_id, limit, offset)
+        return {
+            "items": [{
+                "capability_id": item.capability_id, "version": item.version,
+                "content_hash": item.content_hash, "contract": item.contract,
+                "created_at": item.created_at,
+            } for item in records],
+            "limit": limit, "offset": offset,
+        }
+
+    @app.get("/v1/capabilities/{capability_id}/versions/{version}")
+    def get_capability(
+        capability_id: str, version: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "capability.registry", "capability.read", capability_id)
+        try:
+            record = app.state.capabilities.get(capability_id, version, principal.tenant_id)
+        except CapabilityNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "capability_id": record.capability_id, "version": record.version,
+            "content_hash": record.content_hash, "contract": record.contract,
+            "created_at": record.created_at,
+        }
 
     @app.post("/v1/agents/validate")
     def validate(request: ManifestRequest) -> dict[str, Any]:
@@ -962,6 +1142,205 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except ExperienceValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.post("/v1/cognitive-runs", status_code=status.HTTP_201_CREATED)
+    def create_cognitive_run(
+        request: CognitiveRunRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=256),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        if "@" not in request.agent_ref:
+            raise HTTPException(status_code=422, detail="agent_ref must identify an immutable agent version")
+        agent_id, agent_version = request.agent_ref.rsplit("@", 1)
+        if not agent_id or not agent_version:
+            raise HTTPException(status_code=422, detail="agent_ref must identify an immutable agent version")
+        enforce_authorization(
+            app, principal, "agent.cognition", "cognition.run.create", agent_id
+        )
+        try:
+            agent = app.state.registry.get(agent_id, agent_version, principal.tenant_id)
+            run, event, created = app.state.cognitive_runs.create_run(
+                request.goal_ref, request.agent_ref, agent.agent_id, agent.version,
+                agent.content_hash, principal.tenant_id, principal.subject_id, idempotency_key,
+            )
+            return {"run": run, "initial_event": event, "created": created}
+        except AgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/cognitive-runs/{run_id}")
+    def get_cognitive_run(
+        run_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.run.read", run["agent_id"]
+            )
+            return run
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/v1/cognitive-runs/{run_id}/events")
+    def list_cognitive_run_events(
+        run_id: str,
+        after_sequence: int = Query(default=0, ge=0),
+        limit: int = Query(default=100, ge=1, le=200),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.run.read", run["agent_id"]
+            )
+            items = app.state.cognitive_runs.list_events(
+                run_id, principal.tenant_id, after_sequence, limit
+            )
+            return {"run_id": run_id, "items": items, "limit": limit, "after_sequence": after_sequence}
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/cognitive-runs/{run_id}/events", status_code=status.HTTP_201_CREATED)
+    def append_cognitive_run_event(
+        run_id: str,
+        request: CognitiveEventRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=256),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.event.append", run["agent_id"]
+            )
+            event, created = app.state.cognitive_runs.append_event(
+                run_id, request.model_dump(exclude_none=True), principal.tenant_id,
+                principal.subject_id, idempotency_key,
+            )
+            return {"event": event, "created": created}
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/cognitive-runs/{run_id}/context", status_code=status.HTTP_201_CREATED)
+    def assemble_cognitive_context(
+        run_id: str,
+        request: CognitiveContextRequest,
+        idempotency_key: str = Header(alias="Idempotency-Key", min_length=1, max_length=256),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            run = app.state.cognitive_runs.get_run(run_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.cognition", "cognition.context.assemble", run["agent_id"]
+            )
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.entity.read", "tenant-context"
+            )
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.relationship.read", "tenant-context"
+            )
+            enforce_authorization(
+                app, principal, "enterprise.context", "context.evidence.read", "tenant-context"
+            )
+            if request.entity_ids is not None and request.search is not None:
+                raise HTTPException(status_code=422, detail="Specify entity_ids or search, not both")
+            assembled = app.state.context_assembly.assemble(
+                principal.tenant_id,
+                entity_ids=request.entity_ids,
+                search=request.search,
+                include_inferences=request.include_inferences,
+                limit=request.limit,
+            )
+            packet = assembled["packet"]
+            event_input = {
+                "stage": "context",
+                "event_type": "context.assembled",
+                "evidence_status": "unverified",
+                "input_refs": [item["entity_id"] for item in packet["entities"]],
+                "output_refs": [assembled["snapshot_ref"]],
+                "evidence_refs": [item["evidence_id"] for item in packet["evidence"]],
+                "payload": {
+                    "context_snapshot_ref": assembled["snapshot_ref"],
+                    "context_content_hash": assembled["content_hash"],
+                    "context_snapshot": packet,
+                },
+            }
+            event, created = app.state.cognitive_runs.append_event(
+                run_id, event_input, principal.tenant_id, principal.subject_id, idempotency_key
+            )
+            return {
+                "snapshot_ref": assembled["snapshot_ref"],
+                "content_hash": assembled["content_hash"],
+                "byte_length": assembled["byte_length"],
+                "snapshot": packet,
+                "event": event,
+                "created": created,
+            }
+        except ContextAssemblyValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except CognitiveRunNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except CognitiveRunConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except CognitiveRunValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/agent-experiment-comparisons", status_code=status.HTTP_201_CREATED)
+    def create_agent_experiment_comparison(
+        request: ExperimentComparisonRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "agent.experiment", "experiment.compare", request.agent_id
+        )
+        try:
+            record, created = app.state.experiment_comparisons.compare(
+                agent_id=request.agent_id,
+                parent_version=request.parent_version,
+                candidate_version=request.candidate_version,
+                parent_evaluation_run_id=request.parent_evaluation_run_id,
+                candidate_evaluation_run_id=request.candidate_evaluation_run_id,
+                workload_ref=request.workload_ref,
+                workload_hash=request.workload_hash,
+                tenant_id=principal.tenant_id,
+                actor_id=principal.subject_id,
+            )
+            response = dict(record)
+            response["created"] = created
+            return response
+        except ExperimentComparisonNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ExperimentComparisonConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ExperimentComparisonValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/agent-experiment-comparisons/{comparison_id}")
+    def get_agent_experiment_comparison(
+        comparison_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        try:
+            record = app.state.experiment_comparisons.get(comparison_id, principal.tenant_id)
+            enforce_authorization(
+                app, principal, "agent.experiment", "experiment.read", record["agent_id"]
+            )
+            return record
+        except ExperimentComparisonNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/v1/fitness/selection")
     def select_fitness_candidates(
         profile_id: str,
@@ -986,6 +1365,83 @@ def create_app(database_path: str | None = None) -> FastAPI:
         except ExperienceValidationError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    @app.post(
+        "/v1/enterprise-discovery/postgresql/connectors",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def register_postgresql_connector(
+        request: PostgreSQLConnectorRegistrationRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.register",
+            request.connector_id,
+        )
+        try:
+            return app.state.postgresql_connectors.register(
+                principal.tenant_id, request.connector_id, request.source_ref,
+                request.key_id, request.public_key, principal.subject_id,
+            )
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/enterprise-discovery/postgresql/connectors")
+    def list_postgresql_connectors(
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.read", "tenant-connectors"
+        )
+        return {"items": app.state.postgresql_connectors.list_connectors(principal.tenant_id)}
+
+    @app.post(
+        "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def rotate_postgresql_connector_key(
+        connector_id: str,
+        request: PostgreSQLConnectorKeyRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.rotate_key", connector_id
+        )
+        try:
+            return app.state.postgresql_connectors.add_key(
+                principal.tenant_id, connector_id, request.key_id,
+                request.public_key, principal.subject_id,
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/enterprise-discovery/postgresql/connectors/{connector_id}/keys/{key_id}/revoke",
+    )
+    def revoke_postgresql_connector_key(
+        connector_id: str,
+        key_id: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.discovery", "connector.revoke_key", connector_id
+        )
+        try:
+            return app.state.postgresql_connectors.revoke_key(
+                principal.tenant_id, connector_id, key_id, principal.subject_id
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     @app.post("/v1/enterprise-discovery/postgresql/snapshots/ingest", status_code=status.HTTP_201_CREATED)
     def ingest_postgresql_snapshot(
         request: PostgreSQLSnapshotIngestRequest,
@@ -995,8 +1451,30 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app, principal, "enterprise.discovery", "discovery.snapshot.ingest", "tenant-context"
         )
         try:
+            normalized_source_ref = PostgreSQLSnapshotIngestion._validate_source_ref(
+                request.source_ref
+            )
+            provenance = None
+            if request.attestation is not None:
+                if request.connector_id is None:
+                    raise ContextValidationError(
+                        "connector_id is required for signed connector snapshots"
+                    )
+                key = app.state.postgresql_connectors.get_active_key(
+                    principal.tenant_id, request.connector_id,
+                    request.attestation.key_id, normalized_source_ref,
+                )
+                verifier = PostgreSQLProvenanceVerifier(
+                    {request.attestation.key_id: key}
+                )
+                provenance = verifier.verify(
+                    request.attestation.model_dump(), request.snapshot,
+                    principal.tenant_id, normalized_source_ref,
+                )
+                provenance["connector_id"] = request.connector_id
             return app.state.postgresql_ingestion.ingest(
-                request.snapshot, principal.tenant_id, principal.subject_id, request.source_ref
+                request.snapshot, principal.tenant_id, principal.subject_id,
+                normalized_source_ref, provenance,
             )
         except ContextNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -1151,6 +1629,30 @@ def create_app(database_path: str | None = None) -> FastAPI:
                 request.model_dump(exclude_none=True),
                 principal.tenant_id,
                 principal.subject_id,
+            )
+        except ContextNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ContextConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ContextValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post(
+        "/v1/enterprise-context/evidence/{evidence_id}/reviews",
+        status_code=status.HTTP_201_CREATED,
+    )
+    def review_context_evidence(
+        evidence_id: str,
+        request: ContextEvidenceReviewRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(
+            app, principal, "enterprise.context", "context.evidence.review", evidence_id
+        )
+        try:
+            return app.state.enterprise_context.review_evidence(
+                evidence_id, principal.tenant_id, principal.subject_id,
+                request.decision, request.reason, request.confirmed_source_hash,
             )
         except ContextNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

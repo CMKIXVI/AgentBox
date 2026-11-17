@@ -9,6 +9,16 @@ from pathlib import Path
 from typing import Any
 
 
+class _ClosingSQLiteConnection(sqlite3.Connection):
+    """Preserve transaction semantics and close short-lived audit connections."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class AuthorizationAuditStore:
     def __init__(self, database_path: str | Path):
         self.database_path = str(database_path)
@@ -20,6 +30,7 @@ class AuthorizationAuditStore:
         )
         self._uri = self.database_path == ":memory:"
         self._keeper = sqlite3.connect(self._dsn, uri=True) if self._uri else None
+        self._closed = False
         with self._connect() as connection:
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS authorization_decisions (
@@ -46,8 +57,21 @@ class AuthorizationAuditStore:
                 BEGIN SELECT RAISE(ABORT, 'authorization audit is append-only'); END
             """)
 
+    def close(self) -> None:
+        """Release the shared in-memory database keeper and close this store."""
+        if self._closed:
+            return
+        self._closed = True
+        if self._keeper is not None:
+            self._keeper.close()
+            self._keeper = None
+
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._dsn, uri=self._uri, timeout=10)
+        if self._closed:
+            raise RuntimeError("SQLite store is closed")
+        connection = sqlite3.connect(
+            self._dsn, uri=self._uri, timeout=10, factory=_ClosingSQLiteConnection
+        )
         connection.row_factory = sqlite3.Row
         return connection
 

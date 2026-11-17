@@ -8,9 +8,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import sqlite3
+import stat
 import tempfile
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -185,6 +187,40 @@ def _aad(envelope: dict[str, object]) -> bytes:
     })
 
 
+def _read_backup_envelope(path: Path) -> dict[str, object]:
+    """Read a bounded regular backup file without following symlinks."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+    )
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise BackupError("Backup source must be an accessible regular file") from exc
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise BackupError("Backup source must be an existing regular file")
+        if metadata.st_size > 512 * 1024 * 1024:
+            raise BackupFormatError("Tenant backup exceeds the 512 MiB safety limit")
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(descriptor, min(1024 * 1024, 512 * 1024 * 1024 + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > 512 * 1024 * 1024:
+                raise BackupFormatError("Tenant backup exceeds the 512 MiB safety limit")
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise BackupFormatError("Invalid AgentBox tenant backup envelope") from exc
+    finally:
+        os.close(descriptor)
+
+
 def _read_tenant_snapshot(database_path: str | Path, tenant_id: str) -> dict[str, object]:
     validate_tenant_id(tenant_id)
     connection = sqlite3.connect(str(database_path), timeout=10)
@@ -278,21 +314,28 @@ class TenantBackupService:
     def restore_encrypted(self, tenant_id: str, source: str | Path) -> dict[str, int | str]:
         validate_tenant_id(tenant_id)
         path = Path(source)
-        if path.is_symlink() or not path.is_file():
-            raise BackupError("Backup source must be an existing regular file, not a symbolic link")
-        if path.stat().st_size > 512 * 1024 * 1024:
-            raise BackupFormatError("Tenant backup exceeds the 512 MiB safety limit")
         try:
-            envelope = json.loads(path.read_text(encoding="utf-8"))
+            envelope = _read_backup_envelope(path)
             if not isinstance(envelope, dict):
                 raise TypeError("envelope must be an object")
             required = {"format", "version", "algorithm", "key_id", "tenant_id", "nonce", "ciphertext"}
             if set(envelope) != required:
                 raise ValueError("unexpected envelope fields")
-            if envelope["format"] != BACKUP_FORMAT or envelope["version"] != BACKUP_VERSION:
+            if (
+                envelope["format"] != BACKUP_FORMAT
+                or type(envelope["version"]) is not int
+                or envelope["version"] != BACKUP_VERSION
+            ):
                 raise ValueError("unsupported backup format or version")
             if envelope["algorithm"] != ALGORITHM:
                 raise ValueError("unsupported backup encryption algorithm")
+            if (
+                not isinstance(envelope["key_id"], str)
+                or not KEY_ID_PATTERN.fullmatch(envelope["key_id"])
+                or not isinstance(envelope["nonce"], str)
+                or not isinstance(envelope["ciphertext"], str)
+            ):
+                raise ValueError("invalid backup key identifier or encoded fields")
             validate_tenant_id(envelope["tenant_id"])
             if envelope["tenant_id"] != tenant_id:
                 raise ValueError("backup tenant does not match requested tenant")
@@ -316,8 +359,19 @@ class TenantBackupService:
     def _validate_payload(payload: object, tenant_id: str) -> None:
         if not isinstance(payload, dict):
             raise BackupFormatError("Backup payload must be an object")
-        if payload.get("format") != BACKUP_FORMAT or payload.get("version") != BACKUP_VERSION:
+        expected_payload_fields = {
+            "format", "version", "tenant_id", "exported_at", "tenant", "tables", "sha256"
+        }
+        if set(payload) != expected_payload_fields:
+            raise BackupFormatError("Backup payload fields are invalid")
+        if (
+            payload.get("format") != BACKUP_FORMAT
+            or type(payload.get("version")) is not int
+            or payload.get("version") != BACKUP_VERSION
+        ):
             raise BackupFormatError("Unsupported AgentBox backup payload")
+        if not isinstance(payload.get("exported_at"), str):
+            raise BackupFormatError("Backup export timestamp is invalid")
         if payload.get("tenant_id") != tenant_id:
             raise BackupFormatError("Backup payload tenant mismatch")
         digest = payload.get("sha256")
@@ -346,6 +400,17 @@ class TenantBackupService:
                     raise BackupFormatError(f"Backup row shape is invalid for {table}")
                 if row.get("tenant_id") != tenant_id:
                     raise BackupFormatError(f"Cross-tenant row detected in {table}")
+                for value in row.values():
+                    if (
+                        value is not None
+                        and not isinstance(value, (str, int, float, bool))
+                    ):
+                        raise BackupFormatError(f"Backup row value is invalid for {table}")
+                    if isinstance(value, int) and not isinstance(value, bool):
+                        if not -(2**63) <= value < 2**63:
+                            raise BackupFormatError(f"Backup integer is out of range for {table}")
+                    if isinstance(value, float) and not math.isfinite(value):
+                        raise BackupFormatError(f"Backup number is not finite for {table}")
         if not isinstance(tenant.get("metadata_json"), str):
             raise BackupFormatError("Backup tenant metadata is invalid")
         try:
