@@ -22,6 +22,12 @@ from .cognitive_runtime import (
     CognitiveRunService,
     CognitiveRunValidationError,
 )
+from .capability_registry import (
+    CapabilityConflictError,
+    CapabilityNotFoundError,
+    CapabilityRegistry,
+    CapabilityValidationError,
+)
 from .candidate_generation import (
     CandidateConflictError,
     CandidateGenerationService,
@@ -100,6 +106,11 @@ def require_active_tenant_principal(
 
 
 AUTHENTICATED_PRINCIPAL = Depends(require_active_tenant_principal)
+
+
+class CapabilityContractRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    contract: dict[str, Any]
 
 
 class ManifestRequest(BaseModel):
@@ -478,6 +489,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
     )
     app.state.authorization_policies = load_authorization_policies()
     app.state.authorization_audit = AuthorizationAuditStore(db_path)
+    app.state.capabilities = CapabilityRegistry(db_path)
     app.state.job_handler_allowlist = load_job_handler_allowlist()
     app.state.execution_jobs = DurableExecutionJobService(
         db_path, allowed_handlers=app.state.job_handler_allowlist
@@ -514,6 +526,7 @@ def create_app(database_path: str | None = None) -> FastAPI:
             app.state.registry,
             app.state.tenants,
             app.state.authorization_audit,
+            app.state.capabilities,
             app.state.postgresql_connectors,
         ):
             store.close()
@@ -524,6 +537,58 @@ def create_app(database_path: str | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "service": "agentbox-api"}
+
+    @app.post("/v1/capabilities", status_code=status.HTTP_201_CREATED)
+    def register_capability(
+        request: CapabilityContractRequest,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        capability_id = request.contract.get("capability_id", "")
+        enforce_authorization(app, principal, "capability.registry", "capability.register", capability_id)
+        try:
+            record, created = app.state.capabilities.register(request.contract, principal.tenant_id)
+        except CapabilityValidationError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except CapabilityConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "capability_id": record.capability_id, "version": record.version,
+            "content_hash": record.content_hash, "contract": record.contract,
+            "created_at": record.created_at, "created": created,
+        }
+
+    @app.get("/v1/capabilities")
+    def list_capabilities(
+        limit: int = Query(default=50, ge=1, le=100),
+        offset: int = Query(default=0, ge=0),
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "capability.registry", "capability.read", "*")
+        records = app.state.capabilities.list(principal.tenant_id, limit, offset)
+        return {
+            "items": [{
+                "capability_id": item.capability_id, "version": item.version,
+                "content_hash": item.content_hash, "contract": item.contract,
+                "created_at": item.created_at,
+            } for item in records],
+            "limit": limit, "offset": offset,
+        }
+
+    @app.get("/v1/capabilities/{capability_id}/versions/{version}")
+    def get_capability(
+        capability_id: str, version: str,
+        principal: Principal = AUTHENTICATED_PRINCIPAL,
+    ) -> dict[str, Any]:
+        enforce_authorization(app, principal, "capability.registry", "capability.read", capability_id)
+        try:
+            record = app.state.capabilities.get(capability_id, version, principal.tenant_id)
+        except CapabilityNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "capability_id": record.capability_id, "version": record.version,
+            "content_hash": record.content_hash, "contract": record.contract,
+            "created_at": record.created_at,
+        }
 
     @app.post("/v1/agents/validate")
     def validate(request: ManifestRequest) -> dict[str, Any]:
