@@ -5,7 +5,9 @@ interpret agent manifests as code and intentionally rejects sandbox workloads.
 """
 from __future__ import annotations
 
+import json
 import logging
+import multiprocessing
 import os
 import signal
 import threading
@@ -47,6 +49,73 @@ class CapabilityInvocationContext:
 
 
 CapabilityHandler = Callable[[CapabilityInvocationContext, Any], Any]
+
+
+def _capability_handler_child(connection: Any, handler: CapabilityHandler,
+                              context: CapabilityInvocationContext, value: Any) -> None:
+    """Run one importable trusted handler in a disposable spawned process."""
+    try:
+        context.raise_if_expired()
+        result = handler(context, value)
+        context.raise_if_expired()
+        envelope = json.dumps({"ok": True, "result": result}, ensure_ascii=False,
+                              allow_nan=False, separators=(",", ":")).encode("utf-8")
+        if len(envelope) > 1_048_576:
+            raise ValueError("capability handler result exceeds 1 MiB")
+        connection.send_bytes(envelope)
+    except BaseException:
+        try:
+            connection.send_bytes(b'{"ok":false}')
+        except (BrokenPipeError, OSError):
+            pass
+    finally:
+        connection.close()
+
+
+def _run_capability_handler_isolated(
+    handler: CapabilityHandler,
+    context: CapabilityInvocationContext,
+    value: Any,
+) -> Any:
+    """Execute a trusted importable handler with a parent-enforced hard deadline."""
+    process_context = multiprocessing.get_context("spawn")
+    receive, send = process_context.Pipe(duplex=False)
+    process = process_context.Process(
+        target=_capability_handler_child,
+        args=(send, handler, context, value),
+        daemon=True,
+    )
+    try:
+        process.start()
+        send.close()
+        if not receive.poll(context.remaining_seconds()):
+            process.terminate()
+            process.join(timeout=1)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=1)
+            raise TimeoutError("capability handler exceeded its execution deadline")
+        try:
+            payload = receive.recv_bytes(1_048_576)
+        except EOFError as exc:
+            raise RuntimeError("capability handler process exited without a result") from exc
+        process.join(timeout=1)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=1)
+            raise RuntimeError("capability handler did not exit after returning a result")
+        try:
+            result = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError("capability handler returned an invalid result envelope") from exc
+        if not isinstance(result, dict) or result.get("ok") is not True or "result" not in result:
+            raise RuntimeError("capability handler failed")
+        return result["result"]
+    finally:
+        receive.close()
+        if process.pid is not None:
+            process.close()
+
 
 # Deployments add reviewed Python callables here. No contract implementation_ref
 # or environment-provided import path is ever loaded.
@@ -276,11 +345,7 @@ class ExecutionJobWorker:
             timeout_seconds=contract["timeout_seconds"],
             deadline_monotonic=time.monotonic() + contract["timeout_seconds"],
         )
-        context.raise_if_expired()
-        output = handler(context, payload["input"])
-        # A synchronous trusted handler cannot be forcibly interrupted safely.
-        # Discard late results and expose checkpoints for cooperative cancellation.
-        context.raise_if_expired()
+        output = _run_capability_handler_isolated(handler, context, payload["input"])
         try:
             Draft202012Validator(contract["output_schema"]).validate(output)
         except JSONSchemaValidationError as exc:
