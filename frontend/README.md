@@ -16,9 +16,7 @@ AgentBox has two first-class clients backed by one FastAPI platform:
 
 ## Current implementation status
 
-The Next.js and Flutter application shells and API transports are implemented. Both clients now have provider-neutral session-reader interfaces that supply a short-lived access token to the existing transport. Flutter has unit tests for valid, missing, expired, near-expiry, and incomplete sessions.
-
-No live OIDC provider is configured. There is no login/callback, token exchange, refresh, logout, Next.js BFF, or native secure-storage adapter yet. Do not treat the session interfaces as a working login implementation.
+The Next.js and Flutter application shells, bearer-token API transports, and versioned route inventory are implemented on the current stacked feature branches. Screens remain preview/static: client login/session flows and live end-to-end API integration are not yet enabled. The backend validates OIDC access tokens and derives tenant context from a configured verified claim.
 
 ## Local development
 
@@ -46,4 +44,4 @@ The repository workflow `.github/workflows/backend-ci.yml` validates the Next.js
 
 ## Shared API transport
 
-The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports. Their session ports do not persist or refresh credentials and never send a tenant-authority header.
+The backend is the authority for API schemas and authentication. The versioned route inventory under `contracts/api/` is tested against FastAPI's generated OpenAPI paths. CI exports the generated OpenAPI document as a build artifact. The Flutter and Next.js clients use bearer-token-injected transports; an OIDC session integration must supply short-lived access tokens. Neither client sends a tenant-authority header or persists credentials in the transport layer. The provider-neutral implementation contract is documented in [OIDC client integration](../docs/security/oidc-client-integration-contract.md). Web login is planned as a Next.js BFF session with Secure/HttpOnly cookies; Flutter login uses system-browser Authorization Code + PKCE and platform-protected storage. Provider selection remains a deployment decision.
