@@ -259,6 +259,10 @@ def capability_test_slow_handler(context, _value):
     return {"name": "Too late"}
 
 
+def capability_test_non_json_output(_context, _value):
+    return object()
+
+
 def test_worker_executes_capability_through_static_handler_and_validates_output(client):
     job = enqueue_capability(client)
     worker = make_worker(
@@ -273,6 +277,18 @@ def test_worker_executes_capability_through_static_handler_and_validates_output(
         "version": "1.0.0",
         "output": {"name": "Ada"},
     }
+
+
+def test_worker_fails_capability_job_when_handler_result_is_not_json(client):
+    job = enqueue_capability(client, "capability-non-json-output")
+    worker = make_worker(
+        client,
+        capability_handlers={( "provider.fake", "1.0.0"): capability_test_non_json_output},
+    )
+    assert worker.run_once() is True
+    failed = client.app.state.execution_jobs.get(job["job_id"], "test-tenant")
+    assert failed["state"] == "failed"
+    assert failed["error_code"] == "provider_execution_failed"
 
 
 def test_worker_fails_capability_job_without_static_handler(client):
