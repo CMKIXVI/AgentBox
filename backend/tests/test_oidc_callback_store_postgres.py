@@ -1,3 +1,4 @@
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
@@ -18,7 +19,7 @@ def transaction(transaction_id=None, **overrides):
         "transaction_id": identifier,
         "client_id": "agentbox-web",
         "redirect_uri": "https://console.example.test/auth/callback",
-        "state_hash": "a" * 64,
+        "state_hash": hashlib.sha256(identifier.encode()).hexdigest(),
         "nonce_hash": "b" * 64,
         "pkce_verifier_ref": f"vault://agentbox/oidc/transactions/{identifier}",
         "created_at_epoch": 1000,
@@ -85,6 +86,27 @@ def test_expiry_purge_removes_only_expired_rows(store):
     assert store.purge_expired(now_epoch=1100) >= 1
     assert store.consume_once(expired.transaction_id, now_epoch=1000) is None
     assert store.consume_once(live.transaction_id, now_epoch=1200) == live
+
+
+def test_state_hash_consumption_is_single_use(store):
+    item = transaction()
+    store.save(item)
+    assert store.consume_by_state_hash(item.state_hash, now_epoch=1200) == item
+    assert store.consume_by_state_hash(item.state_hash, now_epoch=1200) is None
+
+
+def test_state_hash_consumption_has_one_concurrent_winner(store):
+    item = transaction()
+    store.save(item)
+
+    def consume(_):
+        return PostgresOidcCallbackTransactionStore(DSN).consume_by_state_hash(
+            item.state_hash, now_epoch=1200
+        )
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        results = list(executor.map(consume, range(24)))
+    assert sum(result is not None for result in results) == 1
 
 
 def test_consume_rejects_boolean_clock(store):

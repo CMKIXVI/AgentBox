@@ -96,6 +96,12 @@ class OidcCallbackTransactionStore(Protocol):
         """Persist a validated transaction; reject duplicate transaction IDs."""
         ...
 
+    def consume_by_state_hash(
+        self, state_hash: str, *, now_epoch: int
+    ) -> OidcCallbackTransaction | None:
+        """Atomically consume the single live transaction matching an opaque state hash."""
+        ...
+
     def consume_once(
         self, transaction_id: str, *, now_epoch: int
     ) -> OidcCallbackTransaction | None:

@@ -5,6 +5,7 @@ locking guarantees that concurrent consumers across backend instances have one w
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import psycopg
@@ -15,6 +16,8 @@ from app.oidc_callback_contract import (
     OidcCallbackTransactionStore,
     validate_callback_transaction,
 )
+
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS oidc_callback_transactions (
@@ -33,6 +36,10 @@ CREATE TABLE IF NOT EXISTS oidc_callback_transactions (
 _CREATE_EXPIRY_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_oidc_callback_transactions_expiry
 ON oidc_callback_transactions (expires_at_epoch)
+"""
+_CREATE_STATE_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oidc_callback_transactions_state_hash
+ON oidc_callback_transactions (state_hash)
 """
 
 
@@ -73,6 +80,7 @@ class PostgresOidcCallbackTransactionStore(OidcCallbackTransactionStore):
         with self._connect() as connection:
             connection.execute(_CREATE_TABLE)
             connection.execute(_CREATE_EXPIRY_INDEX)
+            connection.execute(_CREATE_STATE_INDEX)
 
     def save(self, transaction: OidcCallbackTransaction) -> None:
         errors = validate_callback_transaction(transaction)
@@ -119,6 +127,36 @@ class PostgresOidcCallbackTransactionStore(OidcCallbackTransactionStore):
                 WHERE transaction_id = %s AND expires_at_epoch <= %s
                 """,
                 (transaction_id, now_epoch),
+            )
+            return None
+
+    def consume_by_state_hash(
+        self, state_hash: str, *, now_epoch: int
+    ) -> OidcCallbackTransaction | None:
+        if not isinstance(state_hash, str) or not _SHA256_HEX.fullmatch(state_hash):
+            return None
+        return self._consume("state_hash", state_hash, now_epoch=now_epoch)
+
+    def _consume(self, key: str, value: str, *, now_epoch: int) -> OidcCallbackTransaction | None:
+        if key != "state_hash":
+            raise ValueError("Unsupported callback transaction lookup key")
+        if isinstance(now_epoch, bool) or not isinstance(now_epoch, int):
+            raise TypeError("now_epoch must be an integer epoch timestamp")
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                DELETE FROM oidc_callback_transactions
+                WHERE state_hash = %s AND expires_at_epoch > %s
+                RETURNING transaction_id, client_id, redirect_uri, state_hash,
+                          nonce_hash, pkce_verifier_ref, created_at_epoch, expires_at_epoch
+                """,
+                (value, now_epoch),
+            ).fetchone()
+            if row is not None:
+                return _from_row(row)
+            connection.execute(
+                "DELETE FROM oidc_callback_transactions WHERE state_hash = %s AND expires_at_epoch <= %s",
+                (value, now_epoch),
             )
             return None
 

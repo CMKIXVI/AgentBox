@@ -12,5 +12,7 @@ CREATE TABLE IF NOT EXISTS oidc_callback_transactions (
     CHECK (expires_at_epoch > created_at_epoch),
     CHECK (expires_at_epoch - created_at_epoch <= 600)
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oidc_callback_transactions_state_hash
+    ON oidc_callback_transactions (state_hash);
 CREATE INDEX IF NOT EXISTS idx_oidc_callback_transactions_expiry
     ON oidc_callback_transactions (expires_at_epoch);
