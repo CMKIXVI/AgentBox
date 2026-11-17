@@ -1,8 +1,8 @@
 """Immutable, tenant-scoped parent/candidate experiment comparisons.
 
-Evaluation runs currently contain caller-submitted outputs. Comparisons therefore
-record asserted workload identity and remain unverified/advisory; they cannot gate
-or authorize promotion.
+Comparisons verify server-recorded execution evidence when both evaluation runs
+carry complete, matching evidence. Caller-submitted runs remain advisory.
+No comparison authorizes promotion.
 """
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from .evaluation import EvaluationService
 
 _HASH = re.compile(r"^[a-fA-F0-9]{64}$")
 
@@ -121,6 +123,7 @@ class ExperimentComparisonService:
                     comparison_result_json TEXT NOT NULL,
                     request_hash TEXT NOT NULL,
                     evidence_status TEXT NOT NULL CHECK(evidence_status = 'unverified'),
+                    evidence_verified INTEGER NOT NULL DEFAULT 0 CHECK(evidence_verified IN (0, 1)),
                     created_at TEXT NOT NULL,
                     created_by TEXT NOT NULL,
                     PRIMARY KEY (tenant_id, comparison_id),
@@ -128,6 +131,17 @@ class ExperimentComparisonService:
                     FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
                 )
             """)
+            comparison_columns = {
+                row["name"] for row in connection.execute(
+                    "PRAGMA table_info(agent_experiment_comparisons)"
+                )
+            }
+            if "evidence_verified" not in comparison_columns:
+                connection.execute(
+                    "ALTER TABLE agent_experiment_comparisons "
+                    "ADD COLUMN evidence_verified INTEGER NOT NULL DEFAULT 0 "
+                    "CHECK(evidence_verified IN (0, 1))"
+                )
             connection.execute("""
                 CREATE INDEX IF NOT EXISTS idx_agent_experiment_comparisons_agent
                 ON agent_experiment_comparisons(tenant_id, agent_id, created_at)
@@ -162,7 +176,7 @@ class ExperimentComparisonService:
             "profile_version": row["profile_version"],
             "workload_ref": row["workload_ref"],
             "workload_hash": row["workload_hash"],
-            "evidence_status": row["evidence_status"],
+            "evidence_status": "verified" if row["evidence_verified"] else row["evidence_status"],
             "comparison": json.loads(row["comparison_result_json"]),
             "request_hash": row["request_hash"],
             "created_at": row["created_at"],
@@ -170,6 +184,141 @@ class ExperimentComparisonService:
             "promotion_eligible": False,
             "decision_authority": "advisory_only",
         }
+
+    @staticmethod
+    def _verify_run_evidence(
+        connection: sqlite3.Connection,
+        *,
+        run: dict[str, Any],
+        agent_id: str,
+        agent_version: str,
+        agent_content_hash: str,
+        profile_id: str,
+        profile_version: str,
+        profile_content_hash: str,
+        tenant_id: str,
+        expected_workload_hash: str,
+    ) -> bool:
+        """Verify server-recorded evaluation evidence against immutable DB records."""
+        if run.get("evidence_status") != "server_recorded":
+            return False
+        evidence = run.get("execution_evidence")
+        if not isinstance(evidence, dict) or evidence.get("source") != "server_execution_records":
+            return False
+        if (
+            evidence.get("agent_content_hash") != agent_content_hash
+            or evidence.get("profile_content_hash") != profile_content_hash
+            or evidence.get("workload_hash") != expected_workload_hash
+        ):
+            return False
+
+        profile_row = connection.execute(
+            "SELECT profile_json, content_hash FROM evaluation_profiles "
+            "WHERE tenant_id=? AND profile_id=? AND version=?",
+            (tenant_id, profile_id, profile_version),
+        ).fetchone()
+        if profile_row is None or profile_row["content_hash"] != profile_content_hash:
+            return False
+        profile = json.loads(profile_row["profile_json"])
+        cases = profile.get("cases") if isinstance(profile, dict) else None
+        items = evidence.get("case_executions")
+        if not isinstance(cases, list) or not isinstance(items, list) or len(cases) != len(items):
+            return False
+        workload_definition = {
+            "profile_id": profile_id,
+            "profile_version": profile_version,
+            "profile_content_hash": profile_content_hash,
+            "cases": [
+                {"case_id": case["case_id"], "input": case["input"]}
+                for case in cases
+                if isinstance(case, dict) and "case_id" in case and "input" in case
+            ],
+        }
+        if len(workload_definition["cases"]) != len(cases):
+            return False
+        if _digest(workload_definition) != expected_workload_hash:
+            return False
+
+        expected_ids = {case.get("case_id") for case in cases if isinstance(case, dict)}
+        by_id = {
+            item.get("case_id"): item
+            for item in items
+            if isinstance(item, dict) and isinstance(item.get("case_id"), str)
+        }
+        if (
+            len(expected_ids) != len(cases)
+            or len(by_id) != len(items)
+            or set(by_id) != expected_ids
+        ):
+            return False
+        submitted = {
+            item.get("case_id"): item
+            for item in run.get("case_results", [])
+            if isinstance(item, dict)
+        }
+        if set(submitted) != expected_ids:
+            return False
+
+        execution_ids: set[str] = set()
+        verified_results: list[dict[str, Any]] = []
+        for case in cases:
+            case_id = case["case_id"]
+            item = by_id[case_id]
+            execution_id = item.get("execution_id")
+            if (
+                not isinstance(execution_id, str)
+                or not execution_id
+                or execution_id in execution_ids
+            ):
+                return False
+            execution_ids.add(execution_id)
+            row = connection.execute(
+                "SELECT agent_id, agent_version, status, result_json FROM executions "
+                "WHERE tenant_id=? AND execution_id=?",
+                (tenant_id, execution_id),
+            ).fetchone()
+            if row is None or row["status"] != "completed" or (
+                row["agent_id"], row["agent_version"]
+            ) != (agent_id, agent_version):
+                return False
+            result = json.loads(row["result_json"] or "{}")
+            output = result.get("output")
+            usage = result.get("usage", {})
+            if not isinstance(usage, dict):
+                return False
+            try:
+                latency = _number(result.get("latency_ms"), "execution latency")
+                cost = _number(usage.get("cost_usd"), "execution cost")
+            except ExperimentComparisonValidationError:
+                return False
+            input_hash = _digest({"input": case.get("input")})
+            output_hash = _digest({"output": output})
+            evaluation_case = submitted[case_id]
+            if (
+                result.get("input_hash") != input_hash
+                or item.get("input_hash") != input_hash
+                or item.get("output_hash") != output_hash
+                or evaluation_case.get("latency_ms") != latency
+                or evaluation_case.get("cost_usd") != cost
+                or item.get("latency_ms") != latency
+                or item.get("cost_usd") != cost
+                or item.get("provider_id") != result.get("provider_id")
+                or item.get("model_id") != result.get("model_id")
+            ):
+                return False
+            verified_results.append({
+                "case_id": case_id,
+                "output": output,
+                "latency_ms": latency,
+                "cost_usd": cost,
+            })
+
+        recomputed = EvaluationService.score(profile, verified_results)
+        score_fields = (
+            "score", "passed", "case_pass_rate", "avg_latency_ms", "total_cost_usd",
+            "latency_score", "cost_score", "gate_results", "case_results",
+        )
+        return all(run.get(field) == recomputed.get(field) for field in score_fields)
 
     def compare(
         self,
@@ -254,6 +403,33 @@ class ExperimentComparisonService:
             if profile is None:
                 raise ExperimentComparisonNotFoundError("Pinned evaluation profile version was not found")
 
+            parent_content_hash = parent["content_hash"]
+            candidate_content_hash = candidate["content_hash"]
+            parent_verified = self._verify_run_evidence(
+                connection,
+                run=parent_run,
+                agent_id=agent_id,
+                agent_version=parent_version,
+                agent_content_hash=parent_content_hash,
+                profile_id=profile_identity[0],
+                profile_version=profile_identity[1],
+                profile_content_hash=profile["content_hash"],
+                tenant_id=tenant_id,
+                expected_workload_hash=workload_hash.lower(),
+            )
+            candidate_verified = self._verify_run_evidence(
+                connection,
+                run=candidate_run,
+                agent_id=agent_id,
+                agent_version=candidate_version,
+                agent_content_hash=candidate_content_hash,
+                profile_id=profile_identity[0],
+                profile_version=profile_identity[1],
+                profile_content_hash=profile["content_hash"],
+                tenant_id=tenant_id,
+                expected_workload_hash=workload_hash.lower(),
+            )
+            evidence_verified = parent_verified and candidate_verified
             parent_score = _number(parent_run.get("score"), "parent score")
             candidate_score = _number(candidate_run.get("score"), "candidate score")
             parent_latency = _number(parent_run.get("avg_latency_ms"), "parent average latency")
@@ -280,11 +456,20 @@ class ExperimentComparisonService:
                 },
                 "profile_content_hash": profile["content_hash"],
                 "asserted_same_workload": True,
-                "workload_provenance": "caller_asserted",
+                "workload_provenance": (
+                    "execution_records" if evidence_verified else "caller_asserted"
+                ),
+                "execution_evidence_verified": evidence_verified,
                 "outcome": "candidate_score_higher" if score_delta > 0 else (
                     "candidate_score_lower" if score_delta < 0 else "score_equal"
                 ),
-                "note": "Advisory comparison only; evaluation outputs and workload identity are not independently attested.",
+                "note": (
+                    "Execution evidence verified against persisted records; comparison remains "
+                    "advisory and cannot authorize promotion."
+                    if evidence_verified else
+                    "Advisory comparison only; evaluation outputs and workload identity "
+                    "are not independently attested."
+                ),
             }
             request_identity = {
                 **values, "tenant_id": tenant_id,
@@ -314,14 +499,14 @@ class ExperimentComparisonService:
                     parent_content_hash, candidate_content_hash, parent_evaluation_run_id,
                     candidate_evaluation_run_id, profile_id, profile_version, workload_ref,
                     workload_hash, comparison_result_json, request_hash, evidence_status,
-                    created_at, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unverified', ?, ?)""",
+                    evidence_verified, created_at, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unverified', ?, ?, ?)""",
                 (
                     tenant_id, comparison_id, agent_id, parent_version, candidate_version,
                     parent["content_hash"], candidate["content_hash"], parent_evaluation_run_id,
                     candidate_evaluation_run_id, profile_identity[0], profile_identity[1],
                     workload_ref, workload_hash.lower(), _canonical(comparison), request_hash,
-                    created_at, actor_id,
+                    int(evidence_verified), created_at, actor_id,
                 ),
             )
             row = connection.execute(
