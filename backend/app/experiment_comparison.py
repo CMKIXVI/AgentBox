@@ -1,8 +1,8 @@
 """Immutable, tenant-scoped parent/candidate experiment comparisons.
 
-Evaluation runs currently contain caller-submitted outputs. Comparisons therefore
-record asserted workload identity and remain unverified/advisory; they cannot gate
-or authorize promotion.
+Comparisons verify server-recorded execution evidence when both evaluation runs
+carry complete, matching evidence. Caller-submitted runs remain advisory.
+No comparison authorizes promotion.
 """
 from __future__ import annotations
 
@@ -229,7 +229,11 @@ class ExperimentComparisonService:
             for item in items
             if isinstance(item, dict) and isinstance(item.get("case_id"), str)
         }
-        if len(expected_ids) != len(cases) or len(by_id) != len(items) or set(by_id) != expected_ids:
+        if (
+            len(expected_ids) != len(cases)
+            or len(by_id) != len(items)
+            or set(by_id) != expected_ids
+        ):
             return False
         submitted = {
             item.get("case_id"): item
@@ -244,7 +248,11 @@ class ExperimentComparisonService:
             case_id = case["case_id"]
             item = by_id[case_id]
             execution_id = item.get("execution_id")
-            if not isinstance(execution_id, str) or not execution_id or execution_id in execution_ids:
+            if (
+                not isinstance(execution_id, str)
+                or not execution_id
+                or execution_id in execution_ids
+            ):
                 return False
             execution_ids.add(execution_id)
             row = connection.execute(
