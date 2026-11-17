@@ -147,7 +147,7 @@ Do not manually maintain duplicate API models when they can be generated from th
 
 ## 6. Identity, tenant, and authorization
 
-The existing AgentBox OIDC and authorization foundations remain authoritative.
+The existing AgentBox OIDC and authorization foundations remain authoritative. The backend verifier validates issuer, audience, signature, time claims, and the configured tenant claim. The Next.js and Flutter session ports are provider-neutral adapters only; a maintained OIDC SDK or reviewed BFF must own Authorization Code + PKCE, callback validation, refresh, logout, and secure credential storage. See [the OIDC client/session contract](docs/security/oidc-client-session-contract.md).
 
 Requirements:
 - OIDC authentication and validated server-side principals
