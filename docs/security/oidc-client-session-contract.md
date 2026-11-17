@@ -51,6 +51,19 @@ These are policy helpers only. No cookie is issued or read, no session identifie
 
 This remains a policy layer, not an HTTP proxy. No Next.js route handler exists, no session cookie is read, no server-side access token is attached, and no backend request is made. A future route must obtain identity only from the server session adapter, attach its server-derived bearer token, and let FastAPI enforce authorization and tenant isolation.
 
+## BFF HTTP envelope and response policy
+
+`frontend/nextjs/console/src/lib/bff-http-policy.ts` adds provider-neutral policy helpers for a future route layer:
+- Validate exact-origin/Fetch-Metadata CSRF policy before reading a mutation body.
+- Accept only bodyless safe methods or JSON POST bodies.
+- Require a declared, positive request Content-Length no larger than 1 MiB for body-bearing operations. A future route must additionally enforce the same limit while consuming the request stream; the header alone is not proof of actual size.
+- Reject upstream redirects and accept only JSON or problem-JSON responses, with a 2 MiB declared response-length ceiling.
+- Relay only content type plus fixed no-store, pragma, and nosniff headers. Never relay Set-Cookie, Location, server-identification, or upstream cache headers.
+- Provide manual-redirect, no-store, ambient-credential-omitting fetch options and server-generated UUID correlation IDs.
+- Provide a stable non-sensitive JSON error envelope for policy failures.
+
+These helpers do not read or limit a stream, perform a fetch, authenticate a session, attach a bearer token, or implement a route. The eventual route must enforce byte limits while streaming, authenticate from a server-side session, derive the bearer token server-side, and preserve FastAPI authorization and tenant isolation.
+
 ## Client adapter ports
 
 - Next.js: `frontend/nextjs/console/src/lib/auth-session.ts` defines the read-only session port and fail-closed access-token provider. The future provider SDK/BFF implements `SessionReader`.
